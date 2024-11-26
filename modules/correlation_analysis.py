@@ -43,7 +43,6 @@ def correlation_analysis(model, problem, model_code_str, language_model='groq'):
     ot_model = ot.PythonFunction(problem['num_vars'], 1, model)
 
     # Generate samples
-    n = 1000  # Number of samples for correlation analysis
     sampleX = distribution.getSample(n)
     sampleY = ot_model(sampleX)
 
