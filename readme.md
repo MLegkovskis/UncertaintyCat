@@ -1,4 +1,4 @@
-# UncertaintyCat 😺😹 - Uncertainty Quantification Made Easy
+# UncertaintyCat 😺 | AI-driven UQ
 
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://uncertainty.streamlit.app/)
