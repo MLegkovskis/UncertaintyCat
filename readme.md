@@ -71,8 +71,8 @@ Welcome to **UncertaintyCat**—an interactive application designed to make **Un
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/MLegkovskis/LITUQ
-   cd LITUQ
+   git clone https://github.com/MLegkovskis/UncertaintyCat.git
+   cd UncertaintyCat
    ```
 
 2. **Create a Virtual Environment (Optional but Recommended)**
