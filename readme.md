@@ -357,10 +357,10 @@ UncertaintyCat includes several modules that perform different analyses:
 
 Contributions are welcome! If you'd like to contribute, please:
 
-1. **Fork the Repository**
+1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/your_username/UncertaintyCat.git
+   git clone https://github.com/MLegkovskis/UncertaintyCat.git
    ```
 
 2. **Create a Feature Branch**
