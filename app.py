@@ -89,7 +89,7 @@ with st.expander("Instructions"):
         - If your model has a large number of input variables, you can perform dimensionality reduction to identify the most significant variables.
     - **Usage:**
         - Navigate to the **"Dimensionality Reduction"** page.
-        - Run the analysis to obtain a reduced set of input variables.
+        - Run the AI-driven analysis to obtain a reduced set of input variables.
         - Use this information to simplify your model or focus on key inputs.
 
     ### **5. Surrogate Modeling with Polynomial Chaos Expansion (Optional)**
