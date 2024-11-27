@@ -28,11 +28,15 @@ def run_morris_analysis_for_dimensionality_reduction(N, model, problem):
     # Calculate thresholds based on mean and standard deviation
     mean_mu_star = np.mean(mu_star)
     std_mu_star = np.std(mu_star)
-    threshold_mu_star = mean_mu_star - std_mu_star
+    # threshold_mu_star = mean_mu_star - std_mu_star
 
     mean_sigma = np.mean(sigma)
     std_sigma = np.std(sigma)
-    threshold_sigma = mean_sigma - std_sigma
+    # threshold_sigma = mean_sigma - std_sigma
+
+    # Calculate thresholds based on percentiles
+    threshold_mu_star = np.percentile(mu_star, 25)  # Lower quartile
+    threshold_sigma = np.percentile(sigma, 25)     # Lower quartile
 
     # Determine non-influential variables based on thresholds
     non_influential_indices = [

@@ -6,15 +6,15 @@ import numpy as np
 # This function models the water flow rate through a borehole penetrating two aquifers. It calculates the water flow based on eight input variables representing physical properties of the borehole and aquifer system. The model is commonly used in reliability and sensitivity analyses due to its nonlinear behavior and interaction between variables.
 
 def function_of_interest(X):
-    # Extract input variables
-    rw = X[0]  # Radius of borehole (m)
-    r = X[1]   # Radius of influence (m)
-    Tu = X[2]  # Transmissivity of upper aquifer (m²/year)
-    Hu = X[3]  # Potentiometric head of upper aquifer (m)
-    Tl = X[4]  # Transmissivity of lower aquifer (m²/year)
-    Hl = X[5]  # Potentiometric head of lower aquifer (m)
-    L = X[6]   # Length of borehole (m)
-    Kw = X[7]  # Hydraulic conductivity of borehole (m/year)
+    rw, r, Tu, Hu, Tl, Hl, L, Kw = X
+    # rw  # Radius of borehole (m)
+    # r  # Radius of influence (m)
+    # Tu   # Transmissivity of upper aquifer (m²/year)
+    # Hu  # Potentiometric head of upper aquifer (m)
+    # Tl  # Transmissivity of lower aquifer (m²/year)
+    # Hl # Potentiometric head of lower aquifer (m)
+    # L   # Length of borehole (m)
+    # Kw  # Hydraulic conductivity of borehole (m/year)
 
     # Compute intermediate terms
     log_r_rw = np.log(r / rw)
