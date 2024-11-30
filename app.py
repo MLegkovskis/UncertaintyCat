@@ -150,6 +150,7 @@ def reset_analysis_results():
         'model_understanding_response_markdown',
         'sobol_response_markdown', 'sobol_fig',
         'taylor_response_markdown', 'taylor_fig',
+        # Add any other keys you've used
     ]
     for key in keys_to_reset:
         if key in st.session_state:
@@ -164,7 +165,7 @@ def generate_prompt(code_snippet):
 ```
 
 - You must never re-print the model definition as python code.
-- You must keep your response to an abolute minimum! If you are supplied with particularly large model with many inputs, feel free to obfuscate some of the maths when translating the model into latex/Markdown.
+- You must keep your response to an abolute minimum - keep it extremely concise! If you are supplied with particularly large model with many inputs, feel free to obfuscate some of the maths when translating the model into latex/Markdown.
 - Present the mathematical equations using LaTex.
 - Tabulate (into ONE table!) the associated input uncertainties and their characteristics as detailed in the 'problem' dictionary.
 
@@ -172,7 +173,7 @@ Provide the output in pure Markdown without additional explanations!
 """
 
 # Function to get markdown from code using Groq API
-def get_markdown_from_code(code_snippet):
+def get_markdown_from_code(code_snippet, model_name='gemma2-9b-it'):
     try:
         client = Groq(api_key=os.getenv('GROQ_API_KEY'))
         prompt = generate_prompt(code_snippet)
