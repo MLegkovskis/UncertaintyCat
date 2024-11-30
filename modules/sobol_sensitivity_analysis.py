@@ -91,11 +91,6 @@ def plot_sobol_radial(Si, problem, ax):
 
 
 
-
-
-
-
-
 def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
     # Ensure N is a power of 2
     N_power = int(np.ceil(np.log2(N)))
@@ -171,7 +166,7 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
     first_order_md_table = first_order_df.to_markdown(index=False, floatfmt=".4f")
     total_order_md_table = total_order_df.to_markdown(index=False, floatfmt=".4f")
     if not S2_df.empty:
-        second_order_md_table = S2_df.to_markdown(index=False, floatfmt=".4f")
+        second_order_md_table = S2_df
     else:
         second_order_md_table = "No significant second-order interactions detected."
 
@@ -242,11 +237,11 @@ and the following uncertain input distributions:
 
 Given the following first-order Sobol' indices and their confidence intervals:
 
-{first_order_md_table}
+{first_order_df}
 
 And the following total-order Sobol' indices and their confidence intervals:
 
-{total_order_md_table}
+{total_order_df}
 
 The following second-order Sobol' indices were identified:
 
@@ -257,9 +252,8 @@ An interpretation of the Sobol Indices Radial Plot is provided:
 {radial_plot_description}
 
 Please:
-  - Display the index values as a table. If the table is large (e.g., more than 10 rows), only show the top 8 rows corresponding to the highest-ranked inputs.
-  - Explain the mathematical basis of the Sobol method in sensitivity analysis.
-  - Briefly explain the difference between first-order and total-order indices in terms of their mathematics and what they represent.
+  - Display all the index values as separate tables (if the tables are big - feel free to show only top 10 ranked inputs).
+  - Briefly explain the Sobol method and the difference between first-order and total-order indices in terms of their mathematics and what they represent.
   - Explain the significance of high-impact Sobol' indices and the importance of the corresponding input variables from both mathematical and physical perspectives.
   - Discuss the confidence intervals associated with the Sobol' indices and what they represent.
   - Provide an interpretation of the Sobol Indices Radial Plot based on the description and numerical data.

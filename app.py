@@ -23,7 +23,7 @@ with col1:
     st.image("logo.jpg", width=100)
 
 with col2:
-    st.title('UncertaintyCat | v3.6')
+    st.title('UncertaintyCat | v3.8')
 
 with st.expander("Instructions"):
     st.markdown("""
@@ -311,7 +311,7 @@ run_button = st.button('Run Simulation')
 # Set code editor options
 language = 'python'
 theme = 'xcode'  # You can set this to 'github', 'monokai', 'xcode', etc.
-height = 650  # Set the height in pixels
+height = 400  # Set the height in pixels
 
 # Use a dynamic key to force re-instantiation when model_file changes or code is updated
 code_editor_key = f'code_editor_{st.session_state.code_editor_counter}'
