@@ -23,7 +23,7 @@ with col1:
     st.image("logo.jpg", width=100)
 
 with col2:
-    st.title('UncertaintyCat | v3.6')
+    st.title('UncertaintyCat | v3.7')
 
 with st.expander("Instructions"):
     st.markdown("""
