@@ -147,7 +147,7 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
 
     Given the following correlation coefficients between the input variables and the model output:
 
-    {corr_md_table}
+    {corr_df}
 
     Please:
       - Show the coefficients values as a table(s).

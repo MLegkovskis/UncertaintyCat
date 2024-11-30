@@ -155,11 +155,11 @@ def prepare_and_call_prompt(data, problem, rf_model, feature_names, model_code_s
 
     The performance metrics of the Random Forest model are as follows:
 
-    {performance_md_table}
+    {performance_df}
 
     The mean absolute SHAP values for each feature are provided in the table below:
 
-    {shap_md_table}
+    {shap_summary_df}
 
     Please:
       - Explain the purpose of SHAP analysis and its significance in interpreting machine learning models.

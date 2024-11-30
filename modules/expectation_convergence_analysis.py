@@ -194,9 +194,9 @@ Given the following user-defined model defined in Python code:
 
 and the following uncertain input distributions:
 
-{inputs_md_table}
+{inputs_df}
 
-Given the following summary of an expectation convergence analysis:
+Given the following summary of an expectation convergence analysis (remember you must convert everything given to you into a valid markdown):
 
 {convergence_summary}
 

@@ -148,14 +148,14 @@ Given the following user-defined model defined in Python code:
 
 and the following uncertain input distributions:
 
-{inputs_md_table}
+{inputs_df}
 
 The results of the HSIC analysis are given below:
 
 {hsic_results}
 
 Please:
-  - Display the index values as a table. If the table is large (e.g., more than 10 rows), only show the top 8 rows corresponding to the highest-ranked inputs.
+  - Tabulate all the HSIC data and present it in an effecitve way.
   - Explain the mathematical basis of the HSIC method in sensitivity analysis.
   - Explain the Hilbert-Schmidt Independence Criterion (HSIC) and its use in measuring the dependence between input variables and the output.
   - Discuss the normalized R2-HSIC indices, indicating the proportion of the output variance explained by each input.

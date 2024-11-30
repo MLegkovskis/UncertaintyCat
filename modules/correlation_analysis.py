@@ -105,7 +105,7 @@ Given the following user-defined model defined in Python code:
 
 and the following uncertain input distributions:
 
-{inputs_md_table}
+{inputs_df}
 
 The results of the correlation analysis are given below (you must convert them to a table and show to the user):
 
