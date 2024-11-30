@@ -71,31 +71,49 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
     lower_bounds = mean_estimates - z_value * standard_errors
     upper_bounds = mean_estimates + z_value * standard_errors
     
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), dpi=120)
+    fig, axes = plt.subplots(1, 3, figsize=(21, 6), dpi=120)
 
-    # --- Mean Estimate Convergence Plot ---
+    # --- Mean Estimate Convergence Plot (Linear Scale) ---
     axes[0].plot(sample_sizes, mean_estimates, label='Mean Estimate', color='#1f77b4', linewidth=2)
     axes[0].fill_between(sample_sizes, lower_bounds, upper_bounds, color='#1f77b4', alpha=0.2, label='95% Confidence Interval')
 
     # Highlight the point of convergence
     convergence_point = (sample_sizes[-1], mean_estimates[-1])
     axes[0].scatter(*convergence_point, color='red', s=100, zorder=5, label='Converged Mean')
+    axes[0].annotate(f'Converged Mean: {mean_estimates[-1]:.4f}',
+                     xy=convergence_point,
+                     xytext=(-100, 20),  # Adjust position within the plot
+                     textcoords='offset points',
+                     fontsize=12,
+                     arrowprops=dict(arrowstyle='->', color='red', linewidth=2))
 
-    axes[0].set_title('Convergence of Mean Estimate', fontsize=16, fontweight='bold')
+    axes[0].set_title('Convergence of Mean Estimate (Linear Scale)', fontsize=16, fontweight='bold')
     axes[0].set_xlabel('Sample Size', fontsize=14)
     axes[0].set_ylabel('Mean Estimate of Output Y', fontsize=14)
     axes[0].tick_params(axis='both', which='major', labelsize=12)
     axes[0].legend(fontsize=12, loc='best')
     axes[0].grid(True, linestyle='--', alpha=0.7)
 
-    # Annotate convergence point
-    axes[0].annotate(f'Converged Mean: {mean_estimates[-1]:.4f}',
-                    xy=convergence_point,
-                    xytext=(10, -30),
-                    textcoords='offset points',
-                    fontsize=12,
-                    arrowprops=dict(arrowstyle='->', color='red', linewidth=2))
+    # --- Mean Estimate Convergence Plot (Logarithmic Scale) ---
+    axes[1].plot(sample_sizes, mean_estimates, label='Mean Estimate', color='#1f77b4', linewidth=2)
+    axes[1].fill_between(sample_sizes, lower_bounds, upper_bounds, color='#1f77b4', alpha=0.2, label='95% Confidence Interval')
 
+    # Highlight the point of convergence within the plot
+    axes[1].scatter(*convergence_point, color='red', s=100, zorder=5, label='Converged Mean')
+    axes[1].annotate(f'Converged Mean: {mean_estimates[-1]:.4f}',
+                     xy=convergence_point,
+                     xytext=(-100, 20),  # Adjust position within the plot
+                     textcoords='offset points',
+                     fontsize=12,
+                     arrowprops=dict(arrowstyle='->', color='red', linewidth=2))
+
+    axes[1].set_title('Convergence of Mean Estimate (Log Scale)', fontsize=16, fontweight='bold')
+    axes[1].set_xscale('log')
+    axes[1].set_xlabel('Sample Size (Log Scale)', fontsize=14)
+    axes[1].set_ylabel('Mean Estimate of Output Y', fontsize=14)
+    axes[1].tick_params(axis='both', which='major', labelsize=12)
+    axes[1].legend(fontsize=12, loc='best')
+    axes[1].grid(True, linestyle='--', alpha=0.7)
     # --- Distribution of Y Plot ---
 
     # Generate samples of Y at convergence
@@ -107,12 +125,12 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
 
     # Plot histogram with density curve
     import seaborn as sns
-    sns.histplot(Y_values, bins=50, kde=True, color='#2ca02c', edgecolor='black', alpha=0.7, ax=axes[1])
+    sns.histplot(Y_values, bins=50, kde=True, color='#2ca02c', edgecolor='black', alpha=0.7, ax=axes[2])
 
-    axes[1].set_title('Distribution of Model Output Y at Convergence', fontsize=16, fontweight='bold')
-    axes[1].set_xlabel('Output Y', fontsize=14)
-    axes[1].set_ylabel('Frequency', fontsize=14)
-    axes[1].tick_params(axis='both', which='major', labelsize=12)
+    axes[2].set_title('Distribution of Model Output Y at Convergence', fontsize=16, fontweight='bold')
+    axes[2].set_xlabel('Output Y', fontsize=14)
+    axes[2].set_ylabel('Frequency', fontsize=14)
+    axes[2].tick_params(axis='both', which='major', labelsize=12)
 
     # Calculate statistics
     mean_Y = np.mean(Y_values)
@@ -120,42 +138,41 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
     conf_int = [mean_Y - 1.96 * std_Y, mean_Y + 1.96 * std_Y]
 
     # Add vertical lines for mean and confidence intervals
-    axes[1].axvline(mean_Y, color='blue', linestyle='--', linewidth=2, label=f'Mean: {mean_Y:.4f}')
-    axes[1].axvline(conf_int[0], color='purple', linestyle='--', linewidth=2, label=f'95% CI Lower: {conf_int[0]:.4f}')
-    axes[1].axvline(conf_int[1], color='purple', linestyle='--', linewidth=2, label=f'95% CI Upper: {conf_int[1]:.4f}')
+    axes[2].axvline(mean_Y, color='blue', linestyle='--', linewidth=2, label=f'Mean: {mean_Y:.4f}')
+    axes[2].axvline(conf_int[0], color='purple', linestyle='--', linewidth=2, label=f'95% CI Lower: {conf_int[0]:.4f}')
+    axes[2].axvline(conf_int[1], color='purple', linestyle='--', linewidth=2, label=f'95% CI Upper: {conf_int[1]:.4f}')
 
     # Add annotations for statistics
-    axes[1].annotate(f'Mean: {mean_Y:.4f}',
-                    xy=(mean_Y, axes[1].get_ylim()[1]*0.9),
-                    xytext=(10, 0),
-                    textcoords='offset points',
-                    fontsize=12,
-                    color='blue',
-                    rotation=90)
+    # axes[2].annotate(f'Mean: {mean_Y:.4f}',
+    #                  xy=(mean_Y, axes[2].get_ylim()[1]*0.9),
+    #                  xytext=(10, 0),
+    #                  textcoords='offset points',
+    #                  fontsize=12,
+    #                  color='blue',
+    #                  rotation=90)
 
-    axes[1].annotate(f'95% CI Lower: {conf_int[0]:.4f}',
-                    xy=(conf_int[0], axes[1].get_ylim()[1]*0.7),
-                    xytext=(10, 0),
-                    textcoords='offset points',
-                    fontsize=12,
-                    color='purple',
-                    rotation=90)
+    # axes[2].annotate(f'95% CI Lower: {conf_int[0]:.4f}',
+    #                  xy=(conf_int[0], axes[2].get_ylim()[1]*0.7),
+    #                  xytext=(10, 0),
+    #                  textcoords='offset points',
+    #                  fontsize=12,
+    #                  color='purple',
+    #                  rotation=90)
 
-    axes[1].annotate(f'95% CI Upper: {conf_int[1]:.4f}',
-                    xy=(conf_int[1], axes[1].get_ylim()[1]*0.7),
-                    xytext=(10, 0),
-                    textcoords='offset points',
-                    fontsize=12,
-                    color='purple',
-                    rotation=90)
+    # axes[2].annotate(f'95% CI Upper: {conf_int[1]:.4f}',
+    #                  xy=(conf_int[1], axes[2].get_ylim()[1]*0.7),
+    #                  xytext=(10, 0),
+    #                  textcoords='offset points',
+    #                  fontsize=12,
+    #                  color='purple',
+    #                  rotation=90)
 
-    axes[1].legend(fontsize=12, loc='best')
-    axes[1].grid(True, linestyle='--', alpha=0.7)
+    axes[2].legend(fontsize=12, loc='best')
+    axes[2].grid(True, linestyle='--', alpha=0.7)
 
     # --- Overall Figure Adjustments ---
-    plt.suptitle('Expectation Convergence and Output Distribution at Convergence', fontsize=18, fontweight='bold')
+    plt.suptitle('Expectation Convergence and Output Distribution', fontsize=18, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust the rect to fit the suptitle
-
     # Prepare data for the prompt
     convergence_summary = f"""
 - The convergence algorithm determined that the model statistics converge at a sample size of {int(initial_sample_size)}.
@@ -196,7 +213,7 @@ and the following uncertain input distributions:
 
 {inputs_df}
 
-Given the following summary of an expectation convergence analysis (remember you must convert everything given to you into a valid markdown):
+Given the following summary of an expectation convergence analysis (remember you must convert everything given to you into a valid Markdown):
 
 {convergence_summary}
 

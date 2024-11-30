@@ -5,8 +5,10 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import streamlit as st
+from scipy.stats import pearsonr
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
+from matplotlib.gridspec import GridSpec
 
 def exploratory_data_analysis(data, N, model, problem, model_code_str, language_model='groq'):
     response_key = 'eda_response_markdown'
@@ -20,21 +22,24 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
     else:
         # --- Perform Computations Only If Necessary ---
 
+        # Ensure 'Y' column exists
+        if 'Y' not in data.columns:
+            raise KeyError("Column 'Y' is missing from the data.")
+
         variables = data.columns.drop('Y')  # Exclude 'Y' from variables
         num_vars = len(variables)
         colors = sns.color_palette('husl', num_vars)
 
-        # Create a figure with num_vars rows and 2 columns
-        fig, axes = plt.subplots(num_vars, 2, figsize=(10, num_vars * 4), dpi=100)
-        # Ensure axes is a 2D array even if num_vars == 1
-        if num_vars == 1:
-            axes = np.array([axes])
+        # Create a figure with num_vars + 1 rows and 2 columns using GridSpec
+        fig = plt.figure(figsize=(12, (num_vars + 1) * 4), dpi=100)
+        gs = GridSpec(num_vars + 1, 2, figure=fig)
+        axes = []
 
         correlations = {}
 
         for i, var in enumerate(variables):
             # Histogram in axes[i, 0]
-            ax_hist = axes[i, 0]
+            ax_hist = fig.add_subplot(gs[i, 0])
             sns.histplot(
                 data[var],
                 kde=True,
@@ -58,19 +63,12 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
             ax_hist.axvline(mean, color='blue', linestyle='--', linewidth=1.5, label=f'Mean: {mean:.2e}')
             ax_hist.axvline(median, color='green', linestyle='-.', linewidth=1.5, label=f'Median: {median:.2e}')
 
-            # Annotate skewness
-            ax_hist.text(0.95, 0.95, f'Skewness: {skewness:.2f}',
-                         transform=ax_hist.transAxes,
-                         fontsize=12,
-                         verticalalignment='top',
-                         horizontalalignment='right',
-                         bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
-
-            # Add legend
-            ax_hist.legend(fontsize=10)
+            # Add legend with additional statistics
+            stats_text = f"Std Dev: {std_dev:.2e}\nSkewness: {skewness:.2f}"
+            ax_hist.legend(fontsize=10, loc='lower right', title=stats_text)
 
             # Scatter plot in axes[i, 1]
-            ax_scatter = axes[i, 1]
+            ax_scatter = fig.add_subplot(gs[i, 1])
             sns.scatterplot(
                 x=data[var],
                 y=data['Y'],
@@ -80,13 +78,17 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
                 color='teal',
                 edgecolor='white'
             )
-            # Calculate correlation coefficient
-            corr_coef = np.corrcoef(data[var], data['Y'])[0, 1]
+            # Calculate correlation coefficient and p-value
+            corr_coef, p_value = pearsonr(data[var], data['Y'])
             correlations[var] = corr_coef
-            # Annotate correlation coefficient
-            ax_scatter.annotate(f'r = {corr_coef:.2f}', xy=(0.05, 0.9), xycoords='axes fraction',
+
+            # Annotate correlation coefficient and significance
+            significance = " (p < 0.05)" if p_value < 0.05 else ""
+            ax_scatter.annotate(f'r = {corr_coef:.2f}{significance}',
+                                xy=(0.65, 0.9), xycoords='axes fraction',
                                 fontsize=12, color='darkred')
 
+            # Add regression line
             sns.regplot(
                 x=data[var],
                 y=data['Y'],
@@ -104,10 +106,36 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
             else:
                 ax_scatter.set_ylabel("")
 
+            # Highlight strong correlations
+            if abs(corr_coef) > 0.5:
+                ax_scatter.set_title(f'{var} vs Y (Strong Correlation)', fontsize=14, color='darkred')
+            else:
+                ax_scatter.set_title(f'{var} vs Y', fontsize=14)
+
+            axes.append((ax_hist, ax_scatter))
+
         # Adjust layout and spacing
-        plt.tight_layout()
-        plt.subplots_adjust(top=0.95)
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
         fig.suptitle(f'Exploratory Data Analysis (N = {N})', fontsize=16, fontweight='bold')
+
+        # Handle missing columns for correlation heatmap
+        existing_columns = [col for col in variables if col in data.columns] + ['Y']
+        if len(existing_columns) < len(variables) + 1:
+            missing_columns = set(variables + ['Y']) - set(data.columns)
+            print(f"Warning: The following columns are missing from the data: {missing_columns}")
+
+        # Generate correlation matrix with existing columns
+        correlation_matrix = data[existing_columns].corr()
+
+        # Add correlation heatmap in the last row, spanning both columns
+        heatmap_ax = fig.add_subplot(gs[num_vars, :])
+        sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='coolwarm', cbar=True, ax=heatmap_ax)
+        heatmap_ax.set_title('Correlation Heatmap', fontsize=14, fontweight='bold')
+        # Rotate x-axis labels if necessary
+        heatmap_ax.set_xticklabels(heatmap_ax.get_xticklabels(), rotation=45, ha='right')
+
+        # Adjust layout again after adding heatmap
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
 
         # --- API Call for Interpretation ---
 
@@ -118,11 +146,8 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
         # Convert the correlation DataFrame to markdown table
         corr_md_table = corr_df.reset_index().to_markdown(index=False, floatfmt=".4f")
 
-        # Use the provided model_code_str directly
-        model_code = model_code_str
-
         # Format the model code for inclusion in the prompt
-        model_code_formatted = '\n'.join(['    ' + line for line in model_code.strip().split('\n')])
+        model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
 
         # Prepare the input parameters and their uncertainties
         input_parameters = []
@@ -133,27 +158,27 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
 
         # Prepare the prompt
         prompt = f"""
-    {RETURN_INSTRUCTION}
+        {RETURN_INSTRUCTION}
 
-    Given the following user-defined model defined in Python code:
+        Given the following user-defined model defined in Python code:
 
-    ```python
-    {model_code_formatted}
-    ```
+        ```python
+        {model_code_formatted}
+        ```
 
-    and the following uncertain input distributions:
+        and the following uncertain input distributions:
 
-    {inputs_description}
+        {inputs_description}
 
-    Given the following correlation coefficients between the input variables and the model output:
+        Given the following correlation coefficients between the input variables and the model output:
 
-    {corr_df}
+        {corr_md_table}
 
-    Please:
-      - Show the coefficients values as a table(s).
-      - Provide a detailed interpretation of the main findings from this analysis.
-      - Focus on the relationships between the variables and the model output.
-    """
+        Please:
+          - Show the coefficients values as a table(s).
+          - Provide a detailed interpretation of the main findings from this analysis.
+          - Focus on the relationships between the variables and the model output.
+        """
 
         # Call the AI API
         response_markdown = call_groq_api(prompt, model_name=language_model)
@@ -163,6 +188,5 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
         st.session_state[fig_key] = fig
 
     # --- Display the Results ---
-
     st.markdown(response_markdown)
     st.pyplot(fig)

@@ -91,11 +91,6 @@ def plot_sobol_radial(Si, problem, ax):
 
 
 
-
-
-
-
-
 def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
     # Ensure N is a power of 2
     N_power = int(np.ceil(np.log2(N)))
@@ -257,9 +252,8 @@ An interpretation of the Sobol Indices Radial Plot is provided:
 {radial_plot_description}
 
 Please:
-  - Display all the index values as seprate tables (if the tables are big - feel free to show only top 10 ranked inputs).
-  - Explain the mathematical basis of the Sobol method in sensitivity analysis.
-  - Briefly explain the difference between first-order and total-order indices in terms of their mathematics and what they represent.
+  - Display all the index values as separate tables (if the tables are big - feel free to show only top 10 ranked inputs).
+  - Briefly explain the Sobol method and the difference between first-order and total-order indices in terms of their mathematics and what they represent.
   - Explain the significance of high-impact Sobol' indices and the importance of the corresponding input variables from both mathematical and physical perspectives.
   - Discuss the confidence intervals associated with the Sobol' indices and what they represent.
   - Provide an interpretation of the Sobol Indices Radial Plot based on the description and numerical data.
