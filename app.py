@@ -23,7 +23,7 @@ with col1:
     st.image("logo.jpg", width=100)
 
 with col2:
-    st.title('UncertaintyCat | v3.81')
+    st.title('UncertaintyCat | v3.82')
 
 with st.expander("Instructions"):
     st.markdown("""
@@ -182,7 +182,7 @@ def get_markdown_from_code(code_snippet, model_name='mixtral-8x7b-32768'):
         prompt = generate_prompt(code_snippet)
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model=model_name
+            model='mixtral-8x7b-32768'
         )
         response_text = chat_completion.choices[0].message.content
         return response_text
