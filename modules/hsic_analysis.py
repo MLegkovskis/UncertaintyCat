@@ -152,7 +152,7 @@ and the following uncertain input distributions:
 
 The results of the HSIC analysis are given below:
 
-{hsic_md_table}
+{hsic_results}
 
 Please:
   - Display the index values as a table. If the table is large (e.g., more than 10 rows), only show the top 8 rows corresponding to the highest-ranked inputs.

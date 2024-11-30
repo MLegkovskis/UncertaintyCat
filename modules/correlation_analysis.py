@@ -107,7 +107,7 @@ and the following uncertain input distributions:
 
 {inputs_md_table}
 
-The results of the correlation analysis are given below (you must convert them to a Markdown table and show to the user):
+The results of the correlation analysis are given below (you must convert them to a table and show to the user):
 
 {correlation_md_table}
 

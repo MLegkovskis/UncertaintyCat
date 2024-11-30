@@ -128,9 +128,9 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
 
     {inputs_description}
 
-    The results of the Taylor expansion importance factors are given below:
+    The results of the Taylor expansion importance factors are given below (you must convert them to a table and show to the user):
 
-    {taylor_md_table}
+    {taylor_df}
 
     Please:
       - Display the index values as a table. If the table is large (e.g., more than 10 rows), only show the top 8 rows corresponding to the highest-ranked inputs.
