@@ -155,7 +155,7 @@ The results of the HSIC analysis are given below:
 {hsic_results}
 
 Please:
-  - Tabulate all the HSIC data and present it in an effecitve way.
+  - Tabulate all the HSIC data and present it in an effective way.
   - Explain the mathematical basis of the HSIC method in sensitivity analysis.
   - Explain the Hilbert-Schmidt Independence Criterion (HSIC) and its use in measuring the dependence between input variables and the output.
   - Discuss the normalized R2-HSIC indices, indicating the proportion of the output variance explained by each input.
