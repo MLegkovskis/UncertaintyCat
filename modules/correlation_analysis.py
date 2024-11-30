@@ -73,7 +73,7 @@ def correlation_analysis(model, problem, model_code_str, language_model='groq'):
 
 
     # Prepare data for the prompt
-    correlation_md_table = df.reset_index().rename(columns={'index': 'Variable'})
+    correlation_md_table = df.rename(columns={'index': 'Variable'})
 
     # Use the provided model_code_str directly
     model_code = model_code_str
@@ -105,9 +105,9 @@ Given the following user-defined model defined in Python code:
 
 and the following uncertain input distributions:
 
-{inputs_md_table}
+{inputs_df}
 
-The results of the correlation analysis are given below (you must convert them to a Markdown table and show to the user):
+The results of the correlation analysis are given below (you must convert them to a table and show to the user):
 
 {correlation_md_table}
 

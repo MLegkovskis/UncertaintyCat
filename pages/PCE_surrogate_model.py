@@ -138,7 +138,7 @@ if model_file != st.session_state.model_file:
 # Set code editor options
 language = 'python'
 theme = 'xcode'
-height = 650
+height = 400
 
 code_editor_key = f'code_editor_{st.session_state.code_editor_counter}'
 
