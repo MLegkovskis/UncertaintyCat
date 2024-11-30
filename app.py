@@ -23,7 +23,7 @@ with col1:
     st.image("logo.jpg", width=100)
 
 with col2:
-    st.title('UncertaintyCat | v3.8')
+    st.title('UncertaintyCat | v3.81')
 
 with st.expander("Instructions"):
     st.markdown("""
@@ -176,7 +176,7 @@ Provide the output in pure markdown without additional explanations.
 """
 
 # Function to get markdown from code using Groq API
-def get_markdown_from_code(code_snippet, model_name):
+def get_markdown_from_code(code_snippet, model_name='mixtral-8x7b-32768'):
     try:
         client = Groq(api_key=os.getenv('GROQ_API_KEY'))
         prompt = generate_prompt(code_snippet)
