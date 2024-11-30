@@ -23,7 +23,7 @@ with col1:
     st.image("logo.jpg", width=100)
 
 with col2:
-    st.title('UncertaintyCat | v3.82')
+    st.title('UncertaintyCat | v3.83')
 
 with st.expander("Instructions"):
     st.markdown("""
@@ -158,31 +158,27 @@ def reset_analysis_results():
 
 def generate_prompt(code_snippet):
     return f"""
-Translate the following NumPy-based Python function into a markdown document that explains the mathematical model using LaTeX for equations. 
+- Translate the following NumPy-based Python function into a markdown document that explains the following model defined in python:
 
-**Important:** For large expressions, such as lengthy polynomials that will always contain 'Y = (', include only the first three terms and the last two terms in the LaTeX equations. Represent the omitted middle terms with an ellipsis (\\dots) to indicate that the expression continues. Ensure the equations remain clear and readable.
-
-Python code:
-```python
+```
 {code_snippet}
 ```
 
-Expected markdown output:
-- Present the mathematical equations using LaTeX, following the guidelines for large expressions.
-- Define each variable used in the equation.
-- Tabulate the associated input uncertainties and their characteristics as detailed in the 'problem' dictionary.
+- You must keep your response to an abolute minimum. If you are supplied with particularly large model with many inputs, feel free to obfuscate some of the maths when translating the model into latex/Markdown.
+- Present the mathematical equations using LaTex.
+- Tabulate (into ONE table!) the associated input uncertainties and their characteristics as detailed in the 'problem' dictionary.
 
-Provide the output in pure markdown without additional explanations.
+Provide the output in pure Markdown without additional explanations!
 """
 
 # Function to get markdown from code using Groq API
-def get_markdown_from_code(code_snippet, model_name='mixtral-8x7b-32768'):
+def get_markdown_from_code(code_snippet, model_name='llama-3.1-8b-instant'):
     try:
         client = Groq(api_key=os.getenv('GROQ_API_KEY'))
         prompt = generate_prompt(code_snippet)
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model='mixtral-8x7b-32768'
+            model='llama-3.1-8b-instant'
         )
         response_text = chat_completion.choices[0].message.content
         return response_text
@@ -278,8 +274,10 @@ if model_file != st.session_state.model_file:
 # Dropdown for selecting Groq model
 groq_model_options = [
     'gemma2-9b-it',
+    'gemma-7b-it',
     'llama-3.1-70b-versatile',
-    'mixtral-8x7b-32768'
+    'mixtral-8x7b-32768',
+
 ]
 
 selected_language_model = st.selectbox(

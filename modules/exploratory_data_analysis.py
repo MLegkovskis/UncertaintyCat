@@ -30,9 +30,14 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
         num_vars = len(variables)
         colors = sns.color_palette('husl', num_vars)
 
-        # Create a figure with num_vars + 1 rows and 2 columns using GridSpec
-        fig = plt.figure(figsize=(12, (num_vars + 1) * 4), dpi=100)
-        gs = GridSpec(num_vars + 1, 2, figure=fig)
+        # Set Seaborn theme for a professional look
+        sns.set_theme(style="whitegrid")
+
+        # Adjust figure size and grid layout to make histograms more elongated
+        fig_width = 15  # Increase the width of the figure
+        fig_height = num_vars * 4
+        fig = plt.figure(figsize=(fig_width, fig_height), dpi=100)
+        gs = GridSpec(num_vars, 2, figure=fig, width_ratios=[1, 1])  # Make histograms wider
         axes = []
 
         correlations = {}
@@ -48,10 +53,10 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
                 ax=ax_hist,
                 edgecolor='black'
             )
-            ax_hist.set_title(f'Distribution of {var}', fontsize=14)
-            ax_hist.set_xlabel(var, fontsize=12)
-            ax_hist.set_ylabel('Frequency', fontsize=12)
-            ax_hist.tick_params(axis='both', labelsize=12)
+            ax_hist.set_title(f'Distribution of {var}', fontsize=12)
+            ax_hist.set_xlabel(var, fontsize=10)
+            ax_hist.set_ylabel('Frequency', fontsize=10)
+            ax_hist.tick_params(axis='both', labelsize=10)
 
             # Calculate statistics
             mean = data[var].mean()
@@ -65,7 +70,7 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
 
             # Add legend with additional statistics
             stats_text = f"Std Dev: {std_dev:.2e}\nSkewness: {skewness:.2f}"
-            ax_hist.legend(fontsize=10, loc='lower right', title=stats_text)
+            ax_hist.legend(fontsize=8, loc='upper right', title=stats_text)
 
             # Scatter plot in axes[i, 1]
             ax_scatter = fig.add_subplot(gs[i, 1])
@@ -85,8 +90,8 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
             # Annotate correlation coefficient and significance
             significance = " (p < 0.05)" if p_value < 0.05 else ""
             ax_scatter.annotate(f'r = {corr_coef:.2f}{significance}',
-                                xy=(0.65, 0.9), xycoords='axes fraction',
-                                fontsize=12, color='darkred')
+                                xy=(0.05, 0.9), xycoords='axes fraction',
+                                fontsize=10, color='darkred')
 
             # Add regression line
             sns.regplot(
@@ -97,28 +102,27 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
                 color='orange',
                 line_kws={'linewidth': 2}
             )
-            ax_scatter.set_xlabel(var, fontsize=12, fontweight='bold')
-            ax_scatter.tick_params(axis='x', labelsize=12)
-            ax_scatter.tick_params(axis='y', labelsize=12)
+            ax_scatter.set_xlabel(var, fontsize=10, fontweight='bold')
+            ax_scatter.tick_params(axis='x', labelsize=10)
+            ax_scatter.tick_params(axis='y', labelsize=10)
 
             if i == 0:
-                ax_scatter.set_ylabel('Y', fontsize=12, fontweight='bold')
+                ax_scatter.set_ylabel('Y', fontsize=10, fontweight='bold')
             else:
                 ax_scatter.set_ylabel("")
 
             # Highlight strong correlations
             if abs(corr_coef) > 0.5:
-                ax_scatter.set_title(f'{var} vs Y (Strong Correlation)', fontsize=14, color='darkred')
+                ax_scatter.set_title(f'{var} vs Y (Strong Correlation)', fontsize=12, color='darkred')
             else:
-                ax_scatter.set_title(f'{var} vs Y', fontsize=14)
+                ax_scatter.set_title(f'{var} vs Y', fontsize=12)
 
             axes.append((ax_hist, ax_scatter))
 
         # Adjust layout and spacing
-        fig.tight_layout(rect=[0, 0, 1, 0.95])
-        fig.suptitle(f'Exploratory Data Analysis (N = {N})', fontsize=16, fontweight='bold')
+        plt.subplots_adjust(top=0.95, hspace=0.4)
 
-        # Handle missing columns for correlation heatmap
+        # Handle missing columns for correlation matrix
         existing_columns = [col for col in variables if col in data.columns] + ['Y']
         if len(existing_columns) < len(variables) + 1:
             missing_columns = set(variables + ['Y']) - set(data.columns)
@@ -127,15 +131,28 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
         # Generate correlation matrix with existing columns
         correlation_matrix = data[existing_columns].corr()
 
-        # Add correlation heatmap in the last row, spanning both columns
-        heatmap_ax = fig.add_subplot(gs[num_vars, :])
-        sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='coolwarm', cbar=True, ax=heatmap_ax)
-        heatmap_ax.set_title('Correlation Heatmap', fontsize=14, fontweight='bold')
-        # Rotate x-axis labels if necessary
-        heatmap_ax.set_xticklabels(heatmap_ax.get_xticklabels(), rotation=45, ha='right')
+        # --- Correlation Clustermap ---
 
-        # Adjust layout again after adding heatmap
-        fig.tight_layout(rect=[0, 0, 1, 0.95])
+        # Use clustermap for all scenarios without dendrograms
+        clustermap_fig = sns.clustermap(
+            correlation_matrix,
+            annot=True,
+            fmt=".2f",
+            cmap='coolwarm',
+            figsize=(12, 10),
+            annot_kws={"size": 12},
+            linewidths=.5,
+            row_cluster=False,
+            col_cluster=False
+        )
+        clustermap_fig.cax.set_visible(False)
+        clustermap_fig.ax_heatmap.set_title('Correlation Heatmap', fontsize=14, fontweight='bold')
+        plt.setp(clustermap_fig.ax_heatmap.get_xticklabels(), rotation=45, ha='right', fontsize=12)
+        plt.setp(clustermap_fig.ax_heatmap.get_yticklabels(), rotation=0, fontsize=12)
+
+        # Remove the dendrogram axes
+        clustermap_fig.ax_row_dendrogram.set_visible(False)
+        clustermap_fig.ax_col_dendrogram.set_visible(False)
 
         # --- API Call for Interpretation ---
 
@@ -185,8 +202,9 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
 
         # Store results in session_state
         st.session_state[response_key] = response_markdown
-        st.session_state[fig_key] = fig
+        st.session_state[fig_key] = (fig, clustermap_fig)
 
     # --- Display the Results ---
     st.markdown(response_markdown)
     st.pyplot(fig)
+    st.pyplot(clustermap_fig.fig)
