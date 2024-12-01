@@ -206,8 +206,6 @@ if st.session_state.morris_analysis_done:
         axis=1
     ))
 
-    st.plotly_chart(morris_plot, use_container_width=True)
-
         # Explain the threshold lines
     st.markdown("""
     **Threshold Lines Explanation:**
@@ -221,6 +219,8 @@ if st.session_state.morris_analysis_done:
     - Variables with both μ* and σ less than their respective thresholds (lower quartiles) are deemed non-influential.
     - Fixing non-influential variables can simplify the model without significantly affecting output variability.
     """)
+
+    st.plotly_chart(morris_plot, use_container_width=True)
 
     # Variable selection
     variables_to_fix = st.multiselect(

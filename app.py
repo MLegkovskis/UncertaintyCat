@@ -23,7 +23,7 @@ with col1:
     st.image("logo.jpg", width=100)
 
 with col2:
-    st.title('UncertaintyCat | v3.83')
+    st.title('UncertaintyCat | v3.84')
 
 with st.expander("Instructions"):
     st.markdown("""
@@ -262,49 +262,6 @@ model_file = st.selectbox(
     index=model_options.index(st.session_state.model_file)
 )
 
-# If the model selection has changed, update the code_editor
-if model_file != st.session_state.model_file:
-    st.session_state.model_file = model_file
-    st.session_state.code_editor = load_model_code(model_file)
-    st.session_state.code_editor_counter += 1
-    st.session_state.run_simulation = False  # Reset the flag when model changes
-    st.session_state.simulation_results = None  # Clear previous results
-    st.session_state.markdown_output = None  # Reset markdown output
-    reset_analysis_results()  # Reset analyses results
-
-# Dropdown for selecting Groq model
-groq_model_options = [
-    'gemma2-9b-it',
-    'gemma-7b-it',
-    'llama-3.1-70b-versatile',
-    'mixtral-8x7b-32768',
-
-]
-
-selected_language_model = st.selectbox(
-    'Select Language Model:',
-    options=groq_model_options,
-    index=0
-)
-
-# --- Analysis Options ---
-st.markdown("### Select Analyses to Run")
-analysis_options = {
-    "Sobol Sensitivity Analysis": True,
-    "Taylor Analysis": True,
-    "Correlation Analysis": True,
-    "HSIC Analysis": True,
-    "SHAP Analysis": True
-}
-
-for analysis in analysis_options.keys():
-    analysis_options[analysis] = st.checkbox(
-        analysis, value=True
-    )
-
-# Run Simulation Button
-run_button = st.button('Run Simulation')
-
 # --- Code Editor and Markdown Rendering ---
 
 # Set code editor options
@@ -355,7 +312,7 @@ with col_md:
             # Get the markdown interpretation
             markdown_output = get_markdown_from_code(
                 st.session_state.code_editor,
-                selected_language_model  # Ensure this matches the model used
+                'gemma2-9b-it'  # Ensure this matches the model used
             )
             st.session_state.markdown_output = markdown_output
             st.session_state.code_updated = False  # Reset the flag
@@ -363,6 +320,49 @@ with col_md:
         st.markdown(st.session_state.markdown_output)
     else:
         st.info("The markdown interpretation will appear here.")
+
+# If the model selection has changed, update the code_editor
+if model_file != st.session_state.model_file:
+    st.session_state.model_file = model_file
+    st.session_state.code_editor = load_model_code(model_file)
+    st.session_state.code_editor_counter += 1
+    st.session_state.run_simulation = False  # Reset the flag when model changes
+    st.session_state.simulation_results = None  # Clear previous results
+    st.session_state.markdown_output = None  # Reset markdown output
+    reset_analysis_results()  # Reset analyses results
+
+# Dropdown for selecting Groq model
+groq_model_options = [
+    'gemma2-9b-it',
+    'gemma-7b-it',
+    'llama-3.1-70b-versatile',
+    'mixtral-8x7b-32768',
+
+]
+
+selected_language_model = st.selectbox(
+    'Select Language Model:',
+    options=groq_model_options,
+    index=0
+)
+
+# --- Analysis Options ---
+st.markdown("### Select Analyses to Run")
+analysis_options = {
+    "Sobol Sensitivity Analysis": True,
+    "Taylor Analysis": True,
+    "Correlation Analysis": True,
+    "HSIC Analysis": True,
+    "SHAP Analysis": True
+}
+
+for analysis in analysis_options.keys():
+    analysis_options[analysis] = st.checkbox(
+        analysis, value=True
+    )
+
+# Run Simulation Button
+run_button = st.button('Run Simulation')
 
 # Function to run simulation
 def run_simulation():
