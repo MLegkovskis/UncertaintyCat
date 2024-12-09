@@ -5,7 +5,8 @@ Guidelines for an Extremely Concise and Insightful Technical Brief:
 
 - Output Format:
   - Your entire response must be in 100% pure valid Markdown format, no ifs no buts.
-  - Note, this markdown gets pumped into st.markdown(), and for example, the user must never see '**' in the rendered output, of course.
+  - Note, this markdown gets pumped into st.markdown().
+  - If using '**' to make the text bold - always enclose each word individually!
   - Do not include a "CONCLUSIONS" section, as this will be part of a larger document.
   - Do not include a title as the title of the brief is hard-coded and will be supplied externally.
   - Do not use the term function_of_interest to describe the model you're working with; always try to give it a meaningful name.
