@@ -13,7 +13,7 @@ from modules.correlation_analysis import correlation_analysis
 from modules.hsic_analysis import hsic_analysis
 from modules.ml_analysis import ml_analysis
 from groq import Groq
-import numpy as np  # Make sure to import numpy
+import numpy as np
 
 st.set_page_config(layout="wide")  # Use wide layout
 
@@ -485,7 +485,85 @@ def get_human_friendly_error_explanation(code_snippet, error_message, model_name
     - Make sure that the number of input variables you unpack in your model function matches `problem['num_vars']` and `problem['names']`.
     - Ensure your model function returns a list or NumPy array.
 
-    Below are three valid model definitions from the `examples` folder as reference (Beam.py, Ishigami.py, Truss_Model.py).
+    Below are three valid model definitions from the `examples` folder that you can reference as starting points:
+
+    **Valid Model Example 1 (from Beam.py)**:
+    ```python
+    def function_of_interest(X):
+        E, F, L, I = X
+        Y = F * L**3 / (3 * E * I)
+        return [Y]
+
+    problem = {
+        'num_vars': 4,
+        'names': ['E', 'F', 'L', 'I'],
+        'distributions': [
+            {'type': 'Beta', 'params': [0.9, 3.1, 2.8e7, 4.8e7]},  # E
+            {'type': 'LogNormalMuSigma', 'params': [3.0e4, 9.0e3, 15.0e3]}, # F
+            {'type': 'Uniform', 'params': [250., 260.]},             # L
+            {'type': 'Beta', 'params': [2.5, 4, 310., 450.]}         # I
+        ]
+    }
+
+    model = function_of_interest
+    ```
+
+    **Valid Model Example 2 (from Ishigami.py)**:
+    ```python
+    import numpy as np
+
+    def function_of_interest(X):
+        x1, x2, x3 = X
+        Y = np.sin(x1) + 7 * np.sin(x2)**2 + 0.1 * x3**4 * np.sin(x1)
+        return [Y]
+
+    problem = {
+        'num_vars': 3,
+        'names': ['x1', 'x2', 'x3'],
+        'distributions': [
+            {'type': 'Uniform', 'params': [-np.pi, np.pi]}, # x1
+            {'type': 'Uniform', 'params': [-np.pi, np.pi]}, # x2
+            {'type': 'Uniform', 'params': [-np.pi, np.pi]}  # x3
+        ]
+    }
+
+    model = function_of_interest
+    ```
+
+    **Valid Model Example 3 (from Truss_Model.py)**:
+    ```python
+    import numpy as np
+
+    def function_of_interest(X):
+        E1, E2, A1, A2, P1, P2, P3, P4, P5, P6 = X
+        # Convert units and compute Y as shown in the Truss_Model.py
+        # Ensure all parameters and distributions match the expected [type, params] format.
+        # ...
+        return [y]
+
+    problem = {
+        'num_vars': 10,
+        'names': ['E1', 'E2', 'A1', 'A2', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6'],
+        'distributions': [
+            {'type': 'LogNormalMuSigma', 'params': [210, 21, 0]},   # E1
+            {'type': 'LogNormalMuSigma', 'params': [210, 21, 0]},   # E2
+            {'type': 'LogNormalMuSigma', 'params': [20, 2, 0]},     # A1
+            {'type': 'LogNormalMuSigma', 'params': [10, 1, 0]},     # A2
+            {'type': 'Gumbel', 'params': [5.8477, 0.46622]},        # P1
+            {'type': 'Gumbel', 'params': [5.8477, 0.46622]},        # P2
+            {'type': 'Gumbel', 'params': [5.8477, 0.46622]},        # P3
+            {'type': 'Gumbel', 'params': [5.8477, 0.46622]},        # P4
+            {'type': 'Gumbel', 'params': [5.8477, 0.46622]},        # P5
+            {'type': 'Gumbel', 'params': [5.8477, 0.46622]}         # P6
+        ]
+    }
+
+    model = function_of_interest
+    ```
+
+    These examples show the correct structure, supported distributions, proper parameter counts, and ensure that the number of variables and their names match `num_vars` and `names`.
+
+    Also consult other models like `Borehole_Model.py`, `Material_Stress.py`, and `Portfolio_Risk.py` in the `examples` folder for different distributions and inputs. Ensuring all parameters are valid and consistent will fix the error and allow your simulation to run successfully.
     """
 
     prompt = f"""
@@ -721,5 +799,6 @@ if st.session_state.simulation_results is not None:
             ml_analysis(
                 data, problem, code, language_model=selected_language_model
             )
+
 else:
     st.info("Please run the simulation to proceed.")
