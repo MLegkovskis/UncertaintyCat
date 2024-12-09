@@ -104,7 +104,7 @@ def prepare_and_call_prompt(data, problem, rf_model, feature_names, model_code_s
         # Extract performance metrics
         X = data[feature_names]
         y = data['Y']
-        scaler = st.session_state['scaler']
+        scaler = st.session_state['scaler']  # Access scaler from session state
         X_scaled = scaler.transform(X)
 
         # Cross-validation
@@ -139,35 +139,35 @@ def prepare_and_call_prompt(data, problem, rf_model, feature_names, model_code_s
 
         # Prepare the prompt
         prompt = f"""
-    {RETURN_INSTRUCTION}
+        {RETURN_INSTRUCTION}
 
-    ## SHAP Analysis
+        ## SHAP Analysis
 
-    Given the following user-defined model defined in Python code:
+        Given the following user-defined model defined in Python code:
 
-    ```python
-    {model_code_formatted}
-    ```
+        ```python
+        {model_code_formatted}
+        ```
 
-    and the following uncertain input distributions:
+        and the following uncertain input distributions:
 
-    {inputs_description}
+        {inputs_description}
 
-    The performance metrics of the Random Forest model are as follows:
+        The performance metrics of the Random Forest model are as follows:
 
-    {performance_md_table}
+        {performance_md_table}
 
-    The mean absolute SHAP values for each feature are provided in the table below:
+        The mean absolute SHAP values for each feature are provided in the table below:
 
-    {shap_md_table}
+        {shap_md_table}
 
-    Please:
-      - Explain the purpose of SHAP analysis and its significance in interpreting machine learning models.
-      - Discuss the performance of the Random Forest model based on the cross-validation R² scores.
-      - Interpret the SHAP summary table, highlighting which input variables are most influential in predicting the output.
-      - Provide insights into how the top features contribute to the model's predictions, including whether the relationship is positive or negative.
-      - Reference the performance metrics and SHAP values in your discussion.
-    """
+        Please:
+        - Explain the purpose of SHAP analysis and its significance in interpreting machine learning models.
+        - Discuss the performance of the Random Forest model based on the cross-validation R² scores.
+        - Interpret the SHAP summary table, highlighting which input variables are most influential in predicting the output.
+        - Provide insights into how the top features contribute to the model's predictions, including whether the relationship is positive or negative.
+        - Reference the performance metrics and SHAP values in your discussion.  
+        """
 
         # Call the API
         response_markdown = call_groq_api(prompt, model_name=language_model)
