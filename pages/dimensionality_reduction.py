@@ -5,6 +5,7 @@ import pandas as pd
 from modules.morris_sensitivity_analysis import run_morris_analysis_for_dimensionality_reduction
 from modules.api_utils import call_groq_api
 from modules.statistical_utils import get_constant_value
+from modules.code_safety import check_code_safety
 import numpy as np  # Commonly used library
 import importlib
 
@@ -64,53 +65,6 @@ def extract_imports_from_code(code_str):
     except Exception as e:
         st.error(f"Error processing imports: {e}")
     return imports
-
-# Function to check code safety
-class UnsafeNodeVisitor(ast.NodeVisitor):
-    def __init__(self):
-        self.disallowed_modules = {'os', 'sys', 'subprocess', 'shutil'}
-        super().__init__()
-
-    def visit_Import(self, node):
-        for alias in node.names:
-            if alias.name.split('.')[0] in self.disallowed_modules:
-                raise ValueError(
-                    f"Importing module '{alias.name}' is not allowed for security reasons."
-                )
-        self.generic_visit(node)
-
-    def visit_ImportFrom(self, node):
-        if node.module and node.module.split('.')[0] in self.disallowed_modules:
-            raise ValueError(
-                f"Importing from module '{node.module}' is not allowed for security reasons."
-            )
-        self.generic_visit(node)
-
-    def visit_Call(self, node):
-        if isinstance(node.func, ast.Name):
-            if node.func.id in ['eval', 'exec', '__import__']:
-                raise ValueError(
-                    f"Use of function '{node.func.id}' is not allowed for security reasons."
-                )
-        elif isinstance(node.func, ast.Attribute):
-            if isinstance(node.func.value, ast.Name):
-                if node.func.value.id in self.disallowed_modules:
-                    raise ValueError(
-                        f"Use of module '{node.func.value.id}' is not allowed for security reasons."
-                    )
-            if node.func.attr in ['system', 'popen', 'remove', 'rmdir']:
-                raise ValueError(
-                    f"Use of method '{node.func.attr}' is not allowed for security reasons."
-                )
-        self.generic_visit(node)
-
-def check_code_safety(code_str):
-    try:
-        tree = ast.parse(code_str)
-        UnsafeNodeVisitor().visit(tree)
-        return True
-    except Exception as e:
-        raise ValueError(f"Unsafe code detected: {e}")
 
 # Dropdown to select model file
 model_options = [
