@@ -4,9 +4,9 @@ import numpy as np
 # Deflection of a tube model
 def function_of_interest(X):
     F, L, a, De, di, E = X
-    I = np.pi * (De ^ 4 - di ^ 4) / 32
+    I = np.pi * (De**4 - di**4) / 32
     b = L - a
-    deflection = -F * a ^ 2 * (L - a) ^ 2 / (3 * E * L * I)
+    deflection = -F * a**2 * (L - a) ** 2 / (3 * E * L * I)
     return [deflection]
 
 
