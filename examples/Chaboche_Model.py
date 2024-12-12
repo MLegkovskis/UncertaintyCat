@@ -1,7 +1,7 @@
 import numpy as np
 
 
-# The Chaboche mechanical model os a stress-strain curve
+# The Chaboche mechanical model of a stress-strain curve
 def function_of_interest(X):
     Strain, R, C, Gamma = X
     R *= 1.0e6  # Scale R into MPa
