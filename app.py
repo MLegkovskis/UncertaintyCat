@@ -58,7 +58,7 @@ model_options = [
     'FloodModel.py', 'Ishigami.py', 'Material_Stress.py', 'Morris_Function.py',
     'Portfolio_Risk.py', 'Rocket_Trajectory.py', 'Solar_Panel_Output.py',
     'Truss_Model.py', 'Tube_Deflection.py', 'Undamped_Oscillator.py',
-    'Wind_Turbine_Power.py'
+    'Viscous_Freefall.py', 'Wind_Turbine_Power.py'
 ]
 
 model_file = st.selectbox(
