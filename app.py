@@ -53,7 +53,7 @@ def load_model_code(selected_model):
 
 # Dropdown to select model file
 model_options = [
-    'Beam.py', 'Bike_Speed.py', 'Borehole_Model.py', 'Chemical_Reactor.py',
+    'Beam.py', 'Bike_Speed.py', 'Borehole_Model.py', 'Chaboche_Model.py', 'Chemical_Reactor.py',
     'Cylinder_heating.py', 'Damped_Oscillator.py', 'Epidemic_Model.py',
     'FloodModel.py', 'Ishigami.py', 'Material_Stress.py', 'Morris_Function.py',
     'Portfolio_Risk.py', 'Rocket_Trajectory.py', 'Solar_Panel_Output.py',
