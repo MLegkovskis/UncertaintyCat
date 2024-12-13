@@ -359,6 +359,7 @@ def pce_sobol(
     model_code_str,
     language_model="groq",
     totalDegree=4,
+    basisSizeFactor = 0.5,
     sparse=False,
     sensitivity_threshold=0.05,
     verbose=False,
@@ -385,8 +386,13 @@ def pce_sobol(
     dimension = distribution.getDimension()
     marginalList = [distribution.getMarginal(i) for i in range(dimension)]
     multivariateBasis = ot.OrthogonalProductPolynomialFactory(marginalList)
-    polynomialChaosResult = ComputeSparseLeastSquaresChaos(
-        inputTrain, outputTrain, multivariateBasis, totalDegree, distribution, sparse
+
+    enumerateFunction = multivariateBasis.getEnumerateFunction()
+    fullBasisSize = enumerateFunction.getBasisSizeFromTotalDegree(totalDegree)
+    basisSize = min(int(basisSizeFactor * N), fullBasisSize)
+
+    polynomialChaosResult = ComputeSparseLeastSquaresBasisSize(
+        inputTrain, outputTrain, multivariateBasis, basisSize, distribution, sparse
     )
 
     # Evaluate model for testing
@@ -412,7 +418,10 @@ def pce_sobol(
 ## Settings
 
 - N = {N}
-- Total degree = {totalDegree}
+- Maximum total degree = {totalDegree}
+- Full basis size = {fullBasisSize}
+- Maximum basis size factor = {basisSizeFactor}
+- Basis size = {basisSize}
 - Sparse PCE? {sparse}
 - Number of coefficients = {numberOfCoefficients}
 
