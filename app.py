@@ -143,21 +143,21 @@ selected_language_model = st.selectbox(
 
 # --- Analysis Options ---
 st.markdown("### Select Analyses to Run")
-analysis_options = {
-    "Exploratory Analysis": False,  # TODO MBN: set to True after debug
-    "Expectation Analysis": False,  # TODO MBN: set to True after debug
-    "Sobol Sensitivity Analysis": False,  # TODO MBN: set to True after debug
-    "Taylor Analysis": False,
-    "Correlation Analysis": False,
-    "HSIC Analysis": False,
-    "SHAP Analysis": False,
+analysis_default_options = {
+    "Exploratory Analysis": True,
+    "Expectation Analysis": True,
+    "Sobol Sensitivity Analysis": True,
+    "Taylor Analysis": True,
+    "Correlation Analysis": True,
+    "HSIC Analysis": True,
+    "SHAP Analysis": True,
     "Sobol from PCE": True
 }
 
-for analysis in analysis_options.keys():
+analysis_options = dict()
+for analysis in analysis_default_options.keys():
     analysis_options[analysis] = st.checkbox(
-#        analysis, value=True  # TODO MBN: set to True after debug
-        analysis, value=analysis_options[analysis] 
+        analysis, value=analysis_default_options[analysis] 
     )
 
 run_button = st.button('Run Simulation')
