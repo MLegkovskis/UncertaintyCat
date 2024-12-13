@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import cm
 import streamlit as st  # Added import statement
-from math import pi
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.statistical_utils import get_bounds_for_salib
@@ -65,7 +65,7 @@ def draw_treemap_values(polynomialChaosResult, sensitivity_threshold = 0.05):
         significant_labels.append("*")
 
     # Plot the tree map using the squarify library
-    plt.figure()
+    fig = plt.figure()
     colors = [cm.tab10(i) for i in range(len(significant_indices))]
     squarify.plot(sizes=significant_indices, label=significant_labels, color=colors, alpha=0.8)
 
@@ -74,7 +74,7 @@ def draw_treemap_values(polynomialChaosResult, sensitivity_threshold = 0.05):
     plt.title("%s = %.1e" % (ignored_label, ignored_indices))
     ax = plt.gca()
     ax.set_aspect("equal")
-    return
+    return fig
 
 
 # %%
@@ -213,20 +213,6 @@ def pce_treemap(N, model, problem, model_code_str, language_model='groq'):
     # Test with Ishigami
     im = ishigami_function.IshigamiModel()
 
-    size = 1000
-    sie = ot.SobolIndicesExperiment(im.inputDistribution, size)
-    inputDesign = sie.generate()
-    input_names = im.inputDistribution.getDescription()
-    inputDesign.setDescription(input_names)
-    print("Total sample size = ", inputDesign.getSize())
-    outputDesign = im.model(inputDesign)
-    sensitivityAnalysis = ot.SaltelliSensitivityAlgorithm(inputDesign, outputDesign, size)
-    graph = sensitivityAnalysis.draw()
-    graph.setTitle("Sobol' indices, Ishigami, $n = %d$" % (size))
-    view = otv.View(graph, figure_kw={"figsize": (4.0, 3.0)})
-    fig = view.getFigure()
-
-    """
     # Create PCE
     Ntrain = 1000
     inputTrain = im.inputDistribution.getSample(Ntrain)
@@ -237,18 +223,40 @@ def pce_treemap(N, model, problem, model_code_str, language_model='groq'):
     polynomialChaosResult = ComputeSparseLeastSquaresChaos(
         inputTrain, outputTrain, multivariateBasis, totalDegree, im.inputDistribution
     )
-    chaosSI = ot.FunctionalChaosSobolIndices(polynomialChaosResult)
-    print(chaosSI)
-    draw_treemap_values(polynomialChaosResult)
-    """
+    sensitivityAnalysis = ot.FunctionalChaosSobolIndices(polynomialChaosResult)
+    print(sensitivityAnalysis)
 
+    # Compute Sobol' indices from PCE
+    dimension = im.inputDistribution.getDimension()
+    first_order = [sensitivityAnalysis.getSobolIndex(i) for i in range(dimension)]
+    total_order = [sensitivityAnalysis.getSobolTotalIndex(i) for i in range(dimension)]
+    input_names = im.inputDistribution.getDescription()
+    graph = ot.SobolIndicesAlgorithm.DrawSobolIndices(input_names, first_order, total_order)
+    view = otv.View(graph, figure_kw={"figsize": (4.0, 3.0)})
+    fig = view.getFigure()
+    fig_key = 'sobol_indices_experiment_plot_fig'
+    if fig_key not in st.session_state:
+        st.session_state[fig_key] = fig
+    else:
+        fig = st.session_state[fig_key]
+
+    st.pyplot(fig, use_container_width=False)
+
+    # Draw Treemap
+    fig = draw_treemap_values(polynomialChaosResult)
     fig_key = 'pce_treemap_fig'
     if fig_key not in st.session_state:
         st.session_state[fig_key] = fig
     else:
         fig = st.session_state[fig_key]
 
-    st.pyplot(fig)
+    st.pyplot(fig, use_container_width=False)
 
-
-
+    # Print Sobol' indices from PCE
+    pce_sobol_markdown = sensitivityAnalysis.__repr_markdown__()
+    response_key = 'pce_sobol_markdown'
+    if response_key not in st.session_state:
+        st.session_state[response_key] = pce_sobol_markdown
+    else:
+        pce_sobol_markdown = st.session_state[response_key]
+    st.markdown(pce_sobol_markdown)

@@ -144,17 +144,20 @@ selected_language_model = st.selectbox(
 # --- Analysis Options ---
 st.markdown("### Select Analyses to Run")
 analysis_options = {
-    "Sobol Sensitivity Analysis": True,
-    "Taylor Analysis": True,
-    "Correlation Analysis": True,
-    "HSIC Analysis": True,
-    "SHAP Analysis": True,
+    "Exploratory Analysis": False,  # TODO MBN: set to True after debug
+    "Expectation Analysis": False,  # TODO MBN: set to True after debug
+    "Sobol Sensitivity Analysis": False,  # TODO MBN: set to True after debug
+    "Taylor Analysis": False,
+    "Correlation Analysis": False,
+    "HSIC Analysis": False,
+    "SHAP Analysis": False,
     "Treemap from PCE": True
 }
 
 for analysis in analysis_options.keys():
     analysis_options[analysis] = st.checkbox(
-        analysis, value=True
+#        analysis, value=True  # TODO MBN: set to True after debug
+        analysis, value=analysis_options[analysis] 
     )
 
 run_button = st.button('Run Simulation')
@@ -278,22 +281,24 @@ if get_session_state('simulation_results') is not None:
             language_model=selected_language_model
         )
 
-    st.markdown("---")
-    st.header("Exploratory Data Analysis")
-    with st.spinner('Running Exploratory Data Analysis...'):
-        exploratory_data_analysis(
-            data, N, model, problem, code, language_model=selected_language_model
-        )
-        # Access the figures from st.session_state:
-        st.session_state['eda_fig'] = st.session_state['eda_fig']
-        st.session_state['eda_clustermap_fig'] = st.session_state['eda_clustermap_fig']
+    if analysis_options["Exploratory Analysis"]:
+        st.markdown("---")
+        st.header("Exploratory Data Analysis")
+        with st.spinner('Running Exploratory Data Analysis...'):
+            exploratory_data_analysis(
+                data, N, model, problem, code, language_model=selected_language_model
+            )
+            # Access the figures from st.session_state:
+            st.session_state['eda_fig'] = st.session_state['eda_fig']
+            st.session_state['eda_clustermap_fig'] = st.session_state['eda_clustermap_fig']
 
-    st.markdown("---")
-    st.header("Expectation Convergence Analysis")
-    with st.spinner('Running Expectation Convergence Analysis...'):
-        expectation_convergence_analysis(
-            model, problem, code, N_samples=N_samples,
-            language_model=selected_language_model
+    if analysis_options["Expectation Analysis"]:
+        st.markdown("---")
+        st.header("Expectation Convergence Analysis")
+        with st.spinner('Running Expectation Convergence Analysis...'):
+            expectation_convergence_analysis(
+                model, problem, code, N_samples=N_samples,
+                language_model=selected_language_model
         )
 
     if analysis_options["Sobol Sensitivity Analysis"]:
