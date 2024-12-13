@@ -2,7 +2,7 @@ numpy
 pandas
 matplotlib
 seaborn
-openturns==1.22
+openturns==1.24
 SALib
 scikit-learn
 llvmlite==0.43.0
