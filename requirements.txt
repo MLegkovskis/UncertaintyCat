@@ -11,7 +11,7 @@ shap==0.46.0
 scipy
 groq
 streamlit
-streamlit_ace
+#streamlit_ace
 openai==0.28
 plotly
 black
@@ -20,3 +20,4 @@ chaospy
 pytest
 tabulate
 IPython
+squarify
