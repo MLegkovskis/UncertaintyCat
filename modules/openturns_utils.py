@@ -1,6 +1,5 @@
 import openturns as ot
 
-
 def get_ot_distribution(problem):
     """
     Return the OpenTURNS model
