@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import cm
+import matplotlib as mpl
 import numpy as np
 import streamlit as st  # Added import statement
 import squarify
@@ -11,8 +11,114 @@ from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 
 
+# %%
+def gather_small_sum_values(values, labels, threshold=0.01, insignificant_label="*"):
+    """
+    Gather values which sum is lower than the threshold
+
+    Sort the values in decreasing order.
+    Gather the values which sum is lower than the threshold.
+    The corresponding values are given the insignificant label.
+
+    Parameters
+    ----------
+    values : list(float)
+        A list of values in [0, 1] which sum to 1.
+    labels : list(str)
+        The labels.
+    insignificant_label : str
+        The label of the group of insignificant values.
+
+    Returns
+    -------
+    significant_values : list(float)
+        The list of significant values.
+    gathered_labels : list(float)
+        The labels.
+    insignificant_sum : float, > 0
+        The sum of insignificant values.
+    """
+
+    # Sort indices in decreasing order.
+    values = np.array(values)
+    sorting_indices = np.argsort(-values)
+    sorting_indices = [int(v) for v in sorting_indices]
+    sorted_sensitivity_values = values[sorting_indices]
+    sorted_group_labels = [labels[i] for i in sorting_indices]
+
+    # Get the index which cumulated sum is greater than complementary threshold
+    cumulated_sum = np.cumsum(sorted_sensitivity_values)
+    greater_than_threshold_indices = np.where(cumulated_sum > 1.0 - threshold)[0]
+    number_of_values = len(values)
+    if len(greater_than_threshold_indices) > 0:
+        threshold_index = int(greater_than_threshold_indices[0])
+    else:
+        threshold_index = number_of_values
+
+    # Gather and sum indices which sum below the threshold
+    significant_values = []
+    gathered_labels = []
+    insignificant_sum = 0.0
+    for i in range(number_of_values):
+        if i > threshold_index:
+            insignificant_sum += sorted_sensitivity_values[i]
+        else:
+            significant_values.append(sorted_sensitivity_values[i])
+            gathered_labels.append(sorted_group_labels[i])
+
+    # Add a star label to represent ignored indices
+    if insignificant_sum > 0.0:
+        significant_values.append(insignificant_sum)
+        gathered_labels.append(insignificant_label)
+    return significant_values, gathered_labels, insignificant_sum
+
+
+def gather_small_values(values, labels, threshold=0.01, insignificant_label="*"):
+    """
+    Gather small values in a list
+
+    Gather the values which are lower than the threshold.
+    The corresponding values are given the insignificant label.
+
+    Parameters
+    ----------
+    values : list(float)
+        A list of values in [0, 1] which sum to 1.
+    labels : list(str)
+        The labels.
+    threshold : float
+        The treshold.
+    insignificant_label : str
+        The label of the group of insignificant values.
+
+    Returns
+    -------
+    significant_values : list(float)
+        The list of significant values.
+    gathered_labels : list(float)
+        The labels.
+    insignificant_sum : float, > 0
+        The sum of insignificant values.
+    """
+    # Gather and sum indices below the threshold
+    significant_values = []
+    gathered_labels = []
+    insignificant_sum = 0.0
+    for i in range(len(values)):
+        if values[i] > threshold:
+            significant_values.append(values[i])
+            gathered_labels.append(labels[i])
+        else:
+            insignificant_sum += values[i]
+
+    # Add a star label to represent insignificant indices
+    if insignificant_sum > 0.0:
+        significant_values.append(insignificant_sum)
+        gathered_labels.append(insignificant_label)
+    return significant_values, gathered_labels, insignificant_sum
+
 def compute_pce_treemap_report(
-    sensitivity_threshold, significant_indices, significant_labels
+    sensitivity_threshold, gathered_indices, gathered_labels
 ):
     # Prepare the data required for interpretation of the treemap
     # Create a Markdown report of the treemap data
@@ -20,8 +126,8 @@ def compute_pce_treemap_report(
 | Group | Sobol interaction |
 |---|---|
 """
-    for i in range(len(significant_indices)):
-        treemap_table += f"| {significant_labels[i]} | {significant_indices[i]:.4f} |\n"
+    for i in range(len(gathered_indices)):
+        treemap_table += f"| {gathered_labels[i]} | {gathered_indices[i]:.4f} |\n"
 
     # Description of the radial plot with numerical data
     treemap_plot_description = f"""
@@ -135,8 +241,37 @@ def draw_treemap_values(
     polynomialChaosResult,
     sensitivity_threshold=0.05,
     print_indices=False,
+    gather_on_value=False,
+    insignificant_label = "*",
     verbose=False,
 ):
+    """
+    Plot the Sobol' interaction sensitivity indices of a PCE in a Treemap
+
+    Parameters
+    ----------
+    polynomialChaosResult : ot.FunctionalChaosResult
+        The PCE.
+    sensitivity_threshold : float, in [0, 1]
+        The threshold on the sensitivity indices.
+    print_indices : bool
+        If True, print the indices in the Treemap.
+        Otherwise, print the variable names.
+    gather_on_value : bool
+        If True, consider insignificant each Sobol' index which value is below
+        the threshold.
+        Otherwise, gather the Sobol' indices into a set which sum is below the
+        threshold.
+    insignificant_label : str
+        The label of insignificant Sobol' indices.
+    verbose : bool
+        If True, print intermediate messages.
+
+    Returns
+    -------
+    fig : Matplotlib.figure
+        The plot
+    """
     pcesa = ot.FunctionalChaosSobolIndices(polynomialChaosResult)
 
     # Compute all actived groups of variables involved in the PCE decomposition
@@ -173,12 +308,12 @@ def draw_treemap_values(
     # Compute labels to print in the Treemap
     if print_indices:
         # Compute the label from the index
-        group_labels_treshold = []
+        group_labels = []
         for group in listOfActiveGroups:
-            group_labels_treshold.append(str(group))
+            group_labels.append(str(group))
     else:
         variableNamesList = distribution.getDescription()
-        group_labels_treshold = ComputeGroupLabelsFromLabelNames(
+        group_labels = ComputeGroupLabelsFromLabelNames(
             variableNamesList, groups_list_threshold
         )
 
@@ -186,36 +321,46 @@ def draw_treemap_values(
         print_indices_and_tuples(groups_sensitivity_values, groups_list_threshold)
 
     # Gather and sum indices below a threshold
-    significant_indices = []
-    significant_labels = []
-    ignored_indices = 0.0
-    for i in range(len(groups_sensitivity_values)):
-        if groups_sensitivity_values[i] > sensitivity_threshold:
-            significant_indices.append(groups_sensitivity_values[i])
-            significant_labels.append(group_labels_treshold[i])
-        else:
-            ignored_indices += groups_sensitivity_values[i]
+    if gather_on_value:
+        (
+            gathered_indices,
+            gathered_labels,
+            insignificant_sum,
+        ) = gather_small_values(
+            groups_sensitivity_values,
+            group_labels,
+            sensitivity_threshold,
+            insignificant_label=insignificant_label,
+        )
+    else:
+        (
+            gathered_indices,
+            gathered_labels,
+            insignificant_sum,
+        ) = gather_small_sum_values(
+            groups_sensitivity_values,
+            group_labels,
+            sensitivity_threshold,
+            insignificant_label=insignificant_label,
+        )
 
-    # Add a star label to represent ignored indices
-    ignored_label = "*"
-    if ignored_indices > 0.0:
-        significant_indices.append(ignored_indices)
-        significant_labels.append("*")
 
     # Plot the tree map using the squarify library
     fig = plt.figure(figsize=(3.5, 3.5))
-    colors = [cm.tab10(i) for i in range(len(significant_indices))]
+    number_of_significant_values = len(gathered_indices)
+    colormap = mpl.colormaps['viridis'].resampled(number_of_significant_values)
+    colors = [colormap(i) for i in range(len(gathered_indices))]
     squarify.plot(
-        sizes=significant_indices, label=significant_labels, color=colors, alpha=0.8
+        sizes=gathered_indices, label=gathered_labels, color=colors, alpha=0.8
     )
 
     # Set axis labels and title
     plt.axis("off")
-    plt.title("%s = %.1e" % (ignored_label, ignored_indices))
+    plt.title("%s = %.1e" % (insignificant_label, insignificant_sum))
     ax = plt.gca()
     ax.set_aspect("equal")
 
-    return fig, significant_indices, significant_labels
+    return fig, gathered_indices, gathered_labels
 
 
 # %%
@@ -362,7 +507,7 @@ def pce_sobol(
     basisSizeFactor = 0.5,
     sparse=False,
     sensitivity_threshold=0.05,
-    verbose=False,
+    verbose=True,
 ):
     """Plot Sobol indices from a PCE.
 
@@ -490,7 +635,7 @@ def pce_sobol(
     st.pyplot(fig, use_container_width=False)
 
     # Draw Treemap
-    fig, significant_indices, significant_labels = draw_treemap_values(
+    fig, gathered_indices, gathered_labels = draw_treemap_values(
         polynomialChaosResult, sensitivity_threshold, verbose=verbose
     )
     fig_key = "pce_treemap_fig"
@@ -503,7 +648,7 @@ def pce_sobol(
 
     # Compute the PCE Treemap report
     treemap_plot_description = compute_pce_treemap_report(
-        sensitivity_threshold, significant_indices, significant_labels
+        sensitivity_threshold, gathered_indices, gathered_labels
     )
 
     # Format the model code for inclusion in the prompt
