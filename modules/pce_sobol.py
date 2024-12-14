@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from matplotlib.lines import Line2D
 import numpy as np
 import streamlit as st  # Added import statement
 import squarify
@@ -9,6 +10,189 @@ import openturns.experimental as otexp
 from modules.openturns_utils import get_ot_distribution, get_ot_model
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
+
+
+def plot_pce_sobol_radial(
+    polynomialChaosResult,
+    sensitivity_threshold=0.01,
+    max_marker_size=70.0,
+    figsize=(3.5, 3.5),
+):
+    """
+    Plot Sobol indices on a radial plot.
+
+    The Sobol Indices Radial Plot is a polar plot where each input variable
+    is placed at equal angular intervals around a circle.
+    The elements of the plot are:
+
+    - Variables: Each input variable is positioned at a specific angle on
+      the circle, equally spaced from others.
+
+    - Circles:
+        - The outer circle (white fill) represents the total-order Sobol'
+          index (ST) for each variable.
+        - The inner circle (black fill) represents the first-order Sobol' index (S1).
+        - The size of the circles is proportional to the magnitude of the respective
+          Sobol' indices.
+
+    - Lines:
+        - Lines connecting variables represent second-order Sobol' indices (S2).
+        - The thickness of the lines corresponds to the magnitude of the
+          interaction between the two variables; thicker lines indicate
+          stronger interactions.
+
+    Authors
+    -------
+    - Mark Legkovskis
+    - M. Baudin.
+
+    Parameters
+    ----------
+    polynomialChaosResult : ot.FunctionalChaosResult
+        The PCE.
+    sensitivity_threshold : float, in [0, 1]
+        The sensitivity_threshold on the sensitivity indices.
+    max_marker_size : float, > 0
+        The marker size in points.
+    figsize : list(floats), >0
+        The figure size.
+    verbose : bool
+        If True, print intermediate messages.
+
+    Returns
+    -------
+    fig : Matplotlib.figure
+        The plot
+
+    References
+    ----------
+    - Jana Fruth, Olivier Roustant, and Sonja Kuhnt.
+      Total interaction index: A variance-based sensitivity
+      index for second-order interaction screening.
+      Journal of Statistical Planning and Inference,
+      147:212–223, 2014.
+    """
+    # Setup Sobol' indices
+    distribution = polynomialChaosResult.getDistribution()
+    dimension = distribution.getDimension()
+    names = distribution.getDescription()
+    pcesa = ot.FunctionalChaosSobolIndices(polynomialChaosResult)
+
+    # Initialization
+    n = len(names)
+    locs = np.linspace(0, 2 * np.pi, n, endpoint=False)
+
+    # Compute the first-order Sobol' indices
+    firstSobolIndices = []
+    for i in range(dimension):
+        firstSobolIndices.append(pcesa.getSobolIndex(i))
+    # Compute the second-order Sobol' indices
+    secondSobolIndices = np.zeros((dimension, dimension))
+    for i in range(dimension):
+        for j in range(i + 1, dimension):
+            secondSobolIndices[i, j] = pcesa.getSobolIndex([i, j])
+    # Compute the total Sobol' indices
+    totalSobolIndices = []
+    for i in range(dimension):
+        totalSobolIndices.append(pcesa.getSobolTotalIndex(i))
+
+    Si = {
+        "S1": firstSobolIndices,
+        "S2": secondSobolIndices,
+        "ST": totalSobolIndices,
+    }
+
+    # Get indices
+    ST = np.abs(Si["ST"])
+    S1 = np.abs(Si["S1"])
+    names = np.array(names)
+
+    # Filter out insignificant indices
+    significant = ST > sensitivity_threshold
+    filtered_names = names[significant]
+    filtered_locs = locs[significant]
+    ST = ST[significant]
+    S1 = S1[significant]
+
+    # Prepare S2 matrix
+    S2_matrix = np.zeros((len(filtered_names), len(filtered_names)))
+    for i in range(len(filtered_names)):
+        for j in range(i + 1, len(filtered_names)):
+            idx_i = np.where(names == filtered_names[i])[0][0]
+            idx_j = np.where(names == filtered_names[j])[0][0]
+            S2_value = Si["S2"][idx_i, idx_j]
+            if np.isnan(S2_value) or abs(S2_value) < sensitivity_threshold:
+                S2_value = 0.0
+            S2_matrix[i, j] = S2_value
+
+    # Plotting
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(1, 1, 1, projection="polar")
+    ax.grid(False)
+    ax.spines["polar"].set_visible(False)
+    ax.set_xticks(filtered_locs)
+    ax.set_xticklabels(filtered_names)
+    ax.set_yticklabels([])
+    ax.set_ylim(0, 1.5)
+
+    # Plot ST and S1 using ax.scatter
+
+    # First plot the ST circles (outer circles)
+    for loc, st_val in zip(filtered_locs, ST):
+        s = st_val * max_marker_size**2
+        print(f"loc = {loc}, st_val = {st_val}, s = {s}")
+        ax.scatter(loc, 1, s=s, c="white", edgecolors="black", zorder=2)
+
+    # Then plot the S1 circles (inner circles)
+    for loc, s1_val in zip(filtered_locs, S1):
+        s = s1_val * max_marker_size**2
+        print(f"loc = {loc}, s1_val = {s1_val}, s = {s}")
+        ax.scatter(loc, 1, s=s, c="black", edgecolors="black", zorder=3)
+
+    # Plot S2 interactions
+    print("S2")
+    print(S2_matrix)
+    for i in range(len(filtered_names)):
+        for j in range(i + 1, len(filtered_names)):
+            if S2_matrix[i, j] > 0:
+                lw = S2_matrix[i, j] * max_marker_size
+                print(f"S2_matrix[i, j] = {S2_matrix[i, j]}, lw = {lw}")
+                ax.plot(
+                    [filtered_locs[i], filtered_locs[j]],
+                    [1, 1],
+                    c="darkgray",
+                    lw=lw,
+                    zorder=1,
+                )
+
+    # Legend
+    legend_elements = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            label="ST",
+            markerfacecolor="white",
+            markeredgecolor="black",
+            markersize=15,
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            label="S1",
+            markerfacecolor="black",
+            markeredgecolor="black",
+            markersize=15,
+        ),
+        Line2D([0], [0], color="darkgray", lw=3, label="S2"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.0, 1.0))
+    ax.set_title("Sobol Indices Radial Plot")
+    plt.tight_layout()
+    return fig
 
 
 # %%
@@ -117,6 +301,62 @@ def gather_small_values(values, labels, threshold=0.01, insignificant_label="*")
         gathered_labels.append(insignificant_label)
     return significant_values, gathered_labels, insignificant_sum
 
+
+# %%
+def plot_pce_sobol(polynomialChaosResult, rotation=45, figsize=(3.5, 3.5)):
+    """
+    Plot Sobol' indices from a PCE
+
+    Authors
+    -------
+    - Mark Legkovskis
+    - M. Baudin.
+
+    Parameters
+    ----------
+    polynomialChaosResult : ot.FunctionalChaosResult
+        The PCE.
+    rotation : float, in [0, 360]
+        The rotation of the labels
+    figsize : list(floats), >0
+        The figure size.
+    verbose : bool
+        If True, print intermediate messages.
+
+    Returns
+    -------
+    fig : Matplotlib.figure
+        The plot
+    """
+    pcesa = ot.FunctionalChaosSobolIndices(polynomialChaosResult)
+    distribution = polynomialChaosResult.getDistribution()
+    dimension = distribution.getDimension()
+    names = distribution.getDescription()
+    inputSample = polynomialChaosResult.getInputSample()
+    N = inputSample.getSize()
+    # Compute the first-order Sobol' indices
+    firstSobolIndices = []
+    for i in range(dimension):
+        firstSobolIndices.append(pcesa.getSobolIndex(i))
+    # Compute the total Sobol' indices
+    totalSobolIndices = []
+    for i in range(dimension):
+        totalSobolIndices.append(pcesa.getSobolTotalIndex(i))
+
+    # Plot
+    ind = np.arange(dimension)
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(1, 1, 1)
+    plt.plot(ind, firstSobolIndices, "o")
+    plt.plot(ind, totalSobolIndices, "s")
+    plt.xticks(ind, names, rotation=rotation)
+    plt.title(f"Sobol Sensitivity Indices (N = {N})")
+    plt.ylabel("Sensitivity Index")
+    plt.xlabel("Input Variables")
+    ax.legend(["First-order", "Total order"])
+    return fig
+
+
 def compute_pce_treemap_report(
     sensitivity_threshold, gathered_indices, gathered_labels
 ):
@@ -129,7 +369,7 @@ def compute_pce_treemap_report(
     for i in range(len(gathered_indices)):
         treemap_table += f"| {gathered_labels[i]} | {gathered_indices[i]:.4f} |\n"
 
-    # Description of the radial plot with numerical data
+    # Description of the treemap plot with numerical data
     treemap_plot_description = f"""
     ## Sobol' interaction indices with a Treemap plot
 
@@ -242,7 +482,8 @@ def draw_treemap_values(
     sensitivity_threshold=0.05,
     print_indices=False,
     gather_on_value=False,
-    insignificant_label = "*",
+    insignificant_label="*",
+    figsize=(3.5, 3.5),
     verbose=False,
 ):
     """
@@ -264,6 +505,8 @@ def draw_treemap_values(
         threshold.
     insignificant_label : str
         The label of insignificant Sobol' indices.
+    figsize : list(floats), >0
+        The figure size.
     verbose : bool
         If True, print intermediate messages.
 
@@ -344,11 +587,10 @@ def draw_treemap_values(
             insignificant_label=insignificant_label,
         )
 
-
     # Plot the tree map using the squarify library
-    fig = plt.figure(figsize=(3.5, 3.5))
+    fig = plt.figure(figsize=figsize)
     number_of_significant_values = len(gathered_indices)
-    colormap = mpl.colormaps['viridis'].resampled(number_of_significant_values)
+    colormap = mpl.colormaps["viridis"].resampled(number_of_significant_values)
     colors = [colormap(i) for i in range(len(gathered_indices))]
     squarify.plot(
         sizes=gathered_indices, label=gathered_labels, color=colors, alpha=0.8
@@ -504,16 +746,16 @@ def pce_sobol(
     model_code_str,
     language_model="groq",
     totalDegree=4,
-    basisSizeFactor = 0.5,
+    basisSizeFactor=0.5,
     sparse=False,
     sensitivity_threshold=0.05,
-    verbose=True,
+    verbose=False,
 ):
     """Plot Sobol indices from a PCE.
 
     The list of updated figures and markdown reports is:
 
-    'pce_validation_fig', 'pce_sobol_fig', 'pce_treemap_fig', 'pce_sobol_markdown',
+    'pce_validation_fig', 'pce_sobol_fig', 'pce_sobol_radial_fig', 'pce_treemap_fig', 'pce_sobol_markdown',
     "pce_sobol_response_markdown".
 
     Update `reset_analysis_results()` accordingly if required.
@@ -615,18 +857,19 @@ def pce_sobol(
 
     st.markdown(pce_sobol_report_markdown)
 
-    # Compute Sobol' indices from PCE
-    first_order = [sensitivityAnalysis.getSobolIndex(i) for i in range(dimension)]
-    total_order = [sensitivityAnalysis.getSobolTotalIndex(i) for i in range(dimension)]
-    input_names = distribution.getDescription()
-    graph = ot.SobolIndicesAlgorithm.DrawSobolIndices(
-        input_names, first_order, total_order
-    )
-    graph.setLegendPosition("upper left")
-    graph.setLegendCorner([1.0, 1.0])
-    view = otv.View(graph, figure_kw={"figsize": (5.0, 2.5)})
-    fig = view.getFigure()
+    # Plot Sobol' indices from PCE using first-order and total order indices
+    fig = plot_pce_sobol(polynomialChaosResult, figsize=(4.5, 3.5))
     fig_key = "pce_sobol_fig"
+    if fig_key not in st.session_state:
+        st.session_state[fig_key] = fig
+    else:
+        fig = st.session_state[fig_key]
+
+    st.pyplot(fig, use_container_width=False)
+
+    # Plot Sobol' indices from PCE using radial plot
+    fig = plot_pce_sobol_radial(polynomialChaosResult, figsize=(4.0, 4.0))
+    fig_key = "pce_sobol_radial_fig"
     if fig_key not in st.session_state:
         st.session_state[fig_key] = fig
     else:
