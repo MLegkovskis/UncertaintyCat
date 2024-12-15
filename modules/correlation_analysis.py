@@ -54,7 +54,7 @@ def correlation_analysis(model, problem, model_code_str, language_model='groq'):
         "PRCC": list(corr_analysis.computePRCC()),
         "SRC": list(corr_analysis.computeSRC()),
         "SRRC": list(corr_analysis.computeSRRC()),
-        "Pearson": list(corr_analysis.computePearsonCorrelation()),
+        "Pearson": list(corr_analysis.computeLinearCorrelation()),
         "Spearman": list(corr_analysis.computeSpearmanCorrelation()),
     }
 
@@ -74,6 +74,7 @@ def correlation_analysis(model, problem, model_code_str, language_model='groq'):
 
     # Prepare data for the prompt
     correlation_md_table = df.rename(columns={'index': 'Variable'})
+    print(df)
 
     # Use the provided model_code_str directly
     model_code = model_code_str
@@ -91,7 +92,6 @@ def correlation_analysis(model, problem, model_code_str, language_model='groq'):
         })
 
     inputs_df = pd.DataFrame(input_parameters)
-    inputs_md_table = inputs_df.to_markdown(index=False)
 
     # Prepare the prompt
     prompt = f"""
@@ -107,12 +107,12 @@ and the following uncertain input distributions:
 
 {inputs_df}
 
-The results of the correlation analysis are given below (you must convert them to a table and show to the user):
+The results of the correlation analysis are given in the below table, which you must convert to a simple and valid markdown table and show to the user:
 
 {correlation_md_table}
 
 Please:
-  - Display the index values as a table. If the table is large (e.g., more than 10 rows), only show the top 8 rows corresponding to the highest-ranked inputs.
+  - Display the index values as a table. If the table is large (e.g., more than 10 rows), only show the top 10 rows corresponding to the highest-ranked inputs --> you must inform the user that this is what you are doing!
   - Include mathematical definitions for PCC, PRCC, Spearman, SRC, and SRRC, explaining what they represent.
   - Discuss key findings and consistency or inconsistency in the sensitivity predictions across the coefficients.
   - Provide insights into which variables are most influential according to the different methods.
