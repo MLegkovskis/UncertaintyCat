@@ -74,7 +74,6 @@ def correlation_analysis(model, problem, model_code_str, language_model='groq'):
 
     # Prepare data for the prompt
     correlation_md_table = df.rename(columns={'index': 'Variable'})
-    print(df)
 
     # Use the provided model_code_str directly
     model_code = model_code_str
