@@ -33,7 +33,7 @@ with col1:
     st.image("logo.jpg", width=100)
 
 with col2:
-    st.title('UncertaintyCat | v3.88')
+    st.title('UncertaintyCat | v3.89')
 
 # Display the instructions
 show_instructions()
