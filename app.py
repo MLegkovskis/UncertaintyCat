@@ -139,10 +139,8 @@ if model_file != get_session_state('model_file'):
 # Dropdown for selecting Groq model
 groq_model_options = [
     'gemma2-9b-it',
-    'gemma-7b-it',
-    'llama-3.1-70b-versatile',
-    'mixtral-8x7b-32768',
-
+    'llama-3.3-70b-versatile',
+    'mixtral-8x7b-32768'
 ]
 
 selected_language_model = st.selectbox(

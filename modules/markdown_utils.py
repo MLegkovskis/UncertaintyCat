@@ -33,7 +33,7 @@ Any deviation from these rules (e.g., using logical words in equations, showing 
 """
     return base_prompt
 
-def get_markdown_from_code(code_snippet, model_name='llama-3.1-8b-instant', max_attempts=10):
+def get_markdown_from_code(code_snippet, model_name='gemma2-9b-it', max_attempts=10):
     import os
     from groq import Groq
 

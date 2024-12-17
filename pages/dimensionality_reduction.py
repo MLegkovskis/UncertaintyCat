@@ -326,7 +326,7 @@ if st.session_state.morris_analysis_done:
                 )
 
                 with st.spinner("Generating reduced model..."):
-                    st.session_state.reduced_model_code = call_groq_api(prompt, model_name='llama-3.1-70b-versatile').replace("```python", "").replace("```", "")
+                    st.session_state.reduced_model_code = call_groq_api(prompt, model_name='llama-3.3-70b-versatile').replace("```python", "").replace("```", "")
             except Exception as e:
                 st.error(f"Error during AI generation: {e}")
 
