@@ -7,91 +7,11 @@ import streamlit as st  # Added import statement
 from math import pi
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
-from modules.statistical_utils import get_bounds_for_salib
+from modules.statistical_utils import get_bounds_for_salib, plot_sobol_radial
 
 
 
-def plot_sobol_radial(Si, problem, ax):
-    """Plot Sobol indices on a radial plot."""
-    names = problem['names']
-    n = len(names)
-    ticklocs = np.linspace(0, 2 * pi, n, endpoint=False)
-    locs = ticklocs
-
-    # Get indices
-    ST = np.abs(Si['ST'])
-    S1 = np.abs(Si['S1'])
-    S2 = Si['S2']
-    names = np.array(names)
-
-    # Filter out insignificant indices
-    threshold = 0.01
-    significant = ST > threshold
-    filtered_names = names[significant]
-    filtered_locs = locs[significant]
-    ST = ST[significant]
-    S1 = S1[significant]
-
-    # Prepare S2 matrix
-    S2_matrix = np.zeros((len(filtered_names), len(filtered_names)))
-    for i in range(len(filtered_names)):
-        for j in range(i+1, len(filtered_names)):
-            idx_i = np.where(names == filtered_names[i])[0][0]
-            idx_j = np.where(names == filtered_names[j])[0][0]
-            S2_value = Si['S2'][idx_i, idx_j]
-            if np.isnan(S2_value) or abs(S2_value) < threshold:
-                S2_value = 0
-            S2_matrix[i, j] = S2_value
-
-    # Plotting
-    ax.grid(False)
-    ax.spines['polar'].set_visible(False)
-    ax.set_xticks(filtered_locs)
-    ax.set_xticklabels(filtered_names)
-    ax.set_yticklabels([])
-    ax.set_ylim(0, 1.5)
-
-    # Plot ST and S1 using ax.scatter
-    max_marker_size = 5000  # Adjust as needed
-    smax = max(np.max(ST), np.max(S1))
-    smin = min(np.min(ST), np.min(S1))
-
-    def normalize(x, xmin, xmax):
-        return (x - xmin) / (xmax - xmin) if xmax - xmin != 0 else 0
-
-    # First plot the ST circles (outer circles)
-    for loc, st_val in zip(filtered_locs, ST):
-        size = 50 + max_marker_size * normalize(st_val, smin, smax)
-        ax.scatter(loc, 1, s=size, c='white', edgecolors='black', zorder=2)
-
-    # Then plot the S1 circles (inner circles)
-    for loc, s1_val in zip(filtered_locs, S1):
-        size = 50 + max_marker_size * normalize(s1_val, smin, smax)
-        ax.scatter(loc, 1, s=size, c='black', edgecolors='black', zorder=3)
-
-    # Plot S2 interactions
-    s2max = np.max(S2_matrix)
-    s2min = np.min(S2_matrix[S2_matrix > 0]) if np.any(S2_matrix > 0) else 0
-    for i in range(len(filtered_names)):
-        for j in range(i+1, len(filtered_names)):
-            weight = S2_matrix[i, j]
-            if weight > 0:
-                lw = 0.5 + 5 * normalize(weight, s2min, s2max)
-                ax.plot([filtered_locs[i], filtered_locs[j]], [1,1], c='darkgray', lw=lw, zorder=1)
-
-    # Legend
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='ST', markerfacecolor='white', markeredgecolor='black', markersize=15),
-        Line2D([0], [0], marker='o', color='w', label='S1', markerfacecolor='black', markeredgecolor='black', markersize=15),
-        Line2D([0], [0], color='darkgray', lw=3, label='S2')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right')
-    ax.set_title("Sobol Indices Radial Plot")
-
-
-
-def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
+def sobol_sensitivity_analysis(N, model, problem, model_code_str, second_order_index_threshold = 0.05, language_model='groq'):
     # Ensure N is a power of 2
     N_power = int(np.ceil(np.log2(N)))
     N = int(2 ** N_power)
@@ -127,7 +47,8 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
 
     # Radial plot
     ax2 = fig.add_subplot(1, 2, 2, projection='polar')
-    plot_sobol_radial(Si, problem, ax=ax2)
+    names = problem['names']
+    plot_sobol_radial(names, Si, ax2)
 
     plt.tight_layout()
     
@@ -178,12 +99,23 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
         radial_data += f"- Variable **{name}**: S1 = {s1:.4f}, ST = {st_value:.4f}\n"
 
     if not S2_df.empty:
-        radial_data += "\nSignificant second-order interactions:\n"
+        # Count number of significant interactions
+        number_of_significant_interactions = 0
         for _, row in S2_df.iterrows():
-            var1 = row['Variable 1']
-            var2 = row['Variable 2']
             s2 = row['Second-order Sobol Index']
-            radial_data += f"- Interaction between **{var1}** and **{var2}**: S2 = {s2:.4f}\n"
+            if s2 > second_order_index_threshold:
+                number_of_significant_interactions += 1
+        # Print only significant interactions
+        if number_of_significant_interactions == 0:
+            radial_data += "\nThere is no significant second-order interactions.\n"
+        else:
+            radial_data += "\nSignificant second-order interactions:\n"
+            for _, row in S2_df.iterrows():
+                var1 = row['Variable 1']
+                var2 = row['Variable 2']
+                s2 = row['Second-order Sobol Index']
+                if s2 > second_order_index_threshold:
+                    radial_data += f"- Interaction between **{var1}** and **{var2}**: S2 = {s2:.4f}\n"
     else:
         radial_data += "\nNo significant second-order interactions detected."
 
@@ -252,6 +184,7 @@ An interpretation of the Sobol Indices Radial Plot is provided:
 {radial_plot_description}
 
 Please:
+  - There are three classes of Sobol' indices: 1) any index lower than 0.05 can be considered weak, 2) any index in [0.05, 0.2] can be considered moderate, 3) any index larger than 0.2 can be considered strong.
   - Display all the index values as separate tables (if the tables are big - feel free to show only top 10 ranked inputs).
   - Briefly explain the Sobol method and the difference between first-order and total-order indices in terms of their mathematics and what they represent.
   - Explain the significance of high-impact Sobol' indices and the importance of the corresponding input variables from both mathematical and physical perspectives.
@@ -259,6 +192,7 @@ Please:
   - Provide an interpretation of the Sobol Indices Radial Plot based on the description and numerical data.
   - Reference the Sobol indices tables in your discussion.
 """
+    print(prompt)
 
     response_key = 'sobol_response_markdown'
     fig_key = 'sobol_fig'
