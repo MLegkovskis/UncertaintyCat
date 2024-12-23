@@ -6,7 +6,6 @@ from modules.model_understanding import model_understanding
 from modules.exploratory_data_analysis import exploratory_data_analysis
 from modules.expectation_convergence_analysis import expectation_convergence_analysis
 from modules.sobol_sensitivity_analysis import sobol_sensitivity_analysis
-from modules.pce_sobol import pce_sobol
 from modules.taylor_analysis import taylor_analysis
 from modules.correlation_analysis import correlation_analysis
 from modules.hsic_analysis import hsic_analysis
@@ -151,7 +150,6 @@ analysis_default_options = {
     "Correlation Analysis": True,
     "HSIC Analysis": True,
     "SHAP Analysis": True,
-    "Sobol from PCE": True
 }
 
 analysis_options = dict()
@@ -306,14 +304,6 @@ if get_session_state('simulation_results') is not None:
         st.header("Sobol Sensitivity Analysis")
         with st.spinner('Running Sobol Sensitivity Analysis...'):
             sobol_sensitivity_analysis(
-                N_sobol, model, problem, code, language_model=selected_language_model
-            )
-
-    if analysis_options["Sobol from PCE"]:
-        st.markdown("---")
-        st.header("Sobol from PCE")
-        with st.spinner('Running Sobol from PCE...'):
-            pce_sobol(
                 N_sobol, model, problem, code, language_model=selected_language_model
             )
 

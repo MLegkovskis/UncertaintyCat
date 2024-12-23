@@ -1,3 +1,5 @@
+import streamlit as st
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.lines import Line2D
@@ -17,6 +19,7 @@ def plot_pce_sobol_radial(
     sensitivity_threshold=0.01,
     max_marker_size=70.0,
     figsize=(3.5, 3.5),
+    verbose=False,
 ):
     """
     Plot Sobol indices on a radial plot.
@@ -140,23 +143,27 @@ def plot_pce_sobol_radial(
     # First plot the ST circles (outer circles)
     for loc, st_val in zip(filtered_locs, ST):
         s = st_val * max_marker_size**2
-        print(f"loc = {loc}, st_val = {st_val}, s = {s}")
+        if verbose:
+            print(f"loc = {loc}, st_val = {st_val}, s = {s}")
         ax.scatter(loc, 1, s=s, c="white", edgecolors="black", zorder=2)
 
     # Then plot the S1 circles (inner circles)
     for loc, s1_val in zip(filtered_locs, S1):
         s = s1_val * max_marker_size**2
-        print(f"loc = {loc}, s1_val = {s1_val}, s = {s}")
+        if verbose:
+            print(f"loc = {loc}, s1_val = {s1_val}, s = {s}")
         ax.scatter(loc, 1, s=s, c="black", edgecolors="black", zorder=3)
 
     # Plot S2 interactions
-    print("S2")
-    print(S2_matrix)
+    if verbose:
+        print("S2")
+        print(S2_matrix)
     for i in range(len(filtered_names)):
         for j in range(i + 1, len(filtered_names)):
             if S2_matrix[i, j] > 0:
                 lw = S2_matrix[i, j] * max_marker_size
-                print(f"S2_matrix[i, j] = {S2_matrix[i, j]}, lw = {lw}")
+                if verbose:
+                    print(f"S2_matrix[i, j] = {S2_matrix[i, j]}, lw = {lw}")
                 ax.plot(
                     [filtered_locs[i], filtered_locs[j]],
                     [1, 1],
@@ -661,7 +668,7 @@ def ComputeSparseLeastSquaresBasisSize(
     multivariateBasis,
     basisSize,
     distribution,
-    sparse=True,
+    use_model_selection=True,
 ):
     """
     Create a sparse polynomial chaos using least squares.
@@ -685,7 +692,7 @@ def ComputeSparseLeastSquaresBasisSize(
         The maximum number of coefficients in the basis.
     distribution : ot.Distribution(input_dimension)
         The input distribution.
-    sparse : bool
+    use_model_selection : bool
         Set to True to create a sparse polynomial chaos expansion.
         Set to False to create a full polynomial chaos expansion.
 
@@ -695,7 +702,7 @@ def ComputeSparseLeastSquaresBasisSize(
         The polynomial chaos result.
 
     """
-    if sparse:
+    if use_model_selection:
         selectionAlgorithm = ot.LeastSquaresMetaModelSelectionFactory()
     else:
         selectionAlgorithm = ot.PenalizedLeastSquaresAlgorithmFactory()
@@ -740,14 +747,14 @@ def print_indices_and_tuples(groups_sensitivity_values, groups_list):
 
 
 def pce_sobol(
-    N,
+    train_sample_size,
+    validation_sample_size,
     model,
     problem,
     model_code_str,
-    language_model="groq",
-    totalDegree=4,
-    basisSizeFactor=0.5,
-    sparse=False,
+    language_model,
+    basis_size_factor=0.5,
+    use_model_selection=False,
     sensitivity_threshold=0.05,
     verbose=False,
 ):
@@ -758,7 +765,30 @@ def pce_sobol(
     'pce_validation_fig', 'pce_sobol_fig', 'pce_sobol_radial_fig', 'pce_treemap_fig', 'pce_sobol_markdown',
     "pce_sobol_response_markdown".
 
-    Update `reset_analysis_results()` accordingly if required.
+    Update `reset_pce_least_squares_results()` accordingly if required.
+
+    Parameters
+    ----------
+    train_sample_size: int
+        The size of the training sample.
+    validation_sample_size: int
+        The size of the validation sample.
+    model:
+        The physical model
+    problem:
+        The probabilistic model
+    model_code_str: str
+        The code of the physical model
+    language_model: str
+        The interpretation language model
+    basis_size_factor: float, in [0, 1]
+        The number of coefficients in the PCE, as a fraction of the training sample size.
+    use_model_selection: bool
+        If True, then uses model selection to select the best possible coefficients.
+        If False, then uses model selection to select the best possible coefficients.
+    sensitivity_threshold : float, in [0, 1]
+        The sensitivity_threshold on the sensitivity indices.
+        Sensitivity indices lower that this treshold are considered as insignificant.
     """
 
     # Get the input distribution and the model
@@ -766,24 +796,26 @@ def pce_sobol(
     model_g = get_ot_model(model, problem)
 
     # Evaluate model for training
-    inputTrain = distribution.getSample(N)
+    inputTrain = distribution.getSample(train_sample_size)
     outputTrain = model_g(inputTrain)
 
     # Create PCE
     dimension = distribution.getDimension()
     marginalList = [distribution.getMarginal(i) for i in range(dimension)]
     multivariateBasis = ot.OrthogonalProductPolynomialFactory(marginalList)
-
-    enumerateFunction = multivariateBasis.getEnumerateFunction()
-    fullBasisSize = enumerateFunction.getBasisSizeFromTotalDegree(totalDegree)
-    basisSize = min(int(basisSizeFactor * N), fullBasisSize)
+    basisSize = int(basis_size_factor * train_sample_size)
 
     polynomialChaosResult = ComputeSparseLeastSquaresBasisSize(
-        inputTrain, outputTrain, multivariateBasis, basisSize, distribution, sparse
+        inputTrain,
+        outputTrain,
+        multivariateBasis,
+        basisSize,
+        distribution,
+        use_model_selection,
     )
 
     # Evaluate model for testing
-    inputTest = distribution.getSample(N)
+    inputTest = distribution.getSample(validation_sample_size)
     model_g = get_ot_model(model, problem)
     outputTest = model_g(inputTest)
 
@@ -794,7 +826,7 @@ def pce_sobol(
     simpleValidation = ot.MetaModelValidation(outputTest, metamodelPredictions)
     r2ScoreSimple = simpleValidation.computeR2Score()
     # 2. Analytical LOO validation
-    splitterLOO = ot.LeaveOneOutSplitter(N)
+    splitterLOO = ot.LeaveOneOutSplitter(train_sample_size)
     ot.ResourceMap.SetAsBool("FunctionalChaosValidation-ModelSelection", True)
     validation = otexp.FunctionalChaosValidation(polynomialChaosResult, splitterLOO)
     r2ScoreLOO = validation.computeR2Score()
@@ -804,12 +836,11 @@ def pce_sobol(
     pce_result_markdown = f"""
 ## Settings
 
-- N = {N}
-- Maximum total degree = {totalDegree}
-- Full basis size = {fullBasisSize}
-- Maximum basis size factor = {basisSizeFactor}
+- Training sample size = {train_sample_size}
+- Validation sample size = {validation_sample_size}
+- Maximum basis size factor = {basis_size_factor}
 - Basis size = {basisSize}
-- Sparse PCE? {sparse}
+- Use model selection? {use_model_selection}
 - Number of coefficients = {numberOfCoefficients}
 
 ## Validation
@@ -858,7 +889,7 @@ def pce_sobol(
     st.markdown(pce_sobol_report_markdown)
 
     # Plot Sobol' indices from PCE using first-order and total order indices
-    fig = plot_pce_sobol(polynomialChaosResult, figsize=(4.5, 3.5))
+    fig = plot_pce_sobol(polynomialChaosResult, figsize=(4.0, 3.0))
     fig_key = "pce_sobol_fig"
     if fig_key not in st.session_state:
         st.session_state[fig_key] = fig
@@ -868,7 +899,7 @@ def pce_sobol(
     st.pyplot(fig, use_container_width=False)
 
     # Plot Sobol' indices from PCE using radial plot
-    fig = plot_pce_sobol_radial(polynomialChaosResult, figsize=(4.0, 4.0))
+    fig = plot_pce_sobol_radial(polynomialChaosResult, figsize=(3.5, 3.5))
     fig_key = "pce_sobol_radial_fig"
     if fig_key not in st.session_state:
         st.session_state[fig_key] = fig
@@ -977,3 +1008,18 @@ Please:
         print(response_markdown)
 
     st.markdown(response_markdown)
+
+
+def reset_pce_least_squares_results():
+    """Resets the analysis results in session state."""
+    keys_to_reset = [
+        "pce_validation_fig",
+        "pce_sobol_fig",
+        "pce_treemap_fig",
+        "pce_sobol_markdown",
+        "pce_sobol_response_markdown",
+        "pce_sobol_radial_fig",
+    ]
+    for key in keys_to_reset:
+        if key in st.session_state:
+            del st.session_state[key]

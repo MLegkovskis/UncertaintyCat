@@ -40,12 +40,6 @@ def reset_analysis_results():
         "sobol_fig",
         "taylor_response_markdown",
         "taylor_fig",
-        "pce_validation_fig",
-        "pce_sobol_fig",
-        "pce_treemap_fig",
-        "pce_sobol_markdown",
-        "pce_sobol_response_markdown",
-        "pce_sobol_radial_fig",
     ]
     for key in keys_to_reset:
         if key in st.session_state:
