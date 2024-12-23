@@ -193,15 +193,18 @@ def plot_sobol_radial(
     """
     # Check indices dimensions
     dimension = len(names)
-    if len(sobol_indices["S1"]) != dimension:
+    number_of_entries = len(sobol_indices["S1"])
+    if number_of_entries != dimension:
         raise ValueError(f"The number of variable names is {dimension} "
-                         f"but the number of first-order Sobol' indices is {len(sobol_indices["S1"])}.")
-    if len(sobol_indices["ST"]) != dimension:
+                         f"but the number of first-order Sobol' indices is {number_of_entries}.")
+    number_of_entries = len(sobol_indices["ST"])
+    if number_of_entries != dimension:
         raise ValueError(f"The number of variable names is {dimension} "
-                         f"but the number of total order Sobol' indices is {len(sobol_indices["ST"])}.")
-    if sobol_indices["S2"].shape != (dimension, dimension):
+                         f"but the number of total order Sobol' indices is {number_of_entries}.")
+    shape = sobol_indices["S2"].shape
+    if shape != (dimension, dimension):
         raise ValueError(f"The number of variable names is {dimension} "
-                         f"but the shape of second order Sobol' indices is {sobol_indices["S2"].shape}.")
+                         f"but the shape of second order Sobol' indices is {shape}.")
 
     # Check indices values (avoid inconsistent use)
     S1 = sobol_indices["S1"]
