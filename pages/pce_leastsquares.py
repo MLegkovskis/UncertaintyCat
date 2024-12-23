@@ -1,5 +1,3 @@
-# pages/pce_surrogate.py
-
 import streamlit as st
 from streamlit_ace import st_ace
 from modules.code_safety import check_code_safety

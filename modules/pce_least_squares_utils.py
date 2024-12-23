@@ -863,6 +863,7 @@ def pce_sobol(
         fig = st.session_state[fig_key]
 
     st.pyplot(fig, use_container_width=False)
+    st.markdown("**Figure 1.** Validation of the PCE on the validation sample.")
 
     # Print Sobol' indices from PCE
     sensitivityAnalysis = ot.FunctionalChaosSobolIndices(polynomialChaosResult)
@@ -887,6 +888,7 @@ def pce_sobol(
         print(pce_sobol_report_markdown)
 
     st.markdown(pce_sobol_report_markdown)
+    st.markdown("**Table 1.** Sobol' indices based on PCE.")
 
     # Plot Sobol' indices from PCE using first-order and total order indices
     fig = plot_pce_sobol(polynomialChaosResult, figsize=(4.0, 3.0))
@@ -897,6 +899,7 @@ def pce_sobol(
         fig = st.session_state[fig_key]
 
     st.pyplot(fig, use_container_width=False)
+    st.markdown("**Figure 2.** Sobol' indices based on PCE.")
 
     # Plot Sobol' indices from PCE using radial plot
     fig = plot_pce_sobol_radial(polynomialChaosResult, figsize=(3.5, 3.5))
@@ -907,6 +910,7 @@ def pce_sobol(
         fig = st.session_state[fig_key]
 
     st.pyplot(fig, use_container_width=False)
+    st.markdown("**Figure 3.** Radial plot of Sobol' indices based on PCE.")
 
     # Draw Treemap
     fig, gathered_indices, gathered_labels = draw_treemap_values(
@@ -919,6 +923,7 @@ def pce_sobol(
         fig = st.session_state[fig_key]
 
     st.pyplot(fig, use_container_width=False)
+    st.markdown("**Figure 4.** Treemap of Sobol' interaction indices based on PCE.")
 
     # Compute the PCE Treemap report
     treemap_plot_description = compute_pce_treemap_report(
@@ -967,6 +972,7 @@ Given the interaction Sobol Indices Treemap data:
 
 Please:
   - Use the title "Interpretation of the results".
+  - Use a maximum of 250 words.
   - Display all the index values as separate tables (if the tables are big - 
     feel free to show only top 10 ranked inputs).
   - First check if the metamodel is satisfactory: is the R2 score greater than 0.9?
