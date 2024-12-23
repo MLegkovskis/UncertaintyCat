@@ -98,6 +98,7 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, second_order_i
         st_value = Si['ST'][idx]  # Renamed variable
         radial_data += f"- Variable **{name}**: S1 = {s1:.4f}, ST = {st_value:.4f}\n"
 
+    radial_data += f"\nThreshold for significant second order indices is {second_order_index_threshold}."
     if not S2_df.empty:
         # Count number of significant interactions
         number_of_significant_interactions = 0

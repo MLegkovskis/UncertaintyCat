@@ -247,7 +247,7 @@ def plot_sobol_radial(
             idx_i = np.where(names == filtered_names[i])[0][0]
             idx_j = np.where(names == filtered_names[j])[0][0]
             S2_value = S2[idx_i, idx_j]
-            if np.isnan(S2_value) or abs(S2_value) < sensitivity_threshold:
+            if np.isnan(S2_value) or S2_value < sensitivity_threshold:
                 S2_value = 0.0
             S2_matrix[i, j] = S2_value
 
@@ -270,10 +270,11 @@ def plot_sobol_radial(
 
     # Then plot the S1 circles (inner circles)
     for loc, s1_val in zip(filtered_locs, S1):
-        s = s1_val * max_marker_size**2
-        if verbose:
-            print(f"loc = {loc}, s1_val = {s1_val}, s = {s}")
-        ax.scatter(loc, 1, s=s, c="black", edgecolors="black", zorder=3)
+        if s1_val > sensitivity_threshold:
+            s = s1_val * max_marker_size**2
+            if verbose:
+                print(f"loc = {loc}, s1_val = {s1_val}, s = {s}")
+            ax.scatter(loc, 1, s=s, c="black", edgecolors="black", zorder=3)
 
     # Plot S2 interactions
     if verbose:
