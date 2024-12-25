@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from SALib.sample import sobol
 from SALib.analyze import sobol as sobol_analyze
 import streamlit as st  # Added import statement
-from math import pi
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.statistical_utils import (
