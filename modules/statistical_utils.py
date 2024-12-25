@@ -367,3 +367,24 @@ def plot_sobol_radial(
     ax.legend(handles=legend_elements, loc="upper left", bbox_to_anchor=(1.0, 1.0))
     ax.set_title(f"Sobol Indices.\nInsignificant: {insignificant_names}")
     return
+
+
+def get_radial_plot_description():
+    description = f"""
+**Radial Plot Description**
+The Sobol Indices Radial Plot is a polar plot where each input variable is placed at equal angular intervals around a circle. The elements of the plot are:
+
+- **Variables**: Each input variable is positioned at a specific angle on the circle, equally spaced from others.
+
+- **Circles**:
+    - The **outer circle** (white fill) represents the **total-order Sobol' index (ST)** for each variable.
+    - The **inner circle** (black fill) represents the **first-order Sobol' index (S1)**.
+    - The **area of the circles** is proportional to the magnitude of the respective Sobol' indices.
+
+- **Lines**:
+    - Lines connecting variables represent **second-order Sobol' indices (S2)**.
+    - The **area of the lines** corresponds to the magnitude of the interaction between the two variables; thicker lines indicate stronger interactions.
+
+This plot visually conveys both the individual effects of variables and their interactions, aiding in understanding the model's sensitivity to input uncertainties.
+"""
+    return description
