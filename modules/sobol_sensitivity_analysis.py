@@ -1,16 +1,15 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from SALib.sample import sobol
-from SALib.analyze import sobol as sobol_analyze
 import streamlit as st  # Added import statement
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.statistical_utils import (
-    get_bounds_for_salib,
     plot_sobol_radial,
     get_radial_plot_description,
 )
+import openturns as ot
+from modules.openturns_utils import get_ot_distribution, get_ot_model, ot_point_to_list
 
 
 def sobol_sensitivity_analysis(
@@ -19,25 +18,52 @@ def sobol_sensitivity_analysis(
     problem,
     model_code_str,
     second_order_index_threshold=0.05,
+    confidence_level=0.95,
     language_model="groq",
 ):
-    # Ensure N is a power of 2
-    N_power = int(np.ceil(np.log2(N)))
-    N = int(2**N_power)
+    # Get the input distribution and the model
+    distribution = get_ot_distribution(problem)
+    model_g = get_ot_model(model, problem)
 
-    # Generate bounds for SALib
-    problem_for_salib = get_bounds_for_salib(problem)
+    # Compute indices
+    computeSecondOrder = True
+    sie = ot.SobolIndicesExperiment(distribution, N, computeSecondOrder)
+    inputDesignSobol = sie.generate()
+    inputNames = distribution.getDescription()
+    inputDesignSobol.setDescription(inputNames)
+    inputDesignSobol.getSize()
+    outputDesignSobol = model_g(inputDesignSobol)
 
-    # Generate samples using Sobol' sequence
-    param_values = sobol.sample(problem_for_salib, N, calc_second_order=True)
-
-    # Evaluate the model
-    Y = np.array([model(X) for X in param_values]).flatten()
+    # %%
+    sensitivityAnalysis = ot.SaltelliSensitivityAlgorithm(
+        inputDesignSobol, outputDesignSobol, N
+    )
+    sensitivityAnalysis.setConfidenceLevel(confidence_level)
+    S1 = sensitivityAnalysis.getFirstOrderIndices()
+    ST = sensitivityAnalysis.getTotalOrderIndices()
+    S2 = sensitivityAnalysis.getSecondOrderIndices()
+    S1 = ot_point_to_list(S1)
+    ST = ot_point_to_list(ST)
+    S2 = np.array(S2)
+    # Confidence intervals (supposed to be approximately symmetric)
+    dimension = distribution.getDimension()
+    S1_interval = sensitivityAnalysis.getFirstOrderIndicesInterval()
+    lower_bound = S1_interval.getLowerBound()
+    upper_bound = S1_interval.getUpperBound()
+    S1_conf = [(upper_bound[i] - lower_bound[i]) / 2.0 for i in range(dimension)]
+    ST_interval = sensitivityAnalysis.getTotalOrderIndicesInterval()
+    lower_bound = ST_interval.getLowerBound()
+    upper_bound = ST_interval.getUpperBound()
+    ST_conf = [(upper_bound[i] - lower_bound[i]) / 2.0 for i in range(dimension)]
 
     # Perform Sobol analysis
-    Si = sobol_analyze.analyze(
-        problem_for_salib, Y, calc_second_order=True, print_to_console=False
-    )
+    Si = {
+        "S1": np.array(S1),
+        "ST": np.array(ST),
+        "S2": np.array(S2),
+        "S1_conf": S1_conf,
+        "ST_conf": ST_conf,
+    }
 
     # Create DataFrame for indices
     Si_filter = {k: Si[k] for k in ["ST", "ST_conf", "S1", "S1_conf"]}
@@ -100,8 +126,6 @@ def sobol_sensitivity_analysis(
     S2_df = pd.DataFrame(S2_indices)
 
     # Convert DataFrames to Markdown tables
-    first_order_md_table = first_order_df.to_markdown(index=False, floatfmt=".4f")
-    total_order_md_table = total_order_df.to_markdown(index=False, floatfmt=".4f")
     if not S2_df.empty:
         second_order_md_table = S2_df
     else:
@@ -200,7 +224,6 @@ Please:
   - Provide an interpretation of the Sobol Indices Radial Plot based on the description and numerical data.
   - Reference the Sobol indices tables in your discussion.
 """
-    print(prompt)
 
     response_key = "sobol_response_markdown"
     fig_key = "sobol_fig"
