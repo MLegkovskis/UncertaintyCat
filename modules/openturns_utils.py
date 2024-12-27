@@ -194,45 +194,44 @@ class SuperChaosResult():
     
     def toPython(self):
         coefficients = self.functionalChaosResult.getCoefficients()
-        code = ""
-        code = "from openturns import *\n"
-        code += "def function_of_interest(X):\n"
-        code += "    # Define the distribution\n"
+        code = "from openturns import *\n\n"
+        code += "# Define the distribution\n"
         # Serialize the input distribution
         distribution = self.functionalChaosResult.getDistribution()
         superDistribution = SuperDistribution(distribution)
-        distributionCode = superDistribution.toPython("distribution", "    ")
+        distributionCode = superDistribution.toPython("distribution", "")
         code += f"{distributionCode}"
         # Get the basis
         indices = self.functionalChaosResult.getIndices()
-        code += f"    # Set the indices\n"
-        code += f"    indices = {indices}\n"
+        code += f"# Set the indices\n"
+        code += f"indices = {indices}\n"
         # Serialize the coefficients
         coefficients = self.functionalChaosResult.getCoefficients()
         coeffCode = SuperSample(coefficients).toPython()
-        code += "    # Define the coefficients\n"
-        code += f"    coefficients = {coeffCode}\n"
-        metamodelCode = """    # Set the basis
-    inputDimension = distribution.getDimension()
-    polynomials = PolynomialFamilyCollection(inputDimension)
-    for i in range(inputDimension):
-        marginalPolynomial = StandardDistributionPolynomialFactory(marginals[i])
-        polynomials[i] = marginalPolynomial
-    enumerate = LinearEnumerateFunction(inputDimension)
-    basis = OrthogonalProductPolynomialFactory(polynomials, enumerate)
-    # Set the function collection
-    function_collection = []
-    numberOfIndices = len(indices)
-    for i in range(numberOfIndices):
-        function_collection.append(basis.build(indices[i]))
-    # Set the composed metamodel, set the transformation, create the metamodel
-    composedMetaModel = DualLinearCombinationFunction(function_collection, coefficients)
-    measure = basis.getMeasure()
-    transformation = DistributionTransformation(distribution, measure)
-    metaModel = ComposedFunction(composedMetaModel, transformation)
+        code += "# Define the coefficients\n"
+        code += f"coefficients = {coeffCode}\n"
+        code += """# Set the basis
+inputDimension = distribution.getDimension()
+polynomials = PolynomialFamilyCollection(inputDimension)
+for i in range(inputDimension):
+    marginalPolynomial = StandardDistributionPolynomialFactory(marginals[i])
+    polynomials[i] = marginalPolynomial
+enumerate = LinearEnumerateFunction(inputDimension)
+basis = OrthogonalProductPolynomialFactory(polynomials, enumerate)
+# Set the function collection
+function_collection = []
+numberOfIndices = len(indices)
+for i in range(numberOfIndices):
+    function_collection.append(basis.build(indices[i]))
+# Set the composed metamodel, set the transformation, create the metamodel
+composedMetaModel = DualLinearCombinationFunction(function_collection, coefficients)
+measure = basis.getMeasure()
+transformation = DistributionTransformation(distribution, measure)
+metaModel = ComposedFunction(composedMetaModel, transformation)
+
+def function_of_interest(X):
     # Evaluate the metamodel
     Y = metaModel(X)
+    return [Y[0]]
 """
-        code += metamodelCode
-        code += "    return [Y[0]]\n"
         return code
