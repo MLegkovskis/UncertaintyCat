@@ -133,7 +133,6 @@ def get_constant_value(distribution):
     else:
         raise ValueError(f"Unsupported distribution type: {dist_type}")
 
-
 def clip_01(input_value):
     """
     Project the value into the [0, 1] interval
@@ -391,3 +390,18 @@ The Sobol Indices Radial Plot is a polar plot where each input variable is place
 This plot visually conveys both the individual effects of variables and their interactions, aiding in understanding the model's sensitivity to input uncertainties.
 """
     return description
+
+def problem_to_python_code(problem):
+    distributions_formatted = ',\n        '.join(
+        [f"{dist}" for dist in problem['distributions']]
+    )
+
+    code = f'''problem = {{
+    'num_vars': {problem['num_vars']},
+    'names': {problem['names']},
+    'distributions': [
+        {distributions_formatted}
+    ]
+}}
+'''
+    return code

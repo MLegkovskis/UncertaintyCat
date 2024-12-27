@@ -9,10 +9,10 @@ import squarify
 import openturns as ot
 import openturns.viewer as otv
 import openturns.experimental as otexp
-from modules.openturns_utils import get_ot_distribution, get_ot_model
+from modules.openturns_utils import get_ot_distribution, get_ot_model, SuperChaosResult
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
-
+from modules.statistical_utils import problem_to_python_code
 
 def plot_pce_sobol_radial(
     polynomialChaosResult,
@@ -1015,6 +1015,31 @@ Please:
 
     st.markdown(response_markdown)
 
+    # --- Generate the surrogate model code ---        
+    #
+    superPCE = SuperChaosResult(polynomialChaosResult)
+    print("Python code:")
+    pce_code = superPCE.toPython()
+    print(pce_code)
+
+    problem_code = problem_to_python_code(problem)
+
+    # Generate the function code
+    pce_least_squares_code = f'''
+{pce_code}
+
+# Problem definition
+{problem_code}
+model = function_of_interest
+'''
+
+    st.session_state.pce_least_squares_code = pce_least_squares_code
+    st.session_state.pce_least_squares_generated = True
+    st.success("PCE Surrogate Model generated successfully.")
+
+    st.markdown("### Surrogate Model Code")
+    st.info("Please copy the surrogate model code below and paste it into the main app's code editor.")
+    st.code(st.session_state.pce_least_squares_code, language='python')
 
 def reset_pce_least_squares_results():
     """Resets the analysis results in session state."""
