@@ -6,7 +6,8 @@ from modules.morris_sensitivity_analysis import run_morris_analysis_for_dimensio
 from modules.api_utils import call_groq_api
 from modules.statistical_utils import get_constant_value
 from modules.code_safety import check_code_safety
-import numpy as np  # Commonly used library
+from modules.model_options_list import model_options
+import numpy as np
 import importlib
 
 st.set_page_config(layout="wide")
@@ -65,17 +66,6 @@ def extract_imports_from_code(code_str):
     except Exception as e:
         st.error(f"Error processing imports: {e}")
     return imports
-
-# Dropdown to select model file
-# Dropdown to select model file
-model_options = [
-    'Beam.py', 'Bike_Speed.py', 'Borehole_Model.py', 'Chaboche_Model.py', 'Chemical_Reactor.py',
-    'Cylinder_heating.py', 'Damped_Oscillator.py', 'Epidemic_Model.py',
-    'FloodModel.py', 'Ishigami.py', 'Logistic_Model.py', 'Material_Stress.py', 'Morris_Function.py',
-    'Portfolio_Risk.py', 'Rocket_Trajectory.py', 'Stiffened_Panel.py', 'Solar_Panel_Output.py',
-    'Truss_Model.py', 'Tube_Deflection.py', 'Undamped_Oscillator.py',
-    'Viscous_Freefall.py', 'Wind_Turbine_Power.py'
-]
 
 model_file = st.selectbox(
     'Select a Model File:',
