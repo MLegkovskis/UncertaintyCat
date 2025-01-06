@@ -13,6 +13,11 @@ from modules.openturns_utils import get_ot_distribution, get_ot_model, SuperChao
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.statistical_utils import problem_to_python_code
+from modules.statistical_utils import (
+    plot_sobol_radial,
+    get_radial_plot_description,
+)
+
 
 def plot_pce_sobol_radial(
     polynomialChaosResult,
@@ -81,10 +86,6 @@ def plot_pce_sobol_radial(
     names = distribution.getDescription()
     pcesa = ot.FunctionalChaosSobolIndices(polynomialChaosResult)
 
-    # Initialization
-    n = len(names)
-    locs = np.linspace(0, 2 * np.pi, n, endpoint=False)
-
     # Compute the first-order Sobol' indices
     firstSobolIndices = []
     for i in range(dimension):
@@ -100,105 +101,18 @@ def plot_pce_sobol_radial(
         totalSobolIndices.append(pcesa.getSobolTotalIndex(i))
 
     Si = {
-        "S1": firstSobolIndices,
-        "S2": secondSobolIndices,
-        "ST": totalSobolIndices,
+        "S1": np.array(firstSobolIndices),
+        "S2": np.array(secondSobolIndices),
+        "ST": np.array(totalSobolIndices),
     }
 
     # Get indices
-    ST = np.abs(Si["ST"])
-    S1 = np.abs(Si["S1"])
     names = np.array(names)
-
-    # Filter out insignificant indices
-    significant = ST > sensitivity_threshold
-    filtered_names = names[significant]
-    filtered_locs = locs[significant]
-    ST = ST[significant]
-    S1 = S1[significant]
-
-    # Prepare S2 matrix
-    S2_matrix = np.zeros((len(filtered_names), len(filtered_names)))
-    for i in range(len(filtered_names)):
-        for j in range(i + 1, len(filtered_names)):
-            idx_i = np.where(names == filtered_names[i])[0][0]
-            idx_j = np.where(names == filtered_names[j])[0][0]
-            S2_value = Si["S2"][idx_i, idx_j]
-            if np.isnan(S2_value) or abs(S2_value) < sensitivity_threshold:
-                S2_value = 0.0
-            S2_matrix[i, j] = S2_value
 
     # Plotting
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1, projection="polar")
-    ax.grid(False)
-    ax.spines["polar"].set_visible(False)
-    ax.set_xticks(filtered_locs)
-    ax.set_xticklabels(filtered_names)
-    ax.set_yticklabels([])
-    ax.set_ylim(0, 1.5)
-
-    # Plot ST and S1 using ax.scatter
-
-    # First plot the ST circles (outer circles)
-    for loc, st_val in zip(filtered_locs, ST):
-        s = st_val * max_marker_size**2
-        if verbose:
-            print(f"loc = {loc}, st_val = {st_val}, s = {s}")
-        ax.scatter(loc, 1, s=s, c="white", edgecolors="black", zorder=2)
-
-    # Then plot the S1 circles (inner circles)
-    for loc, s1_val in zip(filtered_locs, S1):
-        s = s1_val * max_marker_size**2
-        if verbose:
-            print(f"loc = {loc}, s1_val = {s1_val}, s = {s}")
-        ax.scatter(loc, 1, s=s, c="black", edgecolors="black", zorder=3)
-
-    # Plot S2 interactions
-    if verbose:
-        print("S2")
-        print(S2_matrix)
-    for i in range(len(filtered_names)):
-        for j in range(i + 1, len(filtered_names)):
-            if S2_matrix[i, j] > 0:
-                lw = S2_matrix[i, j] * max_marker_size
-                if verbose:
-                    print(f"S2_matrix[i, j] = {S2_matrix[i, j]}, lw = {lw}")
-                ax.plot(
-                    [filtered_locs[i], filtered_locs[j]],
-                    [1, 1],
-                    c="darkgray",
-                    lw=lw,
-                    zorder=1,
-                )
-
-    # Legend
-    legend_elements = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            label="ST",
-            markerfacecolor="white",
-            markeredgecolor="black",
-            markersize=15,
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            label="S1",
-            markerfacecolor="black",
-            markeredgecolor="black",
-            markersize=15,
-        ),
-        Line2D([0], [0], color="darkgray", lw=3, label="S2"),
-    ]
-    ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.0, 1.0))
-    ax.set_title("Sobol Indices Radial Plot")
-    plt.tight_layout()
+    plot_sobol_radial(names, Si, ax)
     return fig
 
 
@@ -1015,7 +929,7 @@ Please:
 
     st.markdown(response_markdown)
 
-    # --- Generate the surrogate model code ---        
+    # --- Generate the surrogate model code ---
     #
     superPCE = SuperChaosResult(polynomialChaosResult)
     print("Python code:")
@@ -1025,21 +939,24 @@ Please:
     problem_code = problem_to_python_code(problem)
 
     # Generate the function code
-    pce_least_squares_code = f'''
+    pce_least_squares_code = f"""
 {pce_code}
 
 # Problem definition
 {problem_code}
 model = function_of_interest
-'''
+"""
 
     st.session_state.pce_least_squares_code = pce_least_squares_code
     st.session_state.pce_least_squares_generated = True
     st.success("PCE Surrogate Model generated successfully.")
 
     st.markdown("### Surrogate Model Code")
-    st.info("Please copy the surrogate model code below and paste it into the main app's code editor.")
-    st.code(st.session_state.pce_least_squares_code, language='python')
+    st.info(
+        "Please copy the surrogate model code below and paste it into the main app's code editor."
+    )
+    st.code(st.session_state.pce_least_squares_code, language="python")
+
 
 def reset_pce_least_squares_results():
     """Resets the analysis results in session state."""
