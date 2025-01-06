@@ -189,9 +189,9 @@ def plot_sobol_radial(
         The list of input variable names.
     sobol_indices : dict
         The sobol indices.
-        sobol_indices["S1"] is the list of first-order Sobol' indices.
-        sobol_indices["ST"] is the list of total order Sobol' indices.
-        sobol_indices["S2"] is the matrix S of second order Sobol' indices.
+        sobol_indices["S1"] is the 1D np.array of first-order Sobol' indices.
+        sobol_indices["ST"] is the 1D np.array of total order Sobol' indices.
+        sobol_indices["S2"] is the 2D np.array of second order Sobol' indices.
         We expect that S[i, j] is the second order index of variables (i, j)
         for i in {0, ..., dimension - 1} and i in {i + 1, ..., dimension - 1}.
     ax : matplotlib.axis
@@ -365,7 +365,10 @@ def plot_sobol_radial(
         Line2D([0], [0], color="darkgray", lw=3, label="S2"),
     ]
     ax.legend(handles=legend_elements, loc="upper left", bbox_to_anchor=(1.0, 1.0))
-    ax.set_title(f"Sobol Indices.\nInsignificant: {insignificant_names}")
+    plot_title = "Sobol Indices"
+    if len(insignificant_names) > 0:
+        plot_title += f"\nInsignificant: {insignificant_names}"
+    ax.set_title(plot_title)
     return
 
 
