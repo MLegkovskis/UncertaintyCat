@@ -37,7 +37,7 @@ Any deviation from these rules (e.g., using logical words in equations, showing 
 """
     return base_prompt
 
-def get_markdown_from_code(code_snippet, model_name='llama-3.3-70b-versatile', max_attempts=5):    
+def get_markdown_from_code(code_snippet, model_name='gemma2-9b-it', max_attempts=3):    
     client = Groq(api_key=os.getenv('GROQ_API_KEY'))
     
     # Initial prompt

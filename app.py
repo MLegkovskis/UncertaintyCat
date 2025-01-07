@@ -108,7 +108,7 @@ with col_md:
             # Get the markdown interpretation
             markdown_output = get_markdown_from_code(
                 st.session_state.code_editor,
-                'llama-3.3-70b-versatile'  # Ensure this matches the model used
+                'gemma2-9b-it'  # Ensure this matches the model used
             )
             st.session_state.markdown_output = markdown_output
             st.session_state.code_updated = False  # Reset the flag
