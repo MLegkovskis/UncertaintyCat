@@ -1,6 +1,7 @@
 import streamlit as st
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
+from modules.forbidden_patterns import forbidden_patterns
 
 def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
     # Prepare the input parameters and their uncertainties
@@ -12,46 +13,6 @@ def model_understanding(model, problem, model_code_str, is_pce_used=False, origi
 
     # Format the model code for inclusion in the prompt
     model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
-
-    forbidden_patterns = [
-        # Logical/conditional words in the equations:
-        " otherwise",
-        " or ",
-        # Code-like inequalities:
-        ">=",
-        "<=",
-
-        # Textual logical connectors in LaTeX:
-        "\\text{and}",
-
-        # Direct Python references:
-        "import ",
-        "def ",
-        "np.",
-        "fsolve",
-        "python code",
-        "the code above",
-
-        # Complex LaTeX environments (align or others):
-        "\\begin{align",
-        "\\end{align",
-        "\\begin{align*}",
-        "\\end{align*}",
-
-        # Raw HTML tags:
-        "<div>",
-        "</div>",
-        "<table>",
-        "</table>",
-        "<html>",
-        "</html>",
-        "<body>",
-        "</body>",
-
-        # Markdown code blocks:
-        "```",
-        "`"
-    ]
 
     max_attempts = 5
 

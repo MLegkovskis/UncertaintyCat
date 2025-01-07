@@ -1,3 +1,7 @@
+import os
+from groq import Groq
+from modules.forbidden_patterns import forbidden_patterns
+
 def generate_refined_prompt(code_snippet, additional_instructions=""):
     """
     Generate a prompt for the model, with optional additional instructions injected.
@@ -33,50 +37,7 @@ Any deviation from these rules (e.g., using logical words in equations, showing 
 """
     return base_prompt
 
-def get_markdown_from_code(code_snippet, model_name='llama-3.3-70b-versatile', max_attempts=5):
-    import os
-    from groq import Groq
-
-    forbidden_patterns = [
-        # Logical/conditional words in the equations:
-        " otherwise",
-        " or ",
-        # Code-like inequalities:
-        ">=",
-        "<=",
-
-        # Textual logical connectors in LaTeX:
-        "\\text{and}",
-
-        # Direct Python references:
-        "import ",
-        "def ",
-        "np.",
-        "fsolve",
-        "python code",
-        "the code above",
-
-        # Complex LaTeX environments (align or others):
-        "\\begin{align",
-        "\\end{align",
-        "\\begin{align*}",
-        "\\end{align*}",
-
-        # Raw HTML tags:
-        "<div>",
-        "</div>",
-        "<table>",
-        "</table>",
-        "<html>",
-        "</html>",
-        "<body>",
-        "</body>",
-
-        # Markdown code blocks:
-        "```",
-        "`"
-    ]
-    
+def get_markdown_from_code(code_snippet, model_name='llama-3.3-70b-versatile', max_attempts=5):    
     client = Groq(api_key=os.getenv('GROQ_API_KEY'))
     
     # Initial prompt

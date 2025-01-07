@@ -13,6 +13,7 @@ from modules.ml_analysis import ml_analysis
 from modules.markdown_utils import get_markdown_from_code
 from modules.instructions import show_instructions
 from modules.code_safety import check_code_safety
+from modules.model_options_list import model_options
 from modules.model_validation import (
     validate_problem_structure,
     get_human_friendly_error_explanation,
@@ -50,16 +51,6 @@ def load_model_code(selected_model):
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return ''
-
-# Dropdown to select model file
-model_options = [
-    'Beam.py', 'Bike_Speed.py', 'Borehole_Model.py', 'Chaboche_Model.py', 'Chemical_Reactor.py',
-    'Cylinder_heating.py', 'Damped_Oscillator.py', 'Epidemic_Model.py',
-    'FloodModel.py', 'Ishigami.py', 'Logistic_Model.py', 'Material_Stress.py', 'Morris_Function.py',
-    'Portfolio_Risk.py', 'Rocket_Trajectory.py', 'Stiffened_Panel.py', 'Solar_Panel_Output.py',
-    'Truss_Model.py', 'Tube_Deflection.py', 'Undamped_Oscillator.py',
-    'Viscous_Freefall.py', 'Wind_Turbine_Power.py'
-]
 
 model_file = st.selectbox(
     'Select a Model File or Enter your own Model:',
