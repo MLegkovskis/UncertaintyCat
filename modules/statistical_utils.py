@@ -152,7 +152,7 @@ def clip_01(input_value):
 
 
 def plot_sobol_radial(
-    names,
+    variable_names,
     sobol_indices,
     ax,
     sensitivity_threshold=0.01,
@@ -184,7 +184,7 @@ def plot_sobol_radial(
 
     Parameters
     ----------
-    names : list(str)
+    variable_names : list(str)
         The list of input variable names.
     sobol_indices : dict
         The sobol indices.
@@ -220,7 +220,7 @@ def plot_sobol_radial(
       147:212–223, 2014.
     """
     # Check indices dimensions
-    dimension = len(names)
+    dimension = len(variable_names)
     number_of_entries = len(sobol_indices["S1"])
     if number_of_entries != dimension:
         raise ValueError(
@@ -266,13 +266,13 @@ def plot_sobol_radial(
             S2[i, j] = clip_01(S2[i, j])
 
     # Get indices
-    names = np.array(names)
+    variable_names = np.array(variable_names)
 
     # Filter out insignificant indices
     significant = ST > sensitivity_threshold
     insignificant = ST <= sensitivity_threshold
-    significant_names = names[significant]
-    insignificant_names = names[insignificant]
+    significant_names = variable_names[significant]
+    insignificant_names = variable_names[insignificant]
     significant_dimension = len(significant_names)
     significant_angles = np.linspace(
         0, 2 * np.pi, significant_dimension, endpoint=False
@@ -285,8 +285,8 @@ def plot_sobol_radial(
     S2_matrix = np.zeros((len(significant_names), len(significant_names)))
     for i in range(len(significant_names)):
         for j in range(i + 1, len(significant_names)):
-            idx_i = np.where(names == significant_names[i])[0][0]
-            idx_j = np.where(names == significant_names[j])[0][0]
+            idx_i = np.where(variable_names == significant_names[i])[0][0]
+            idx_j = np.where(variable_names == significant_names[j])[0][0]
             S2_value = S2[idx_i, idx_j]
             if np.isnan(S2_value) or S2_value < sensitivity_threshold:
                 S2_value = 0.0
@@ -405,3 +405,33 @@ def problem_to_python_code(problem):
 }}
 '''
     return code
+
+def describe_radial_plot(Si, variable_names, sensitivity_threshold=0.01):
+    radial_data = ""
+    radial_data += f"\nThreshold for significant Sobol' indices is {sensitivity_threshold}.\n"
+    for i, name in enumerate(variable_names):
+        s1_value = Si["S1"][i]
+        st_value = Si["ST"][i]
+        radial_data += f"- Variable **{name}**: S1 = {s1_value:.4f}, ST = {st_value:.4f}\n"
+
+    # Count number of significant interactions
+    number_of_significant_interactions = 0
+    dimension = len(variable_names)
+    for i in range(dimension):
+        for j in range(i + 1, dimension):
+            s2_value = Si["S2"][i, j]
+            if s2_value > sensitivity_threshold:
+                number_of_significant_interactions += 1
+                radial_data += f"- Interaction between **{variable_names[i]}** and **{variable_names[j]}**: S2 = {s2_value:.4f}\n"
+
+    if number_of_significant_interactions == 0:
+        radial_data += "\nNo significant second-order interactions detected."
+
+    # Description of the radial plot with numerical data
+    radial_plot_description = f"""
+{get_radial_plot_description()}
+
+Numerical data for the plot:
+{radial_data}
+"""
+    return radial_plot_description

@@ -6,7 +6,7 @@ from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.statistical_utils import (
     plot_sobol_radial,
-    get_radial_plot_description,
+    describe_radial_plot
 )
 import openturns as ot
 from modules.openturns_utils import get_ot_distribution, get_ot_model, ot_point_to_list
@@ -17,9 +17,10 @@ def sobol_sensitivity_analysis(
     model,
     problem,
     model_code_str,
-    second_order_index_threshold=0.05,
+    sensitivity_threshold=0.05,
     confidence_level=0.95,
     language_model="groq",
+    verbose=True,
 ):
     # Get the input distribution and the model
     distribution = get_ot_distribution(problem)
@@ -131,42 +132,8 @@ def sobol_sensitivity_analysis(
     else:
         second_order_md_table = "No significant second-order interactions detected."
 
-    # Prepare data placeholders for radial plot interpretation
-    radial_data = ""
-    for idx, name in enumerate(variable_names):
-        s1 = Si["S1"][idx]
-        st_value = Si["ST"][idx]  # Renamed variable
-        radial_data += f"- Variable **{name}**: S1 = {s1:.4f}, ST = {st_value:.4f}\n"
-
-    radial_data += f"\nThreshold for significant second order indices is {second_order_index_threshold}."
-    if not S2_df.empty:
-        # Count number of significant interactions
-        number_of_significant_interactions = 0
-        for _, row in S2_df.iterrows():
-            s2 = row["Second-order Sobol Index"]
-            if s2 > second_order_index_threshold:
-                number_of_significant_interactions += 1
-        # Print only significant interactions
-        if number_of_significant_interactions == 0:
-            radial_data += "\nThere is no significant second-order interactions.\n"
-        else:
-            radial_data += "\nSignificant second-order interactions:\n"
-            for _, row in S2_df.iterrows():
-                var1 = row["Variable 1"]
-                var2 = row["Variable 2"]
-                s2 = row["Second-order Sobol Index"]
-                if s2 > second_order_index_threshold:
-                    radial_data += f"- Interaction between **{var1}** and **{var2}**: S2 = {s2:.4f}\n"
-    else:
-        radial_data += "\nNo significant second-order interactions detected."
-
     # Description of the radial plot with numerical data
-    radial_plot_description = f"""
-{get_radial_plot_description()}
-
-Numerical data for the plot:
-{radial_data}
-"""
+    radial_plot_description = describe_radial_plot(Si, variable_names, sensitivity_threshold)
 
     # Use the provided model_code_str directly
     model_code = model_code_str
@@ -211,7 +178,7 @@ The following second-order Sobol' indices were identified:
 
 {second_order_md_table}
 
-An interpretation of the Sobol Indices Radial Plot is provided:
+Given a description of the Sobol Indices Radial Plot data:
 
 {radial_plot_description}
 
@@ -224,6 +191,9 @@ Please:
   - Provide an interpretation of the Sobol Indices Radial Plot based on the description and numerical data.
   - Reference the Sobol indices tables in your discussion.
 """
+    if verbose:
+        print("prompt")
+        print(prompt)
 
     response_key = "sobol_response_markdown"
     fig_key = "sobol_fig"
