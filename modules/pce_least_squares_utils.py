@@ -15,16 +15,16 @@ from modules.common_prompt import RETURN_INSTRUCTION
 from modules.statistical_utils import problem_to_python_code
 from modules.statistical_utils import (
     plot_sobol_radial,
-    get_radial_plot_description,
+    describe_radial_plot
 )
-
+import pickle
 
 def plot_pce_sobol_radial(
     polynomialChaosResult,
+    variable_names,
     sensitivity_threshold=0.01,
-    max_marker_size=70.0,
+    max_marker_radius=70.0,
     figsize=(3.5, 3.5),
-    verbose=False,
 ):
     """
     Plot Sobol indices on a radial plot.
@@ -60,12 +60,10 @@ def plot_pce_sobol_radial(
         The PCE.
     sensitivity_threshold : float, in [0, 1]
         The sensitivity_threshold on the sensitivity indices.
-    max_marker_size : float, > 0
-        The marker size in points.
+    max_marker_radius : float, > 0
+        The marker radius size in points.
     figsize : list(floats), >0
         The figure size.
-    verbose : bool
-        If True, print intermediate messages.
 
     Returns
     -------
@@ -112,8 +110,12 @@ def plot_pce_sobol_radial(
     # Plotting
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1, projection="polar")
-    plot_sobol_radial(names, Si, ax)
-    return fig
+    plot_sobol_radial(names, Si, ax, sensitivity_threshold=sensitivity_threshold, max_marker_radius=max_marker_radius)
+
+    # Description of the radial plot with numerical data
+    radial_plot_description = describe_radial_plot(Si, variable_names, sensitivity_threshold)
+
+    return fig, radial_plot_description
 
 
 # %%
@@ -816,7 +818,7 @@ def pce_sobol(
     st.markdown("**Figure 2.** Sobol' indices based on PCE.")
 
     # Plot Sobol' indices from PCE using radial plot
-    fig = plot_pce_sobol_radial(polynomialChaosResult, figsize=(3.5, 3.5))
+    fig, radial_plot_description = plot_pce_sobol_radial(polynomialChaosResult, problem["names"], figsize=(3.5, 3.5))
     fig_key = "pce_sobol_radial_fig"
     if fig_key not in st.session_state:
         st.session_state[fig_key] = fig
@@ -884,6 +886,10 @@ Given the interaction Sobol Indices Treemap data:
 
 {treemap_plot_description}
 
+Given a description of the Sobol Indices Radial Plot data:
+
+{radial_plot_description}
+
 Please:
   - Use the title "Interpretation of the results".
   - Use a maximum of 250 words.
@@ -930,33 +936,44 @@ Please:
     st.markdown(response_markdown)
 
     # --- Generate the surrogate model code ---
-    #
+    if verbose:
+        print("Generate the surrogate model code...")
     superPCE = SuperChaosResult(polynomialChaosResult)
-    print("Python code:")
     pce_code = superPCE.toPython()
-    print(pce_code)
+    if verbose:
+        print("Python code:")
+        print(pce_code)
 
     problem_code = problem_to_python_code(problem)
 
     # Generate the function code
-    pce_least_squares_code = f"""
-{pce_code}
+    pce_least_squares_code = f"""{pce_code}
 
 # Problem definition
 {problem_code}
 model = function_of_interest
 """
 
-    st.session_state.pce_least_squares_code = pce_least_squares_code
+    # Save data
+    pce_least_squares_save_Python(pce_least_squares_code)
+    # pce_least_squares_save_Pickle(distribution, metamodel)  # Not necessary
+
+    # Set the flag
     st.session_state.pce_least_squares_generated = True
     st.success("PCE Surrogate Model generated successfully.")
 
-    st.markdown("### Surrogate Model Code")
-    st.info(
-        "Please copy the surrogate model code below and paste it into the main app's code editor."
-    )
-    st.code(st.session_state.pce_least_squares_code, language="python")
+    return
 
+@st.fragment()
+def pce_least_squares_save_Python(pce_least_squares_code):
+    # Save the Python data
+    st.download_button("Download Python surrogate", data=pce_least_squares_code, file_name="pce_surrogate.py")
+
+@st.fragment()
+def pce_least_squares_save_Pickle(distribution, metamodel):
+    # Save the Pickle data
+    surrogate_model_data = [distribution, metamodel]
+    st.download_button("Download Pickle surrogate", data=pickle.dumps(surrogate_model_data), file_name="pce_surrogate.pkl")
 
 def reset_pce_least_squares_results():
     """Resets the analysis results in session state."""
@@ -971,3 +988,4 @@ def reset_pce_least_squares_results():
     for key in keys_to_reset:
         if key in st.session_state:
             del st.session_state[key]
+    return

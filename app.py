@@ -52,11 +52,28 @@ def load_model_code(selected_model):
         st.error(f"Error loading model: {e}")
         return ''
 
-model_file = st.selectbox(
-    'Select a Model File or Enter your own Model:',
-    model_options,
-    index=model_options.index(get_session_state('model_file'))
-)
+# Split the page into two columns to define the model: from the list or from a file
+select_code_column, load_code_column = st.columns(2)
+
+with select_code_column:
+    model_file = st.selectbox(
+        'Select a Model File or Enter your own Model:',
+        model_options,
+        index=model_options.index(get_session_state('model_file'))
+    )
+
+with load_code_column:
+    uploaded_file = st.file_uploader("or Choose a Python model file")
+    if uploaded_file is not None:
+        # To convert to a string based IO:
+        code = uploaded_file.getvalue().decode("utf-8")
+        st.session_state.code_updated = True
+        st.session_state.code_editor = code
+        # Reset flags and results when code changes
+        st.session_state.run_simulation = False
+        st.session_state.simulation_results = None
+        st.session_state.markdown_output = None
+        reset_analysis_results()  # Reset analyses results
 
 # --- Code Editor and Markdown Rendering ---
 

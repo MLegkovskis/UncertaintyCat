@@ -201,4 +201,3 @@ if run_pce_button:
                 language_model=selected_language_model,
                 basis_size_factor=basis_size_factor,
             )
-            st.success("PCE Surrogate Model generated successfully.")
