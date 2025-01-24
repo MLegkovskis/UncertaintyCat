@@ -1,6 +1,5 @@
 import os
 import streamlit as st
-import random
 
 # Import your modules
 from modules.monte_carlo import monte_carlo_simulation
@@ -26,7 +25,6 @@ from modules.session_state_utils import (
     reset_analysis_results,
     get_session_state,
 )
-
 
 ###############################################################################
 # 1) SURROGATE DETECTION & SNIPPET EXTRACTION
@@ -62,7 +60,6 @@ def extract_surrogate_snippet(full_code: str) -> str:
 
     return "\n".join(lines[start_idx : end_idx + 1])
 
-
 ###############################################################################
 # 2) LOAD MODEL CODE FROM EXAMPLES
 ###############################################################################
@@ -79,13 +76,11 @@ def load_model_code(selected_model_name: str) -> str:
         st.error(f"Error loading model: {e}")
         return ""
 
-
 ###############################################################################
 # 3) STREAMLIT APP START
 ###############################################################################
 st.set_page_config(layout="wide")
 
-# Top layout: small logo + big title
 col1, col2 = st.columns([1,4])
 with col1:
     st.image("logo.jpg", width=100)
@@ -95,24 +90,38 @@ with col2:
 show_instructions()
 initialize_session_state()
 
-
 ###############################################################################
-# 4) SELECT FROM EXAMPLES OR UPLOAD
+# 4) MODEL SELECT / UPLOAD
 ###############################################################################
-# Insert a placeholder item at index 0 for "no model selected"
+# Insert placeholder item at index 0 for "no model selected"
 dropdown_items = ["(Select or define your own model)"] + model_options
-# Retrieve user's prior selection
+
+# We'll store the dropdown’s current selection in st.session_state["model_selectbox"]
+# Use on_change callback to apply that selection immediately
+def on_model_change():
+    new_model = st.session_state["model_selectbox"]
+    if new_model == "(Select or define your own model)":
+        st.session_state.code = ""
+    else:
+        st.session_state.code = load_model_code(new_model)
+
+    st.session_state.model_file = new_model
+    st.session_state.run_simulation = False
+    st.session_state.simulation_results = None
+    st.session_state.markdown_output = None
+    reset_analysis_results()
+
 previous_model = get_session_state("model_file", "(Select or define your own model)")
 
 col_select, col_upload = st.columns(2)
 
 with col_select:
-    model_file = st.selectbox(
+    st.selectbox(
         "Select a Model File or Enter your own Model:",
         dropdown_items,
-        index=dropdown_items.index(previous_model)
-        if previous_model in dropdown_items
-        else 0
+        index=dropdown_items.index(previous_model) if previous_model in dropdown_items else 0,
+        key="model_selectbox",
+        on_change=on_model_change
     )
 
 with col_upload:
@@ -125,21 +134,6 @@ with col_upload:
             st.session_state.simulation_results = None
             st.session_state.markdown_output = None
             reset_analysis_results()
-
-# Check if user changed model selection from the dropdown
-if model_file != get_session_state("model_file"):
-    # If user picks the placeholder, just clear code
-    if model_file == "(Select or define your own model)":
-        st.session_state.code = ""
-    else:
-        st.session_state.code = load_model_code(model_file)
-
-    st.session_state.model_file = model_file
-    st.session_state.run_simulation = False
-    st.session_state.simulation_results = None
-    st.session_state.markdown_output = None
-    reset_analysis_results()
-
 
 ###############################################################################
 # 5) CODE EDITOR & SYNTAX-PREVIEW SIDE-BY-SIDE
@@ -185,7 +179,6 @@ if st.session_state.get("code", "").strip():
 else:
     st.info("No model code is currently provided.")
 
-
 ###############################################################################
 # 6) LANGUAGE MODEL & ANALYSES
 ###############################################################################
@@ -212,7 +205,6 @@ for key in analysis_options:
     analysis_options[key] = st.checkbox(key, value=True)
 
 run_button = st.button("Run Simulation")
-
 
 ###############################################################################
 # 7) MAIN SIMULATION LOGIC
@@ -318,7 +310,6 @@ if run_button:
 if st.session_state.get("run_simulation"):
     run_simulation()
     st.session_state.run_simulation = False
-
 
 ###############################################################################
 # 8) PRESENT RESULTS
