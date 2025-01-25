@@ -10,9 +10,9 @@ from modules.session_state_utils import (
     get_session_state
 )
 
-###########################################################################
+###############################################################################
 # 1) LOAD CODE FROM EXAMPLES
-###########################################################################
+###############################################################################
 def load_model_code(selected_model_name: str) -> str:
     """Loads code from examples/ folder."""
     try:
@@ -22,9 +22,9 @@ def load_model_code(selected_model_name: str) -> str:
         st.error(f"Error loading model: {e}")
         return ""
 
-###########################################################################
+###############################################################################
 # 2) PAGE SETUP
-###########################################################################
+###############################################################################
 st.set_page_config(layout="wide")
 st.title("PCE Surrogate Model Generation using OpenTURNS")
 
@@ -36,44 +36,49 @@ with st.expander("Instructions"):
     Generate a Polynomial Chaos Expansion (PCE) surrogate model using OpenTURNS.
     Coefficients are estimated with least squares.
 
-    - Select or define your model code below.
-    - Adjust the PCE parameters, then run the analysis.
-    - Review validation plots to assess surrogate accuracy.
+    **Instructions:**
+    1. Select or define your model code below.
+    2. Adjust the PCE parameters, then run the analysis.
+    3. Review validation plots to assess surrogate accuracy.
+    4. Optionally copy or download the final surrogate model code.
     """
     )
 
 initialize_session_state()
 
-###########################################################################
+###############################################################################
 # 3) MODEL SELECTION with on_change
-###########################################################################
-model_options_list = model_options
+###############################################################################
 
+# Insert placeholder at index 0 for "no model"
+model_dropdown_items = ["(Select or define your own model)"] + model_options
 previous_model = get_session_state("model_file", "(Select or define your own model)")
 
 def on_model_change():
+    """Callback invoked when the dropdown selection changes."""
     new_model = st.session_state["pce_lsq_selectbox"]
     if new_model == "(Select or define your own model)":
         st.session_state.code = ""
     else:
         st.session_state.code = load_model_code(new_model)
+
     st.session_state.model_file = new_model
+    # Reset results
     reset_pce_least_squares_results()
     reset_analysis_results()
 
+st.markdown("#### Select or Define Model")
 st.selectbox(
     "Select a Model File or Enter your own Model:",
-    model_options_list,
-    index=model_options_list.index(previous_model)
-        if previous_model in model_options_list
-        else 0,
+    model_dropdown_items,
+    index=model_dropdown_items.index(previous_model) if previous_model in model_dropdown_items else 0,
     key="pce_lsq_selectbox",
     on_change=on_model_change
 )
 
-###########################################################################
+###############################################################################
 # 4) SIDE-BY-SIDE CODE EDITOR + PREVIEW
-###########################################################################
+###############################################################################
 st.markdown("### Model Code Editor & Preview")
 
 col_editor, col_preview = st.columns(2)
@@ -97,9 +102,9 @@ with col_preview:
     else:
         st.info("No code to display.")
 
-###########################################################################
+###############################################################################
 # 5) PCE PARAMETERS
-###########################################################################
+###############################################################################
 st.markdown("### PCE Parameters")
 
 training_sample_size = st.number_input(
@@ -135,9 +140,9 @@ selected_language_model = st.selectbox(
     index=0
 )
 
-###########################################################################
+###############################################################################
 # 6) RUN PCE Surrogate
-###########################################################################
+###############################################################################
 if st.button("Generate PCE Surrogate Model"):
     reset_pce_least_squares_results()
     reset_analysis_results()
@@ -147,7 +152,7 @@ if st.button("Generate PCE Surrogate Model"):
         st.warning("No model code provided.")
         st.stop()
 
-    # Code safety
+    # Code safety check
     try:
         check_code_safety(code_str)
     except Exception as e:

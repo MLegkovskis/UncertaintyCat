@@ -19,7 +19,6 @@ from modules.session_state_utils import (
 # 1) HELPER: Extract & Import from Code
 ###############################################################################
 def extract_imports_from_code(code_str):
-    """Parse user’s code to dynamically import top-level imports."""
     imports = {}
     try:
         tree = ast.parse(code_str)
@@ -40,19 +39,16 @@ def extract_imports_from_code(code_str):
     return imports
 
 def load_model_code(selected_model_name: str) -> str:
-    """
-    Load code from 'examples/' folder if valid, else return empty.
-    """
+    """Load code from examples/ folder."""
     try:
-        file_path = os.path.join('examples', selected_model_name)
-        with open(file_path, 'r') as f:
+        with open(os.path.join('examples', selected_model_name), 'r') as f:
             return f.read()
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return ""
 
 ###############################################################################
-# 2) PAGE SETUP
+# 2) PAGE LAYOUT
 ###############################################################################
 st.set_page_config(layout="wide")
 st.title("Dimensionality Reduction using AI and Morris Analysis")
@@ -69,7 +65,6 @@ with st.expander("Instructions"):
 
 initialize_session_state()
 
-# Additional session-state keys for this page
 if "morris_analysis_done" not in st.session_state:
     st.session_state.morris_analysis_done = False
 if "morris_results" not in st.session_state:
@@ -82,10 +77,10 @@ if "reduced_model_code" not in st.session_state:
     st.session_state.reduced_model_code = ""
 
 ###############################################################################
-# 3) MODEL DROPDOWN with on_change
+# 3) MODEL FILE DROPDOWN / UPLOAD with on_change
 ###############################################################################
-model_dropdown_items = ["(Select or define your own model)"] + model_options
-previous_model = get_session_state("model_file", "(Select or define your own model)")
+dropdown_items = ["(Select or define your own model)"] + model_options
+prev_file = get_session_state("model_file", "(Select or define your own model)")
 
 def on_model_change():
     new_model = st.session_state["dimr_model_selectbox"]
@@ -102,55 +97,55 @@ def on_model_change():
     st.session_state.reduced_model_code = ""
     reset_analysis_results()
 
-st.markdown("#### Select or Define Model")
-st.selectbox(
-    "Select a Model File:",
-    model_dropdown_items,
-    index=model_dropdown_items.index(previous_model) if previous_model in model_dropdown_items else 0,
-    key="dimr_model_selectbox",
-    on_change=on_model_change
-)
+col_select, col_upload = st.columns(2)
 
-###############################################################################
-# 4) SIDE-BY-SIDE CODE EDITOR & PREVIEW
-###############################################################################
-st.markdown("### Model Code Editor & Preview")
-
-col_editor, col_preview = st.columns(2)
-
-with col_editor:
-    st.markdown("**Model Code Editor**")
-    code_area_value = st.text_area(
-        label="",
-        value=st.session_state.get("code", ""),
-        height=300
+with col_select:
+    st.selectbox(
+        "Select a Model File:",
+        dropdown_items,
+        index=dropdown_items.index(prev_file) if prev_file in dropdown_items else 0,
+        key="dimr_model_selectbox",
+        on_change=on_model_change
     )
-    if code_area_value != st.session_state.get("code", ""):
-        st.session_state.code = code_area_value
-        # Reset all page states
-        st.session_state.morris_analysis_done = False
-        st.session_state.morris_results = None
-        st.session_state.variables_to_fix = []
-        st.session_state.constant_values = {}
-        st.session_state.reduced_model_code = ""
-        reset_analysis_results()
 
-with col_preview:
-    st.markdown("**Syntax-Highlighted Preview (Read Only)**")
-    if st.session_state.get("code", "").strip():
-        st.code(st.session_state["code"], language="python")
-    else:
-        st.info("No code to display.")
+with col_upload:
+    uploaded_file = st.file_uploader("or Choose a Python model file")
+    if uploaded_file is not None:
+        file_contents = uploaded_file.read().decode("utf-8")
+        if st.button("Apply Uploaded File"):
+            st.session_state.code = file_contents
+            st.session_state.morris_analysis_done = False
+            st.session_state.morris_results = None
+            st.session_state.variables_to_fix = []
+            st.session_state.constant_values = {}
+            st.session_state.reduced_model_code = ""
+            reset_analysis_results()
+
+###############################################################################
+# 4) MODEL CODE EDITOR (TEXT AREA)
+###############################################################################
+st.markdown("### Model Code Editor")
+new_code = st.text_area(
+    label="",
+    value=st.session_state.get("code", ""),
+    height=400
+)
+if new_code != st.session_state.get("code", ""):
+    st.session_state.code = new_code
+    st.session_state.morris_analysis_done = False
+    st.session_state.morris_results = None
+    st.session_state.variables_to_fix = []
+    st.session_state.constant_values = {}
+    st.session_state.reduced_model_code = ""
+    reset_analysis_results()
 
 ###############################################################################
 # 5) RUN MORRIS ANALYSIS
 ###############################################################################
-st.markdown("### Morris Sensitivity Analysis")
-
 if st.button("Run Morris Sensitivity Analysis"):
     code_str = st.session_state.get("code", "")
     if not code_str.strip():
-        st.warning("No model code found. Please paste or select a model first.")
+        st.warning("No model code found. Please paste or upload a model.")
         st.stop()
 
     # 1) Check code safety
@@ -160,25 +155,26 @@ if st.button("Run Morris Sensitivity Analysis"):
         st.error(f"Code safety check failed: {e}")
         st.stop()
 
-    # 2) Dynamically import from code
+    # 2) Extract & import modules
     user_imports = extract_imports_from_code(code_str)
     globals_dict = {}
     globals_dict.update(user_imports)
 
-    # 3) Execute user code to retrieve model & problem
+    # 3) Execute user code
     try:
         exec(code_str, globals_dict)
     except Exception as e:
         st.error(f"Error executing model code: {e}")
         st.stop()
 
-    model = globals_dict.get("model")
-    problem = globals_dict.get("problem")
+    # 4) Retrieve 'model' and 'problem'
+    model = globals_dict.get('model')
+    problem = globals_dict.get('problem')
     if not model or not problem:
-        st.error("Your code must define both `model` and `problem`.")
+        st.error("Your code must define a 'model' and a 'problem'.")
         st.stop()
 
-    # 4) Morris analysis
+    # 5) Morris analysis
     try:
         with st.spinner("Running Morris Analysis..."):
             results = run_morris_analysis_for_dimensionality_reduction(100, model, problem)
@@ -194,13 +190,12 @@ if st.button("Run Morris Sensitivity Analysis"):
 # 6) SHOW RESULTS & ALLOW FIXING VARIABLES
 ###############################################################################
 if st.session_state.morris_analysis_done and st.session_state.morris_results:
-    st.markdown("### Morris Results")
     non_influential_indices, mu_star_values, sigma_values, morris_plot = st.session_state.morris_results
     problem = st.session_state.problem
     model = st.session_state.model
-    names = problem.get("names", [])
+    names = problem.get('names', [])
 
-    # Display Morris table
+    st.write("### Morris Sensitivity Analysis Results")
     recommendations = ['Recommended' if i in non_influential_indices else '' for i in range(len(names))]
     morris_df = pd.DataFrame({
         'Parameter': names,
@@ -208,6 +203,7 @@ if st.session_state.morris_analysis_done and st.session_state.morris_results:
         'σ': sigma_values,
         'Recommendation': recommendations
     })
+
     st.dataframe(morris_df.style.apply(
         lambda row: [
             'background-color: lightgreen' if row['Recommendation'] == 'Recommended' else ''
@@ -229,44 +225,38 @@ if st.session_state.morris_analysis_done and st.session_state.morris_results:
     - Fixing non-influential variables can simplify the model without significantly affecting output variability.
     """)
 
-    # Show the Plotly chart
     st.plotly_chart(morris_plot, use_container_width=True)
 
-    # Let user pick variables to fix
-    st.markdown("#### Fix Non-Influential Variables")
     variables_to_fix = st.multiselect(
         "Variables to Fix:",
         options=names,
-        default=st.session_state.variables_to_fix
+        default=st.session_state.variables_to_fix,
+        help="Variables recommended for fixing are marked in green above."
     )
     st.session_state.variables_to_fix = variables_to_fix
 
     if variables_to_fix:
-        # Pre-fill fixed values from distributions
         indices_to_fix = [names.index(var) for var in variables_to_fix]
-        constant_values = {}
-        for idx in indices_to_fix:
-            if names[idx] not in st.session_state.constant_values:
-                st.session_state.constant_values[names[idx]] = get_constant_value(problem['distributions'][idx])
+        constant_values = {names[i]: get_constant_value(problem['distributions'][i]) for i in indices_to_fix}
+        for k, v in constant_values.items():
+            if k not in st.session_state.constant_values:
+                st.session_state.constant_values[k] = v
 
-        # Show a data editor for the user to override fixed values
-        st.markdown("**Assigned Constant Values**")
-        fixed_df = pd.DataFrame({
+        st.write("### Fixed Variables & Assigned Constant Values")
+        fixed_vars_df = pd.DataFrame({
             'Variable': list(st.session_state.constant_values.keys()),
             'Assigned Value': list(st.session_state.constant_values.values())
         })
+
         edited_df = st.data_editor(
-            fixed_df,
+            fixed_vars_df,
             column_config={'Variable': st.column_config.Column(disabled=True)},
             key="fixed_vars_editor"
         )
-        # Save the updated constant values
         st.session_state.constant_values = dict(zip(edited_df['Variable'], edited_df['Assigned Value']))
 
-        # Generate reduced model code
         if st.button("Generate Reduced Model Definition"):
             code_for_ai = st.session_state.code
-
             prompt = (
                 f"Here is the original model:\n\n{code_for_ai}\n\n"
                 f"The user has selected the following variables to fix:\n{st.session_state.constant_values}\n\n"
@@ -383,18 +373,15 @@ if st.session_state.morris_analysis_done and st.session_state.morris_results:
                 "Ensure that the updated 'num_vars', 'names', and 'distributions' in the 'problem' definition are consistent with the reduced inputs.\n"
                 "Now, generate the reduced model for the given user-defined input."
             )
-
             try:
                 with st.spinner("Generating reduced model..."):
                     from modules.api_utils import call_groq_api
-                    response = call_groq_api(
+                    st.session_state.reduced_model_code = call_groq_api(
                         prompt, model_name='llama-3.3-70b-versatile'
-                    )
-                    st.session_state.reduced_model_code = response.replace("```python", "").replace("```", "")
+                    ).replace("```python", "").replace("```", "")
             except Exception as e:
                 st.error(f"Error during AI generation: {e}")
 
 if st.session_state.reduced_model_code:
-    st.markdown("### Reduced Model Code")
-    st.info("Copy and paste into the main app if desired.")
+    st.markdown("### Reduced Model Definition (Copy-Paste into the main app!):")
     st.code(st.session_state.reduced_model_code, language='python')
