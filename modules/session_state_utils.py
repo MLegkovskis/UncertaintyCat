@@ -2,18 +2,19 @@ import streamlit as st
 
 def initialize_session_state():
     """Initializes the required keys in Streamlit session state."""
+    # By default, no model is selected
     if 'model_file' not in st.session_state:
-        st.session_state.model_file = 'Beam.py'
-    if 'code_editor' not in st.session_state:
-        st.session_state.code_editor = open('examples/' + st.session_state.model_file).read()
-    if 'code_editor_counter' not in st.session_state:
-        st.session_state.code_editor_counter = 0
+        st.session_state.model_file = '(Select or define your own model)'
+    # By default, the code area is empty
+    if 'code' not in st.session_state:
+        st.session_state.code = ''
+    # Store the simulation results
     if 'simulation_results' not in st.session_state:
         st.session_state.simulation_results = None
+    # Flag to track if the user clicked 'Run Simulation'
     if 'run_simulation' not in st.session_state:
         st.session_state.run_simulation = False
-    if 'code_updated' not in st.session_state:
-        st.session_state.code_updated = False
+    # Will store the AI-based interpretation
     if 'markdown_output' not in st.session_state:
         st.session_state.markdown_output = None
 

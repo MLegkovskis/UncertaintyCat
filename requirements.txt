@@ -8,10 +8,9 @@ scikit-learn
 llvmlite==0.43.0
 numba==0.60.0
 shap==0.46.0
-scipy
+scipy==1.13.1
 groq
 streamlit
-#streamlit_ace
 openai==0.28
 plotly
 black
