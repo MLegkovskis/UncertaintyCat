@@ -1,6 +1,7 @@
+import os
 import streamlit as st
-from streamlit_ace import st_ace
 
+# Import your modules
 from modules.monte_carlo import monte_carlo_simulation
 from modules.model_understanding import model_understanding
 from modules.exploratory_data_analysis import exploratory_data_analysis
@@ -25,122 +26,173 @@ from modules.session_state_utils import (
     get_session_state,
 )
 
-st.set_page_config(layout="wide")  # Use wide layout
+###############################################################################
+# 1) SURROGATE DETECTION & SNIPPET EXTRACTION
+###############################################################################
+def is_surrogate_model(code_str: str) -> bool:
+    """Returns True if the code snippet includes 'Y = metaModel(X)'."""
+    return "Y = metaModel(X)" in code_str
 
-# Create two columns
-col1, col2 = st.columns([1, 4])  # Adjust the ratio to control column widths
+def extract_surrogate_snippet(full_code: str) -> str:
+    """
+    If code is a surrogate, keep only lines from:
+      def function_of_interest(X): ... up to ... model = function_of_interest
+    Otherwise, return entire code.
+    """
+    if not is_surrogate_model(full_code):
+        return full_code
 
-with col1:
-    st.image("logo.jpg", width=100)
+    lines = full_code.splitlines(keepends=False)
+    start_idx, end_idx = None, None
 
-with col2:
-    st.title('UncertaintyCat | v3.89')
+    for i, line in enumerate(lines):
+        if "def function_of_interest(" in line:
+            start_idx = i
+            break
 
-# Display the instructions
-show_instructions()
+    for j in range(len(lines) - 1, -1, -1):
+        if "model = function_of_interest" in lines[j]:
+            end_idx = j
+            break
 
-# Initialize session state using the function from the module
-initialize_session_state()
+    if (start_idx is None) or (end_idx is None) or (start_idx > end_idx):
+        return full_code
 
-# Function to load code
-def load_model_code(selected_model):
+    return "\n".join(lines[start_idx : end_idx + 1])
+
+###############################################################################
+# 2) LOAD MODEL CODE FROM EXAMPLES
+###############################################################################
+def load_model_code(selected_model_name: str) -> str:
+    """
+    Loads code from 'examples/' folder if a valid model is selected.
+    Otherwise returns an empty string.
+    """
     try:
-        with open('examples/' + selected_model, 'r') as f:
-            code = f.read()
-        return code
+        file_path = os.path.join('examples', selected_model_name)
+        with open(file_path, 'r') as f:
+            return f.read()
     except Exception as e:
         st.error(f"Error loading model: {e}")
-        return ''
+        return ""
 
-model_file = st.selectbox(
-    'Select a Model File or Enter your own Model:',
-    model_options,
-    index=model_options.index(get_session_state('model_file'))
-)
+###############################################################################
+# 3) STREAMLIT APP START
+###############################################################################
+st.set_page_config(layout="wide")
 
-# --- Code Editor and Markdown Rendering ---
+col1, col2 = st.columns([1,4])
+with col1:
+    st.image("logo.jpg", width=100)
+with col2:
+    st.title("UncertaintyCat | v4.0")
 
-# Set code editor options
-language = 'python'
-theme = 'xcode'  # You can set this to 'github', 'monokai', 'xcode', etc.
-height = 400  # Set the height in pixels
+show_instructions()
+initialize_session_state()
 
-# Use a dynamic key to force re-instantiation when model_file changes or code is updated
-code_editor_key = f'code_editor_{get_session_state("code_editor_counter")}'
+###############################################################################
+# 4) MODEL SELECT / UPLOAD
+###############################################################################
+# Insert placeholder item at index 0 for "no model selected"
+dropdown_items = ["(Select or define your own model)"] + model_options
 
-# Split the page into two columns at the top
-col_code, col_md = st.columns(2)
+# We'll store the dropdown’s current selection in st.session_state["model_selectbox"]
+# Use on_change callback to apply that selection immediately
+def on_model_change():
+    new_model = st.session_state["model_selectbox"]
+    if new_model == "(Select or define your own model)":
+        st.session_state.code = ""
+    else:
+        st.session_state.code = load_model_code(new_model)
+
+    st.session_state.model_file = new_model
+    st.session_state.run_simulation = False
+    st.session_state.simulation_results = None
+    st.session_state.markdown_output = None
+    reset_analysis_results()
+
+previous_model = get_session_state("model_file", "(Select or define your own model)")
+
+col_select, col_upload = st.columns(2)
+
+with col_select:
+    st.selectbox(
+        "Select a Model File or Enter your own Model:",
+        dropdown_items,
+        index=dropdown_items.index(previous_model) if previous_model in dropdown_items else 0,
+        key="model_selectbox",
+        on_change=on_model_change
+    )
+
+with col_upload:
+    uploaded_file = st.file_uploader("or Choose a Python model file")
+    if uploaded_file is not None:
+        file_contents = uploaded_file.read().decode("utf-8")
+        if st.button("Apply Uploaded File"):
+            st.session_state.code = file_contents
+            st.session_state.run_simulation = False
+            st.session_state.simulation_results = None
+            st.session_state.markdown_output = None
+            reset_analysis_results()
+
+###############################################################################
+# 5) CODE EDITOR & SYNTAX-PREVIEW SIDE-BY-SIDE
+###############################################################################
+st.markdown("### Model Code Editor & Preview")
+
+col_code, col_preview = st.columns(2)
 
 with col_code:
-    st.markdown("### Model Code Editor")
-
-    # Store previous code in session state
-    previous_code = get_session_state('previous_code', '')
-
-    # Display the code editor with syntax highlighting
-    code = st_ace(
-        value=get_session_state('code_editor'),
-        language=language,
-        theme=theme,
-        key=code_editor_key,
-        height=height
+    st.markdown("**Model Code Editor**")
+    code_area_value = st.text_area(
+        label="",
+        value=st.session_state.get("code", ""),
+        height=300
     )
-    st.session_state.code_editor = code
-
-    # Check if the code has changed
-    if code != previous_code:
-        st.session_state.code_updated = True
-        st.session_state.previous_code = code  # Update the previous code
-        # Reset flags and results when code changes
+    if code_area_value != st.session_state.get("code", ""):
+        st.session_state.code = code_area_value
         st.session_state.run_simulation = False
         st.session_state.simulation_results = None
         st.session_state.markdown_output = None
-        reset_analysis_results()  # Reset analyses results
-    else:
-        st.session_state.code_updated = False
+        reset_analysis_results()
 
-with col_md:
-    st.markdown("### Model Interpretation")
-    if st.session_state.code_editor and (
-        get_session_state('code_updated') or get_session_state('markdown_output') is None
-    ):
+with col_preview:
+    st.markdown("**Syntax-Highlighted Preview (Read Only)**")
+    if st.session_state.get("code", "").strip():
+        st.code(st.session_state["code"], language="python")
+    else:
+        st.info("No code to display.")
+
+st.markdown("### Model Interpretation")
+if st.session_state.get("code", "").strip():
+    # If code changed or no existing markdown, re-run interpretation
+    if not st.session_state.get("markdown_output"):
+        snippet_for_ai = extract_surrogate_snippet(st.session_state["code"])
         with st.spinner("Generating markdown interpretation..."):
-            # Get the markdown interpretation
-            markdown_output = get_markdown_from_code(
-                st.session_state.code_editor,
-                'gemma2-9b-it'  # Ensure this matches the model used
-            )
+            markdown_output = get_markdown_from_code(snippet_for_ai, "gemma2-9b-it")
             st.session_state.markdown_output = markdown_output
-            st.session_state.code_updated = False  # Reset the flag
-    if get_session_state('markdown_output'):
-        st.markdown(get_session_state('markdown_output'))
+
+    if st.session_state.markdown_output:
+        st.markdown(st.session_state.markdown_output)
     else:
         st.info("The markdown interpretation will appear here.")
+else:
+    st.info("No model code is currently provided.")
 
-# If the model selection has changed, update the code_editor
-if model_file != get_session_state('model_file'):
-    st.session_state.model_file = model_file
-    st.session_state.code_editor = load_model_code(model_file)
-    st.session_state.code_editor_counter += 1
-    st.session_state.run_simulation = False  # Reset the flag when model changes
-    st.session_state.simulation_results = None  # Clear previous results
-    st.session_state.markdown_output = None  # Reset markdown output
-    reset_analysis_results()  # Reset analyses results
-
-# Dropdown for selecting Groq model
+###############################################################################
+# 6) LANGUAGE MODEL & ANALYSES
+###############################################################################
 groq_model_options = [
-    'gemma2-9b-it',
-    'llama-3.3-70b-versatile',
-    'mixtral-8x7b-32768'
+    "gemma2-9b-it",
+    "llama-3.3-70b-versatile",
+    "mixtral-8x7b-32768"
 ]
-
 selected_language_model = st.selectbox(
-    'Select Language Model:',
+    "Select Language Model:",
     options=groq_model_options,
     index=0
 )
 
-# --- Analysis Options ---
 st.markdown("### Select Analyses to Run")
 analysis_options = {
     "Sobol Sensitivity Analysis": True,
@@ -149,127 +201,143 @@ analysis_options = {
     "HSIC Analysis": True,
     "SHAP Analysis": True
 }
+for key in analysis_options:
+    analysis_options[key] = st.checkbox(key, value=True)
 
-for analysis in analysis_options.keys():
-    analysis_options[analysis] = st.checkbox(
-        analysis, value=True
-    )
+run_button = st.button("Run Simulation")
 
-run_button = st.button('Run Simulation')
-
-# Function to run simulation
+###############################################################################
+# 7) MAIN SIMULATION LOGIC
+###############################################################################
 def run_simulation():
-    code = get_session_state('code_editor')
-
-    # Check code safety before execution
-    try:
-        check_code_safety(code)  # Use imported function
-    except Exception as e:
-        st.error(f"Error in code safety check: {e}")
-        st.session_state.run_simulation = False  # Reset the flag
+    code = st.session_state.get("code", "")
+    if not code.strip():
+        st.warning("No model code provided.")
         return
 
-    # Execute the code
+    surrogate_detected = is_surrogate_model(code)
+
+    # 1) Check code safety
     try:
-        globals_dict = {}
+        check_code_safety(code)
+    except Exception as e:
+        if surrogate_detected:
+            st.error("Surrogate model load error.")
+            st.error(e)
+        else:
+            explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)
+            st.error("Model Load Error:")
+            st.error(explanation)
+        return
+
+    # 2) Execute user code
+    globals_dict = {}
+    try:
         exec(code, globals_dict)
-        model = globals_dict.get('model')
-        problem = globals_dict.get('problem')
+        model = globals_dict.get("model")
+        problem = globals_dict.get("problem")
         if model is None or problem is None:
-            st.error("Model or problem definition not found in the code. Please ensure they are defined.")
-            st.session_state.run_simulation = False  # Reset the flag
+            st.error("Model or problem definition not found in your code.")
             return
     except Exception as e:
-        explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)  # Use imported function
-        st.error("Model Load Error:")
-        st.error(explanation)
-        st.session_state.run_simulation = False
+        if surrogate_detected:
+            st.error("Surrogate model load error.")
+            st.error(e)
+        else:
+            explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)
+            st.error("Model Load Error:")
+            st.error(explanation)
         return
 
-    # Validate the problem structure before running the model test
-    try:
-        validate_problem_structure(problem)  # Use imported function
-    except ValueError as ve:
-        st.error(f"Validation Error: {ve}")
-        st.session_state.run_simulation = False
-        return
+    # 3) If not surrogate, do validations & test
+    if not surrogate_detected:
+        try:
+            validate_problem_structure(problem)
+        except ValueError as ve:
+            st.error(f"Validation Error: {ve}")
+            return
 
-    # Test the model with a small sample before full simulation
-    if not test_model(model, problem, code, selected_language_model):  # Use imported function
-        st.session_state.run_simulation = False
-        return
+        try:
+            if not test_model(model, problem, code, selected_language_model):
+                return
+        except Exception as e:
+            st.error("Model Test Error (non-surrogate).")
+            st.error(str(e))
+            return
 
-    # PCE is not used
+    # 4) Hard-coded sample sizes
     is_pce_used = False
     original_model_code = code
     metamodel_str = None
-
-    # Hardcoded sample sizes
     N = 2000
     N_samples = 8000
     N_sobol = 1024
 
-    # Run Monte Carlo Simulation with error handling
+    # 5) Monte Carlo
     try:
-        with st.spinner('Running Monte Carlo Simulation...'):
+        with st.spinner("Running Monte Carlo Simulation..."):
             data = monte_carlo_simulation(N, model, problem)
     except Exception as e:
-        explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)  # Use imported function
-        st.error("Simulation Error:")
-        st.error(explanation)
-        st.session_state.run_simulation = False
+        if surrogate_detected:
+            st.error("Surrogate Simulation Error:")
+            st.error(e)
+        else:
+            explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)
+            st.error("Simulation Error:")
+            st.error(explanation)
         return
 
-    # Store the results in st.session_state
+    # 6) Save results in session
     st.session_state.simulation_results = {
-        'data': data,
-        'model': model,
-        'problem': problem,
-        'code': code,
-        'is_pce_used': is_pce_used,
-        'original_model_code': original_model_code,
-        'metamodel_str': metamodel_str,
-        'selected_language_model': selected_language_model,
-        'N': N,
-        'N_samples': N_samples,
-        'N_sobol': N_sobol,
-        'analysis_options': analysis_options  # Store the selected analyses
+        "data": data,
+        "model": model,
+        "problem": problem,
+        "code": code,
+        "is_pce_used": is_pce_used,
+        "original_model_code": original_model_code,
+        "metamodel_str": metamodel_str,
+        "selected_language_model": selected_language_model,
+        "N": N,
+        "N_samples": N_samples,
+        "N_sobol": N_sobol,
+        "analysis_options": analysis_options
     }
 
-# Run the simulation when the button is clicked
 if run_button:
     st.session_state.run_simulation = True
-    reset_analysis_results()  # Reset analyses results
+    reset_analysis_results()
 
-# If run_simulation is True, run the simulation
-if get_session_state('run_simulation'):
+if st.session_state.get("run_simulation"):
     run_simulation()
-    st.session_state.run_simulation = False  # Reset the flag after running simulation
+    st.session_state.run_simulation = False
 
-# If simulation results exist, display analyses
-if get_session_state('simulation_results') is not None:
-    results = get_session_state('simulation_results')
-    data = results['data']
-    model = results['model']
-    problem = results['problem']
-    code = results['code']
-    is_pce_used = results['is_pce_used']
-    original_model_code = results['original_model_code']
-    metamodel_str = results['metamodel_str']
-    selected_language_model = results['selected_language_model']
-    N = results['N']
-    N_samples = results['N_samples']
-    N_sobol = results['N_sobol']
-    analysis_options = results['analysis_options']
+###############################################################################
+# 8) PRESENT RESULTS
+###############################################################################
+if st.session_state.get("simulation_results"):
+    results = st.session_state.simulation_results
+    data = results["data"]
+    model = results["model"]
+    problem = results["problem"]
+    code = results["code"]
+    is_pce_used = results["is_pce_used"]
+    original_model_code = results["original_model_code"]
+    metamodel_str = results["metamodel_str"]
+    selected_language_model = results["selected_language_model"]
+    N = results["N"]
+    N_samples = results["N_samples"]
+    N_sobol = results["N_sobol"]
+    analysis_options = results["analysis_options"]
 
-    # Present each module one after another
+    snippet_for_modules = extract_surrogate_snippet(code)
+
     st.markdown("---")
     st.header("Model Understanding")
-    with st.spinner('Running Model Understanding...'):
+    with st.spinner("Running Model Understanding..."):
         model_understanding(
             model,
             problem,
-            code,
+            snippet_for_modules,
             is_pce_used=is_pce_used,
             original_model_code_str=original_model_code,
             metamodel_str=metamodel_str,
@@ -278,60 +346,64 @@ if get_session_state('simulation_results') is not None:
 
     st.markdown("---")
     st.header("Exploratory Data Analysis")
-    with st.spinner('Running Exploratory Data Analysis...'):
+    with st.spinner("Running Exploratory Data Analysis..."):
         exploratory_data_analysis(
-            data, N, model, problem, code, language_model=selected_language_model
+            data, N, model, problem, snippet_for_modules,
+            language_model=selected_language_model
         )
-        # Access the figures from st.session_state:
-        st.session_state['eda_fig'] = st.session_state['eda_fig']
-        st.session_state['eda_clustermap_fig'] = st.session_state['eda_clustermap_fig']
 
     st.markdown("---")
     st.header("Expectation Convergence Analysis")
-    with st.spinner('Running Expectation Convergence Analysis...'):
+    with st.spinner("Running Expectation Convergence Analysis..."):
         expectation_convergence_analysis(
-            model, problem, code, N_samples=N_samples,
+            model, problem, snippet_for_modules,
+            N_samples=N_samples,
             language_model=selected_language_model
         )
 
     if analysis_options["Sobol Sensitivity Analysis"]:
         st.markdown("---")
         st.header("Sobol Sensitivity Analysis")
-        with st.spinner('Running Sobol Sensitivity Analysis...'):
+        with st.spinner("Running Sobol Sensitivity Analysis..."):
             sobol_sensitivity_analysis(
-                N_sobol, model, problem, code, language_model=selected_language_model
+                N_sobol, model, problem, snippet_for_modules,
+                language_model=selected_language_model
             )
 
     if analysis_options["Taylor Analysis"]:
         st.markdown("---")
         st.header("Taylor Analysis")
-        with st.spinner('Running Taylor Analysis...'):
+        with st.spinner("Running Taylor Analysis..."):
             taylor_analysis(
-                model, problem, code, language_model=selected_language_model
+                model, problem, snippet_for_modules,
+                language_model=selected_language_model
             )
 
     if analysis_options["Correlation Analysis"]:
         st.markdown("---")
         st.header("Correlation Analysis")
-        with st.spinner('Running Correlation Analysis...'):
+        with st.spinner("Running Correlation Analysis..."):
             correlation_analysis(
-                model, problem, code, language_model=selected_language_model
+                model, problem, snippet_for_modules,
+                language_model=selected_language_model
             )
 
     if analysis_options["HSIC Analysis"]:
         st.markdown("---")
         st.header("HSIC Analysis")
-        with st.spinner('Running HSIC Analysis...'):
+        with st.spinner("Running HSIC Analysis..."):
             hsic_analysis(
-                model, problem, code, language_model=selected_language_model
+                model, problem, snippet_for_modules,
+                language_model=selected_language_model
             )
 
     if analysis_options["SHAP Analysis"]:
         st.markdown("---")
         st.header("SHAP Analysis")
-        with st.spinner('Running SHAP Analysis...'):
+        with st.spinner("Running SHAP Analysis..."):
             ml_analysis(
-                data, problem, code, language_model=selected_language_model
+                data, problem, snippet_for_modules,
+                language_model=selected_language_model
             )
 
 else:
