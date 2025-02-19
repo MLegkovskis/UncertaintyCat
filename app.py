@@ -185,7 +185,9 @@ else:
 groq_model_options = [
     "gemma2-9b-it",
     "llama-3.3-70b-versatile",
-    "mixtral-8x7b-32768"
+    "mixtral-8x7b-32768",
+    "qwen-2.5-32b",
+    "deepseek-r1-distill-llama-70b-specdec"
 ]
 selected_language_model = st.selectbox(
     "Select Language Model:",
