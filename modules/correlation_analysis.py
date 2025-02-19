@@ -26,7 +26,7 @@ def correlation_analysis(model, problem, model_code_str, language_model='groq'):
         "PRCC": list(corr_analysis.computePRCC()),
         "SRC": list(corr_analysis.computeSRC()),
         "SRRC": list(corr_analysis.computeSRRC()),
-        "Pearson": list(corr_analysis.computeLinearCorrelation()),
+        "Pearson": list(corr_analysis.computePearsonCorrelation()),
         "Spearman": list(corr_analysis.computeSpearmanCorrelation()),
     }
 
