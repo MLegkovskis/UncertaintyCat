@@ -169,7 +169,7 @@ if st.session_state.get("code", "").strip():
     if not st.session_state.get("markdown_output"):
         snippet_for_ai = extract_surrogate_snippet(st.session_state["code"])
         with st.spinner("Generating markdown interpretation..."):
-            markdown_output = get_markdown_from_code(snippet_for_ai, "gemma2-9b-it")
+            markdown_output = get_markdown_from_code(snippet_for_ai, "qwen-2.5-32b")
             st.session_state.markdown_output = markdown_output
 
     if st.session_state.markdown_output:
