@@ -1,213 +1,162 @@
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import streamlit as st  # Added import statement
+import streamlit as st
+import openturns as ot
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
-from modules.statistical_utils import (
-    plot_sobol_radial,
-    describe_radial_plot
-)
-import openturns as ot
-from modules.openturns_utils import get_ot_distribution, get_ot_model, ot_point_to_list
 
-
-def sobol_sensitivity_analysis(
-    N,
-    model,
-    problem,
-    model_code_str,
-    sensitivity_threshold=0.05,
-    confidence_level=0.95,
-    language_model="groq",
-    verbose=True,
-):
-    # Get the input distribution and the model
-    distribution = get_ot_distribution(problem)
-    model_g = get_ot_model(model, problem)
-
-    # Compute indices
-    computeSecondOrder = True
-    sie = ot.SobolIndicesExperiment(distribution, N, computeSecondOrder)
-    inputDesignSobol = sie.generate()
-    inputNames = distribution.getDescription()
-    inputDesignSobol.setDescription(inputNames)
-    inputDesignSobol.getSize()
-    outputDesignSobol = model_g(inputDesignSobol)
-
-    # %%
-    sensitivityAnalysis = ot.SaltelliSensitivityAlgorithm(
-        inputDesignSobol, outputDesignSobol, N
-    )
-    sensitivityAnalysis.setConfidenceLevel(confidence_level)
-    S1 = sensitivityAnalysis.getFirstOrderIndices()
-    ST = sensitivityAnalysis.getTotalOrderIndices()
-    S2 = sensitivityAnalysis.getSecondOrderIndices()
-    S1 = ot_point_to_list(S1)
-    ST = ot_point_to_list(ST)
-    S2 = np.array(S2)
-    # Confidence intervals (supposed to be approximately symmetric)
-    dimension = distribution.getDimension()
-    S1_interval = sensitivityAnalysis.getFirstOrderIndicesInterval()
-    lower_bound = S1_interval.getLowerBound()
-    upper_bound = S1_interval.getUpperBound()
-    S1_conf = [(upper_bound[i] - lower_bound[i]) / 2.0 for i in range(dimension)]
-    ST_interval = sensitivityAnalysis.getTotalOrderIndicesInterval()
-    lower_bound = ST_interval.getLowerBound()
-    upper_bound = ST_interval.getUpperBound()
-    ST_conf = [(upper_bound[i] - lower_bound[i]) / 2.0 for i in range(dimension)]
-
-    # Perform Sobol analysis
-    Si = {
-        "S1": np.array(S1),
-        "ST": np.array(ST),
-        "S2": np.array(S2),
-        "S1_conf": S1_conf,
-        "ST_conf": ST_conf,
-    }
-
-    # Create DataFrame for indices
-    Si_filter = {k: Si[k] for k in ["ST", "ST_conf", "S1", "S1_conf"]}
-    Si_df = pd.DataFrame(Si_filter, index=problem["names"])
-
-    # Plotting combined Sobol indices
-    fig = plt.figure(figsize=(16, 6))
-
-    # Bar plot of Sobol indices
-    ax1 = fig.add_subplot(1, 2, 1)
-    indices = Si_df[["S1", "ST"]]
-    err = Si_df[["S1_conf", "ST_conf"]]
-    indices.plot.bar(yerr=err.values.T, capsize=5, ax=ax1)
-    ax1.set_title(f"Sobol Sensitivity Indices (N = {N})")
-    ax1.set_ylabel("Sensitivity Index")
-    ax1.set_xlabel("Input Variables")
-    ax1.legend(["First-order", "Total-order"])
-
-    # Radial plot
-    ax2 = fig.add_subplot(1, 2, 2, projection="polar")
-    names = problem["names"]
-    plot_sobol_radial(names, Si, ax2)
-
-    plt.tight_layout()
-
-    # Prepare data for the API call
-    first_order_df = pd.DataFrame(
-        {
-            "Variable": problem["names"],
-            "First-order Sobol Index": Si["S1"],
-            "Confidence Interval": Si["S1_conf"],
-        }
-    )
-
-    total_order_df = pd.DataFrame(
-        {
-            "Variable": problem["names"],
-            "Total-order Sobol Index": Si["ST"],
-            "Confidence Interval": Si["ST_conf"],
-        }
-    )
-
-    # Process S2 indices
-    S2_indices = []
-    variable_names = problem["names"]
-    for i in range(len(variable_names)):
-        for j in range(i + 1, len(variable_names)):
-            idx_i = i
-            idx_j = j
-            S2_value = Si["S2"][idx_i, idx_j]
-            if not np.isnan(S2_value) and abs(S2_value) > 0.01:
-                S2_indices.append(
-                    {
-                        "Variable 1": variable_names[idx_i],
-                        "Variable 2": variable_names[idx_j],
-                        "Second-order Sobol Index": S2_value,
-                    }
-                )
-
-    S2_df = pd.DataFrame(S2_indices)
-
-    # Convert DataFrames to Markdown tables
-    if not S2_df.empty:
-        second_order_md_table = S2_df
-    else:
-        second_order_md_table = "No significant second-order interactions detected."
-
-    # Description of the radial plot with numerical data
-    radial_plot_description = describe_radial_plot(Si, variable_names, sensitivity_threshold)
-
-    # Use the provided model_code_str directly
-    model_code = model_code_str
-
-    # Format the model code for inclusion in the prompt
-    model_code_formatted = "\n".join(
-        ["    " + line for line in model_code.strip().split("\n")]
-    )
-
-    # Prepare the inputs description
-    input_parameters = []
-    for name, dist_info in zip(problem["names"], problem["distributions"]):
-        input_parameters.append(
-            f"- **{name}**: {dist_info['type']} distribution with parameters {dist_info['params']}"
+def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
+    """Perform Sobol sensitivity analysis.
+    
+    Parameters
+    ----------
+    N : int
+        Number of samples for Sobol analysis
+    model : ot.Function
+        OpenTURNS function to analyze
+    problem : ot.Distribution
+        OpenTURNS distribution (typically a JointDistribution)
+    model_code_str : str
+        String representation of the model code for documentation
+    language_model : str, optional
+        Language model to use for analysis
+    """
+    try:
+        # Verify input types
+        if not isinstance(model, ot.Function):
+            raise TypeError("Model must be an OpenTURNS Function")
+        if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+            raise TypeError("Problem must be an OpenTURNS Distribution or JointDistribution")
+            
+        # Get dimension from the model's input dimension
+        dimension = model.getInputDimension()
+        
+        # Create independent copy of the distribution for Sobol analysis
+        marginals = [problem.getMarginal(i) for i in range(dimension)]
+        independent_dist = ot.JointDistribution(marginals)
+        
+        # Get variable names
+        variable_names = [problem.getMarginal(i).getDescription()[0] for i in range(dimension)]
+        
+        # Create Sobol algorithm
+        compute_second_order = True
+        sie = ot.SobolIndicesExperiment(independent_dist, N, compute_second_order)
+        input_design = sie.generate()
+        
+        # Evaluate model
+        output_design = model(input_design)
+        
+        # Calculate Sobol indices
+        sensitivity_analysis = ot.SaltelliSensitivityAlgorithm(input_design, output_design, N)
+        
+        # Get first and total order indices
+        S1 = sensitivity_analysis.getFirstOrderIndices()
+        ST = sensitivity_analysis.getTotalOrderIndices()
+        S2 = sensitivity_analysis.getSecondOrderIndices()
+        
+        # Get confidence intervals
+        S1_interval = sensitivity_analysis.getFirstOrderIndicesInterval()
+        ST_interval = sensitivity_analysis.getTotalOrderIndicesInterval()
+        
+        # Create DataFrame for indices
+        indices_data = []
+        for i, name in enumerate(variable_names):
+            # Get confidence intervals for this index
+            S1_lower = S1_interval.getLowerBound()[i]
+            S1_upper = S1_interval.getUpperBound()[i]
+            ST_lower = ST_interval.getLowerBound()[i]
+            ST_upper = ST_interval.getUpperBound()[i]
+            
+            indices_data.append({
+                'Variable': name,
+                'First Order': float(S1[i]),
+                'First Order CI': f"[{S1_lower:.4f}, {S1_upper:.4f}]",
+                'Total Order': float(ST[i]),
+                'Total Order CI': f"[{ST_lower:.4f}, {ST_upper:.4f}]"
+            })
+        
+        # Plot results
+        st.write("### Sobol Sensitivity Indices")
+        st.write("This analysis shows the contribution of each input variable to the output variance.")
+        
+        # Bar plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        x = np.arange(len(variable_names))
+        width = 0.35
+        
+        ax.bar(x - width/2, [d['First Order'] for d in indices_data], width, 
+               label='First Order', color='skyblue')
+        ax.bar(x + width/2, [d['Total Order'] for d in indices_data], width, 
+               label='Total Order', color='lightcoral')
+        
+        ax.set_ylabel('Sensitivity Index')
+        ax.set_title('Sobol Sensitivity Indices')
+        ax.set_xticks(x)
+        ax.set_xticklabels(variable_names, rotation=45, ha='right')
+        ax.legend()
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close()
+        
+        # Display numerical results
+        st.write("\n### Numerical Results")
+        for data in indices_data:
+            st.write(f"**{data['Variable']}**")
+            st.write(f"- First Order Index: {data['First Order']:.4f} ({data['First Order CI']})")
+            st.write(f"- Total Order Index: {data['Total Order']:.4f} ({data['Total Order CI']})")
+        
+        # Calculate total sensitivity
+        total_sensitivity = sum(d['First Order'] for d in indices_data)
+        st.write(f"\nTotal First Order Sensitivity: {total_sensitivity:.4f}")
+        
+        if abs(1 - total_sensitivity) > 0.1:
+            st.write("\n**Note:** The sum of first-order indices is significantly different from 1, "
+                     "indicating important interaction effects between variables.")
+        
+        # Generate prompt for GPT
+        indices_table = "\n".join(
+            f"- {data['Variable']}:\n"
+            f"  First Order: {data['First Order']:.4f} {data['First Order CI']}\n"
+            f"  Total Order: {data['Total Order']:.4f} {data['Total Order CI']}"
+            for data in indices_data
         )
-
-    inputs_description = "\n".join(input_parameters)
-
-    # Prepare the prompt
-    prompt = f"""
-{RETURN_INSTRUCTION}
-
-Given the following user-defined model defined in Python code:
+        
+        # Add distribution information
+        dist_info = "\n".join(
+            f"- {name}: {problem.getMarginal(i).__class__.__name__}, "
+            f"parameters {problem.getMarginal(i).getParameter()}"
+            for i, name in enumerate(variable_names)
+        )
+        
+        prompt = f"""
+Analyze these Sobol sensitivity analysis results:
 
 ```python
-{model_code_formatted}
+{model_code_str}
 ```
 
-and the following uncertain input distributions:
+Input Distributions:
+{dist_info}
 
-{inputs_description}
+Sobol Indices:
+{indices_table}
 
-Given the following first-order Sobol' indices and their confidence intervals:
+Total First Order Sensitivity: {total_sensitivity:.4f}
 
-{first_order_df}
+Please provide:
+1. A technical interpretation of these sensitivity indices
+2. Explanation of which parameters are most influential and why
+3. Discussion of any significant interaction effects
+4. Recommendations for model simplification or improvement
 
-And the following total-order Sobol' indices and their confidence intervals:
-
-{total_order_df}
-
-The following second-order Sobol' indices were identified:
-
-{second_order_md_table}
-
-Given a description of the Sobol Indices Radial Plot data:
-
-{radial_plot_description}
-
-Please:
-  - There are three classes of Sobol' indices: 1) any index lower than 0.05 can be considered weak, 2) any index in [0.05, 0.2] can be considered moderate, 3) any index larger than 0.2 can be considered strong.
-  - Display all the index values as separate tables (if the tables are big - feel free to show only top 10 ranked inputs).
-  - Briefly explain the Sobol method and the difference between first-order and total-order indices in terms of their mathematics and what they represent.
-  - Explain the significance of high-impact Sobol' indices and the importance of the corresponding input variables from both mathematical and physical perspectives.
-  - Discuss the confidence intervals associated with the Sobol' indices and what they represent.
-  - Provide an interpretation of the Sobol Indices Radial Plot based on the description and numerical data.
-  - Reference the Sobol indices tables in your discussion.
+{RETURN_INSTRUCTION}
 """
-    if verbose:
-        print("prompt")
-        print(prompt)
-
-    response_key = "sobol_response_markdown"
-    fig_key = "sobol_fig"
-
-    if response_key not in st.session_state:
-        response_markdown = call_groq_api(prompt, model_name=language_model)
-        st.session_state[response_key] = response_markdown
-    else:
-        response_markdown = st.session_state[response_key]
-
-    if fig_key not in st.session_state:
-        st.session_state[fig_key] = fig
-    else:
-        fig = st.session_state[fig_key]
-
-    st.markdown(response_markdown)
-    st.pyplot(fig)
+        
+        # Call GPT API and display response
+        response = call_groq_api(prompt, language_model)
+        st.markdown(response)
+        
+    except Exception as e:
+        st.error(f"Error in Sobol sensitivity analysis: {str(e)}")
+        raise

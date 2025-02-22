@@ -1,13 +1,32 @@
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import openturns as ot
 from SALib.sample import morris
 from SALib.analyze import morris as morris_analyze
 from modules.statistical_utils import get_bounds_for_salib
 
 def run_morris_analysis_for_dimensionality_reduction(N, model, problem):
+    """Run Morris analysis for dimensionality reduction."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+
+    # Get input names and bounds
+    dimension = problem.getDimension()
+    names = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        names.append(marginal.getDescription()[0])
+
     # Generate bounds for SALib
-    problem_for_salib = get_bounds_for_salib(problem)
+    bounds = get_bounds_for_salib(problem)
+
+    # Create SALib problem definition
+    problem_for_salib = {
+        'num_vars': dimension,
+        'names': names,
+        'bounds': bounds
+    }
 
     # Generate samples
     param_values = morris.sample(problem_for_salib, N, num_levels=4, optimal_trajectories=10)
@@ -23,16 +42,6 @@ def run_morris_analysis_for_dimensionality_reduction(N, model, problem):
     # Extract sensitivity indices
     mu_star = Si['mu_star']
     sigma = Si['sigma']
-    names = problem['names']
-
-    # Calculate thresholds based on mean and standard deviation
-    mean_mu_star = np.mean(mu_star)
-    std_mu_star = np.std(mu_star)
-    # threshold_mu_star = mean_mu_star - std_mu_star
-
-    mean_sigma = np.mean(sigma)
-    std_sigma = np.std(sigma)
-    # threshold_sigma = mean_sigma - std_sigma
 
     # Calculate thresholds based on percentiles
     threshold_mu_star = np.percentile(mu_star, 25)  # Lower quartile
@@ -49,37 +58,30 @@ def run_morris_analysis_for_dimensionality_reduction(N, model, problem):
         'mu_star': mu_star,
         'sigma': sigma,
         'Variable': names,
-        'Influential': ['Non-influential' if i in non_influential_indices else 'Influential' for i in range(len(names))]
+        'Influential': ['Yes' if i not in non_influential_indices else 'No' for i in range(len(names))]
     })
 
-    # Create interactive plot using Plotly
+    # Create Morris plot
     fig = px.scatter(
         df,
-        x='mu_star',
-        y='sigma',
+        x='sigma',
+        y='mu_star',
+        text='Variable',
         color='Influential',
-        hover_name='Variable',
+        title='Morris Sensitivity Plot',
         labels={
-            'mu_star': 'μ* (Mean of Absolute Elementary Effects)',
-            'sigma': 'σ (Standard Deviation of EE)'
-        },
-        title=f'Morris Sensitivity Analysis (N = {N})',
-        width=800,
-        height=600
+            'sigma': 'σ (Interaction Effects)',
+            'mu_star': 'μ* (Overall Effect)',
+            'Variable': 'Input Variable'
+        }
     )
 
-    # Add threshold lines
-    fig.add_vline(x=threshold_mu_star, line_dash='dash', line_color='grey',
-                  annotation_text='Threshold μ*', annotation_position='top left')
-    fig.add_hline(y=threshold_sigma, line_dash='dash', line_color='grey',
-                  annotation_text='Threshold σ', annotation_position='top right')
-
-    # Update layout for better readability
+    # Update text position and plot layout
+    fig.update_traces(textposition='top center')
     fig.update_layout(
-        legend_title_text='Variable Influence',
-        xaxis_title='μ* (Mean of Absolute Elementary Effects)',
-        yaxis_title='σ (Standard Deviation of EE)',
-        hovermode='closest'
+        showlegend=True,
+        width=800,
+        height=600
     )
 
     return non_influential_indices, mu_star, sigma, fig

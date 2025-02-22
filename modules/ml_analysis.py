@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import streamlit as st  # Import Streamlit
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
+import openturns as ot
 
 # Import necessary libraries for ML
 from sklearn.ensemble import RandomForestRegressor
@@ -16,7 +17,15 @@ import shap
 from scipy.stats import pearsonr
 
 def ml_analysis(data, problem, model_code_str, language_model='groq'):
-    feature_names = problem['names']
+    # Handle OpenTURNS distribution
+    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        dimension = problem.getDimension()
+        feature_names = []
+        for i in range(dimension):
+            marginal = problem.getMarginal(i)
+            feature_names.append(marginal.getDescription()[0])
+    else:
+        feature_names = problem['names']
     
     # Model Fitting
     rf_model, X_test, y_test, scaler = model_fitting(data, problem)
@@ -44,7 +53,16 @@ def model_fitting(data, problem):
         y_test = st.session_state['y_test']
         scaler = st.session_state['scaler']
     else:
-        X = data[problem['names']]
+        # Handle OpenTURNS distribution
+        if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+            dimension = problem.getDimension()
+            feature_names = []
+            for i in range(dimension):
+                marginal = problem.getMarginal(i)
+                feature_names.append(marginal.getDescription()[0])
+            X = data[feature_names]
+        else:
+            X = data[problem['names']]
         y = data['Y']
 
         # Standardize features
@@ -132,8 +150,14 @@ def prepare_and_call_prompt(data, problem, rf_model, feature_names, model_code_s
 
         # Prepare the inputs description
         input_parameters = []
-        for name, dist_info in zip(problem['names'], problem['distributions']):
-            input_parameters.append(f"- **{name}**: {dist_info['type']} distribution with parameters {dist_info['params']}")
+        if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+            dimension = problem.getDimension()
+            for i in range(dimension):
+                marginal = problem.getMarginal(i)
+                input_parameters.append(f"- **{marginal.getDescription()[0]}**: {marginal.getName()}")
+        else:
+            for name, dist_info in zip(problem['names'], problem['distributions']):
+                input_parameters.append(f"- **{name}**: {dist_info['type']} distribution with parameters {dist_info['params']}")
 
         inputs_description = '\n'.join(input_parameters)
 

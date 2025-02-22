@@ -1,5 +1,7 @@
+import openturns as ot
 import numpy as np
 
+# Chemical Reactor Function
 def function_of_interest(X):
     k0, E, R, T, CA0, V = X  # Arrhenius parameters and reactor conditions
     # Calculate the rate constant using Arrhenius equation
@@ -12,18 +14,35 @@ def function_of_interest(X):
     conversion = (CA0 - CA) / CA0
     return [conversion]
 
-# Problem definition
-problem = {
-    'num_vars': 6,
-    'names': ['k0', 'E', 'R', 'T', 'CA0', 'V'],
-    'distributions': [
-        {'type': 'LogNormalMuSigma', 'params': [1e10, 1e9, 0]},   # k0: Pre-exponential factor
-        {'type': 'Uniform', 'params': [80000, 120000]},           # E: Activation energy (J/mol)
-        {'type': 'Uniform', 'params': [8.314, 8.514]},            # R: Gas constant (J/(mol·K))
-        {'type': 'Normal', 'params': [350, 5]},                   # T: Temperature (K)
-        {'type': 'Uniform', 'params': [1.0, 2.0]},                # CA0: Initial concentration (mol/m³)
-        {'type': 'Uniform', 'params': [1.0, 5.0]}                 # V: Reactor volume (m³)
-    ]
-}
+model = ot.PythonFunction(6, 1, function_of_interest)
 
-model = function_of_interest
+# Problem definition for the Chemical Reactor
+# Define distributions with corrected descriptions
+k0 = ot.LogNormal()
+k0.setParameter(ot.LogNormalMuSigma()([1e10, 1e9, 0]))
+k0.setDescription(["k0"])
+
+E = ot.Uniform(80000, 120000)
+E.setDescription(["E"])
+
+R = ot.Uniform(8.314, 8.514)
+R.setDescription(["R"])
+
+T = ot.Normal(350, 5)
+T.setDescription(["T"])
+
+CA0 = ot.Uniform(1.0, 2.0)
+CA0.setDescription(["CA0"])
+
+V = ot.Uniform(1.0, 5.0)
+V.setDescription(["V"])
+
+# Define joint distribution (independent)
+problem = ot.JointDistribution([
+    k0,
+    E,
+    R,
+    T,
+    CA0,
+    V
+])

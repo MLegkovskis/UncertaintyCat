@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
-from modules.openturns_utils import get_ot_distribution, get_ot_model
+from modules.openturns_utils import get_ot_distribution, get_ot_model, get_distribution_names
 
 
 def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8000, language_model='groq'):
@@ -215,3 +215,112 @@ Please:
     # Display the results
     st.markdown(response_markdown)
     st.pyplot(fig)
+
+
+def expectation_convergence_analysis_joint(model, problem, model_code_str, N_samples=8000, language_model='groq'):
+    """Analyze convergence of Monte Carlo estimation."""
+    # Get OpenTURNS distribution
+    distribution = get_ot_distribution(problem)
+    
+    # Get variable names
+    variable_names = get_distribution_names(problem)
+    
+    # Set up sample sizes
+    N_values = np.unique(np.logspace(1, np.log10(N_samples), 20).astype(int))
+    
+    # Initialize arrays to store results
+    means = np.zeros((len(N_values), 20))
+    stds = np.zeros((len(N_values), 20))
+    
+    # Run Monte Carlo simulations
+    for i, N in enumerate(N_values):
+        for j in range(20):
+            # Generate samples - ensure N is an integer
+            X = np.array(distribution.getSample(int(N)))
+            Y = np.array([model(x) for x in X])
+            
+            # Calculate statistics
+            means[i, j] = np.mean(Y)
+            stds[i, j] = np.std(Y)
+    
+    # Calculate statistics across replicates
+    mean_of_means = np.mean(means, axis=1)
+    std_of_means = np.std(means, axis=1)
+    mean_of_stds = np.mean(stds, axis=1)
+    std_of_stds = np.std(stds, axis=1)
+    
+    # Create confidence intervals
+    ci_means = 1.96 * std_of_means
+    ci_stds = 1.96 * std_of_stds
+    
+    # Plot results
+    st.write("### Convergence Analysis")
+    st.write("This analysis shows how the estimated mean and standard deviation converge as the sample size increases.")
+    
+    # Mean convergence plot
+    fig_mean, ax_mean = plt.subplots(figsize=(10, 6))
+    ax_mean.semilogx(N_values, mean_of_means, 'b-', label='Mean estimate')
+    ax_mean.fill_between(N_values, 
+                        mean_of_means - ci_means,
+                        mean_of_means + ci_means,
+                        color='b', alpha=0.2,
+                        label='95% Confidence interval')
+    ax_mean.grid(True)
+    ax_mean.set_xlabel('Number of samples')
+    ax_mean.set_ylabel('Estimated mean')
+    ax_mean.set_title('Convergence of Mean Estimate')
+    ax_mean.legend()
+    st.pyplot(fig_mean)
+    plt.close()
+    
+    # Standard deviation convergence plot
+    fig_std, ax_std = plt.subplots(figsize=(10, 6))
+    ax_std.semilogx(N_values, mean_of_stds, 'r-', label='Std. dev. estimate')
+    ax_std.fill_between(N_values,
+                       mean_of_stds - ci_stds,
+                       mean_of_stds + ci_stds,
+                       color='r', alpha=0.2,
+                       label='95% Confidence interval')
+    ax_std.grid(True)
+    ax_std.set_xlabel('Number of samples')
+    ax_std.set_ylabel('Estimated standard deviation')
+    ax_std.set_title('Convergence of Standard Deviation Estimate')
+    ax_std.legend()
+    st.pyplot(fig_std)
+    plt.close()
+    
+    # Calculate convergence metrics
+    relative_mean_change = np.abs(np.diff(mean_of_means) / mean_of_means[:-1])
+    relative_std_change = np.abs(np.diff(mean_of_stds) / mean_of_stds[:-1])
+    
+    # Find where convergence criteria are met
+    mean_converged = np.where(relative_mean_change < 0.01)[0]
+    std_converged = np.where(relative_std_change < 0.01)[0]
+    
+    # Report convergence findings
+    st.write("### Convergence Analysis Results")
+    
+    if len(mean_converged) > 0:
+        n_mean = N_values[mean_converged[0]]
+        st.write(f"- Mean estimate converges (< 1% change) at approximately {n_mean} samples")
+    else:
+        st.write("- Mean estimate has not fully converged with the given sample sizes")
+        
+    if len(std_converged) > 0:
+        n_std = N_values[std_converged[0]]
+        st.write(f"- Standard deviation estimate converges (< 1% change) at approximately {n_std} samples")
+    else:
+        st.write("- Standard deviation estimate has not fully converged with the given sample sizes")
+    
+    # Final estimates
+    st.write("\n### Final Estimates (using maximum sample size)")
+    st.write(f"- Mean: {mean_of_means[-1]:.4f} ± {ci_means[-1]:.4f}")
+    st.write(f"- Standard Deviation: {mean_of_stds[-1]:.4f} ± {ci_stds[-1]:.4f}")
+    
+    # Recommendations
+    st.write("\n### Recommendations")
+    if len(mean_converged) > 0 and len(std_converged) > 0:
+        recommended_n = max(n_mean, n_std)
+        st.write(f"Based on the convergence analysis, using {recommended_n} samples should provide stable estimates.")
+    else:
+        st.write("Consider increasing the maximum sample size to achieve better convergence.")

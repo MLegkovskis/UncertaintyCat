@@ -8,15 +8,88 @@ import streamlit as st
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.openturns_utils import get_ot_distribution, get_ot_model
+from .statistical_utils import get_bounds
+
+def compute_taylor_indices(model, problem, h=1e-6):
+    """Compute Taylor-based sensitivity indices."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+
+    # Get input names and dimension
+    dimension = problem.getDimension()
+    input_names = []
+    nominal_point = np.zeros(dimension)
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        input_names.append(marginal.getDescription()[0])
+        nominal_point[i] = marginal.getMean()[0]
+
+    # Compute nominal value
+    nominal_value = model(nominal_point)
+
+    # Compute gradients
+    gradients = np.zeros(dimension)
+    for i in range(dimension):
+        perturbed_point = nominal_point.copy()
+        perturbed_point[i] += h
+        gradients[i] = (model(perturbed_point) - nominal_value) / h
+
+    # Compute variances
+    variances = np.array([problem.getMarginal(i).getStandardDeviation()[0]**2 for i in range(dimension)])
+
+    # Compute sensitivity indices
+    total_variance = np.sum(gradients**2 * variances)
+    sensitivity_indices = (gradients**2 * variances) / total_variance if total_variance > 0 else np.zeros(dimension)
+
+    # Create results dictionary
+    results = {
+        'nominal_point': nominal_point,
+        'nominal_value': nominal_value,
+        'gradients': gradients,
+        'variances': variances,
+        'sensitivity_indices': sensitivity_indices,
+        'input_names': input_names
+    }
+
+    return results
+
+def plot_taylor_indices(results, figsize=(10, 6)):
+    """Plot Taylor-based sensitivity indices."""
+    sensitivity_indices = results['sensitivity_indices']
+    input_names = results['input_names']
+
+    # Create bar plot
+    fig, ax = plt.subplots(figsize=figsize)
+    x = np.arange(len(input_names))
+    ax.bar(x, sensitivity_indices)
+    ax.set_xticks(x)
+    ax.set_xticklabels(input_names, rotation=45, ha='right')
+    ax.set_ylabel('Taylor-based Sensitivity Index')
+    ax.set_title('Taylor-based Sensitivity Analysis')
+    plt.tight_layout()
+
+    return fig
+
+def create_taylor_dataframe(results):
+    """Create a DataFrame with Taylor analysis results."""
+    df = pd.DataFrame({
+        'Variable': results['input_names'],
+        'Nominal_Point': results['nominal_point'],
+        'Gradient': results['gradients'],
+        'Variance': results['variances'],
+        'Sensitivity_Index': results['sensitivity_indices']
+    })
+    return df
 
 def taylor_analysis(model, problem, model_code_str, language_model='groq'):
-    input_names = problem['names']
-
-    # Create distributions
-    distribution = get_ot_distribution(problem)
-
-    # Create OpenTURNS model
-    ot_model = get_ot_model(model, problem)
+    """Perform Taylor analysis on the model."""
+    # Get input names from either OpenTURNS distribution or legacy dictionary
+    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        input_names = problem.getDescription()
+        distribution = problem  # Already an OpenTURNS distribution
+        ot_model = model  # Already an OpenTURNS function
+    else:
+        raise ValueError("Only OpenTURNS distributions are supported")
 
     # Define the output as the result of the model applied to the input vector
     input_vector = ot.RandomVector(distribution)
@@ -79,8 +152,13 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
 
     # Prepare the inputs description
     input_parameters = []
-    for name, dist_info in zip(problem['names'], problem['distributions']):
-        input_parameters.append(f"- **{name}**: {dist_info['type']} distribution with parameters {dist_info['params']}")
+    dimension = problem.getDimension()
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        name = problem.getDescription()[i]
+        dist_type = marginal.__class__.__name__
+        params = marginal.getParameter()
+        input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
 
     inputs_description = '\n'.join(input_parameters)
 

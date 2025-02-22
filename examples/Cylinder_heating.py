@@ -1,3 +1,4 @@
+import openturns as ot
 import numpy as np
 from scipy.integrate import solve_ivp
 
@@ -25,17 +26,30 @@ def function_of_interest(X):
     # Return the maximum temperature, which is typically at the center
     return [max(sol.y[0])]
 
-# Problem definition for the thermal model
-problem = {
-    'num_vars': 5,
-    'names': ['radius', 'length', 'k', 'h', 'Q'],
-    'distributions': [
-        {'type': 'Uniform', 'params': [0.01, 0.1]},      # radius in meters
-        {'type': 'Uniform', 'params': [0.1, 1.0]},       # length in meters
-        {'type': 'Uniform', 'params': [15, 50]},         # thermal conductivity in W/(m·K)
-        {'type': 'Uniform', 'params': [5, 25]},          # convective heat transfer coefficient in W/(m²·K)
-        {'type': 'Uniform', 'params': [1000, 5000]}      # heat generation rate per volume in W/m³
-    ]
-}
+model = ot.PythonFunction(5, 1, function_of_interest)
 
-model = function_of_interest
+# Problem definition for the thermal model
+# Define distributions with corrected descriptions
+radius = ot.Uniform(0.01, 0.1)      # radius in meters
+radius.setDescription(["radius"])
+
+length = ot.Uniform(0.1, 1.0)       # length in meters
+length.setDescription(["length"])
+
+k = ot.Uniform(15, 50)              # thermal conductivity in W/(m·K)
+k.setDescription(["k"])
+
+h = ot.Uniform(5, 25)               # convective heat transfer coefficient in W/(m²·K)
+h.setDescription(["h"])
+
+Q = ot.Uniform(1000, 5000)          # heat generation rate per volume in W/m³
+Q.setDescription(["Q"])
+
+# Define joint distribution (independent)
+problem = ot.JointDistribution([
+    radius,
+    length,
+    k,
+    h,
+    Q
+])

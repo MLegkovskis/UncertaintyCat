@@ -1,5 +1,5 @@
+import openturns as ot
 import numpy as np
-
 
 # The logistic model of population growth
 def function_of_interest(X):
@@ -12,16 +12,22 @@ def function_of_interest(X):
     y /= 1.0e6  # Convert from millions
     return [y]
 
+model = ot.PythonFunction(3, 1, function_of_interest)
 
-# Problem definition for the deflection model
-problem = {
-    "num_vars": 3,
-    "names": ["Y0", "A", "C"],
-    "distributions": [
-        {"type": "Normal", "params": [3.9, 1.0]},  # Y0 (initial population)
-        {"type": "Normal", "params": [0.03, 0.01]},  # A
-        {"type": "Normal", "params": [-22.6, 0.2]},  # C
-    ],
-}
+# Problem definition for the Logistic Model
+# Define distributions with corrected descriptions
+Y0 = ot.Normal(3.9, 1.0)         # Y0: Initial population (millions)
+Y0.setDescription(["Y0"])
 
-model = function_of_interest
+A = ot.Normal(0.03, 0.01)        # A
+A.setDescription(["A"])
+
+C = ot.Normal(-22.6, 0.2)        # C
+C.setDescription(["C"])
+
+# Define joint distribution (independent)
+problem = ot.JointDistribution([
+    Y0,
+    A,
+    C
+])

@@ -1,11 +1,14 @@
 import os
 import streamlit as st
+import numpy as np
+import openturns as ot
+import pandas as pd
 
 # Import your modules
-from modules.monte_carlo import monte_carlo_simulation
+from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
 from modules.model_understanding import model_understanding
 from modules.exploratory_data_analysis import exploratory_data_analysis
-from modules.expectation_convergence_analysis import expectation_convergence_analysis
+from modules.expectation_convergence_analysis import expectation_convergence_analysis, expectation_convergence_analysis_joint
 from modules.sobol_sensitivity_analysis import sobol_sensitivity_analysis
 from modules.taylor_analysis import taylor_analysis
 from modules.correlation_analysis import correlation_analysis
@@ -22,8 +25,8 @@ from modules.model_validation import (
 )
 from modules.session_state_utils import (
     initialize_session_state,
-    reset_analysis_results,
-    get_session_state,
+    reset_analysis,
+    get_session_state
 )
 
 ###############################################################################
@@ -99,6 +102,8 @@ dropdown_items = ["(Select or define your own model)"] + model_options
 # We'll store the dropdown’s current selection in st.session_state["model_selectbox"]
 # Use on_change callback to apply that selection immediately
 def on_model_change():
+    """Reset analysis results when model changes."""
+    reset_analysis()
     new_model = st.session_state["model_selectbox"]
     if new_model == "(Select or define your own model)":
         st.session_state.code = ""
@@ -109,7 +114,6 @@ def on_model_change():
     st.session_state.run_simulation = False
     st.session_state.simulation_results = None
     st.session_state.markdown_output = None
-    reset_analysis_results()
 
 previous_model = get_session_state("model_file", "(Select or define your own model)")
 
@@ -133,7 +137,6 @@ with col_upload:
             st.session_state.run_simulation = False
             st.session_state.simulation_results = None
             st.session_state.markdown_output = None
-            reset_analysis_results()
 
 ###############################################################################
 # 5) CODE EDITOR & SYNTAX-PREVIEW SIDE-BY-SIDE
@@ -154,7 +157,6 @@ with col_code:
         st.session_state.run_simulation = False
         st.session_state.simulation_results = None
         st.session_state.markdown_output = None
-        reset_analysis_results()
 
 with col_preview:
     st.markdown("**Syntax-Highlighted Preview (Read Only)**")
@@ -212,102 +214,54 @@ run_button = st.button("Run Simulation")
 # 7) MAIN SIMULATION LOGIC
 ###############################################################################
 def run_simulation():
-    code = st.session_state.get("code", "")
-    if not code.strip():
-        st.warning("No model code provided.")
+    """Execute the Monte Carlo simulation with current settings."""
+    if not st.session_state.code:
+        st.error("Please provide a model first.")
         return
 
-    surrogate_detected = is_surrogate_model(code)
-
-    # 1) Check code safety
     try:
-        check_code_safety(code)
-    except Exception as e:
-        if surrogate_detected:
-            st.error("Surrogate model load error.")
-            st.error(e)
-        else:
-            explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)
-            st.error("Model Load Error:")
-            st.error(explanation)
-        return
-
-    # 2) Execute user code
-    globals_dict = {}
-    try:
-        exec(code, globals_dict)
-        model = globals_dict.get("model")
-        problem = globals_dict.get("problem")
-        if model is None or problem is None:
-            st.error("Model or problem definition not found in your code.")
-            return
-    except Exception as e:
-        if surrogate_detected:
-            st.error("Surrogate model load error.")
-            st.error(e)
-        else:
-            explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)
-            st.error("Model Load Error:")
-            st.error(explanation)
-        return
-
-    # 3) If not surrogate, do validations & test
-    if not surrogate_detected:
-        try:
-            validate_problem_structure(problem)
-        except ValueError as ve:
-            st.error(f"Validation Error: {ve}")
+        # Execute the model code in a fresh namespace
+        local_namespace = {}
+        exec(st.session_state.code, local_namespace)
+        
+        # Check that both model and problem are defined
+        if 'model' not in local_namespace or 'problem' not in local_namespace:
+            st.error("The model code must define both 'model' and 'problem'.")
             return
 
-        try:
-            if not test_model(model, problem, code, selected_language_model):
-                return
-        except Exception as e:
-            st.error("Model Test Error (non-surrogate).")
-            st.error(str(e))
-            return
+        model = local_namespace['model']
+        problem = local_namespace['problem']
 
-    # 4) Hard-coded sample sizes
-    is_pce_used = False
-    original_model_code = code
-    metamodel_str = None
-    N = 2000
-    N_samples = 8000
-    N_sobol = 1024
+        # Validate the problem structure
+        validate_problem_structure(problem)
 
-    # 5) Monte Carlo
-    try:
-        with st.spinner("Running Monte Carlo Simulation..."):
-            data = monte_carlo_simulation(N, model, problem)
+        # Get number of samples from UI
+        N = 2000
+        
+        # Run Monte Carlo simulation
+        results = monte_carlo_simulation(model, problem, N=N, seed=42)
+        data = create_monte_carlo_dataframe(results)
+        
+        # Store results in session state
+        st.session_state.simulation_results = {
+            "data": data,
+            "model": model,
+            "problem": problem,
+            "code": st.session_state.code,
+            "selected_language_model": selected_language_model,
+            "N": N,
+            "analysis_options": analysis_options
+        }
+        
+        # Update the plot
+        # update_plot()
+        
     except Exception as e:
-        if surrogate_detected:
-            st.error("Surrogate Simulation Error:")
-            st.error(e)
-        else:
-            explanation = get_human_friendly_error_explanation(code, str(e), selected_language_model)
-            st.error("Simulation Error:")
-            st.error(explanation)
+        st.error(f"Error during simulation: {str(e)}")
         return
-
-    # 6) Save results in session
-    st.session_state.simulation_results = {
-        "data": data,
-        "model": model,
-        "problem": problem,
-        "code": code,
-        "is_pce_used": is_pce_used,
-        "original_model_code": original_model_code,
-        "metamodel_str": metamodel_str,
-        "selected_language_model": selected_language_model,
-        "N": N,
-        "N_samples": N_samples,
-        "N_sobol": N_sobol,
-        "analysis_options": analysis_options
-    }
 
 if run_button:
     st.session_state.run_simulation = True
-    reset_analysis_results()
 
 if st.session_state.get("run_simulation"):
     run_simulation()
@@ -322,13 +276,8 @@ if st.session_state.get("simulation_results"):
     model = results["model"]
     problem = results["problem"]
     code = results["code"]
-    is_pce_used = results["is_pce_used"]
-    original_model_code = results["original_model_code"]
-    metamodel_str = results["metamodel_str"]
     selected_language_model = results["selected_language_model"]
     N = results["N"]
-    N_samples = results["N_samples"]
-    N_sobol = results["N_sobol"]
     analysis_options = results["analysis_options"]
 
     snippet_for_modules = extract_surrogate_snippet(code)
@@ -340,9 +289,6 @@ if st.session_state.get("simulation_results"):
             model,
             problem,
             snippet_for_modules,
-            is_pce_used=is_pce_used,
-            original_model_code_str=original_model_code,
-            metamodel_str=metamodel_str,
             language_model=selected_language_model
         )
 
@@ -357,56 +303,86 @@ if st.session_state.get("simulation_results"):
     st.markdown("---")
     st.header("Expectation Convergence Analysis")
     with st.spinner("Running Expectation Convergence Analysis..."):
-        expectation_convergence_analysis(
-            model, problem, snippet_for_modules,
-            N_samples=N_samples,
-            language_model=selected_language_model
-        )
+        if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+            expectation_convergence_analysis_joint(
+                model, problem, snippet_for_modules, N_samples=N,
+                language_model=selected_language_model
+            )
+        else:
+            expectation_convergence_analysis(
+                model, problem, snippet_for_modules, N_samples=N,
+                language_model=selected_language_model
+            )
 
     if analysis_options["Sobol Sensitivity Analysis"]:
         st.markdown("---")
         st.header("Sobol Sensitivity Analysis")
         with st.spinner("Running Sobol Sensitivity Analysis..."):
-            sobol_sensitivity_analysis(
-                N_sobol, model, problem, snippet_for_modules,
-                language_model=selected_language_model
-            )
+            if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+                sobol_sensitivity_analysis(
+                    1024, model, problem, snippet_for_modules,
+                    language_model=selected_language_model
+                )
+            else:
+                st.warning("Sobol sensitivity analysis requires an OpenTURNS Distribution or JointDistribution")
 
     if analysis_options["Taylor Analysis"]:
         st.markdown("---")
         st.header("Taylor Analysis")
         with st.spinner("Running Taylor Analysis..."):
-            taylor_analysis(
-                model, problem, snippet_for_modules,
-                language_model=selected_language_model
-            )
+            if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+                taylor_analysis(
+                    model, problem, snippet_for_modules,
+                    language_model=selected_language_model
+                )
+            else:
+                st.warning("Taylor analysis requires an OpenTURNS Distribution or JointDistribution")
 
     if analysis_options["Correlation Analysis"]:
         st.markdown("---")
         st.header("Correlation Analysis")
         with st.spinner("Running Correlation Analysis..."):
-            correlation_analysis(
-                model, problem, snippet_for_modules,
-                language_model=selected_language_model
-            )
+            if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+                results = correlation_analysis(
+                    model, problem, snippet_for_modules,
+                    language_model=selected_language_model
+                )
+                # Display correlations
+                st.write("### Correlation Results")
+                st.write(results["correlations"])
+                
+                # Display input distributions
+                st.write("### Input Distributions")
+                st.text(results["inputs_description"])
+                
+                # Display correlation plot
+                st.write("### Correlation Plot")
+                st.pyplot(results["figure"])
+            else:
+                st.warning("Correlation analysis requires an OpenTURNS Distribution or JointDistribution")
 
     if analysis_options["HSIC Analysis"]:
         st.markdown("---")
         st.header("HSIC Analysis")
         with st.spinner("Running HSIC Analysis..."):
-            hsic_analysis(
-                model, problem, snippet_for_modules,
-                language_model=selected_language_model
-            )
+            if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+                hsic_analysis(
+                    model, problem, snippet_for_modules,
+                    language_model=selected_language_model
+                )
+            else:
+                st.warning("HSIC analysis requires an OpenTURNS Distribution or JointDistribution")
 
     if analysis_options["SHAP Analysis"]:
         st.markdown("---")
         st.header("SHAP Analysis")
         with st.spinner("Running SHAP Analysis..."):
-            ml_analysis(
-                data, problem, snippet_for_modules,
-                language_model=selected_language_model
-            )
-
+            if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+                ml_analysis(
+                    data, problem, snippet_for_modules,
+                    language_model=selected_language_model
+                )
+            else:
+                st.warning("SHAP analysis requires an OpenTURNS Distribution or JointDistribution")
 else:
     st.info("Please run the simulation to proceed.")

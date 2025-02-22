@@ -2,6 +2,7 @@ from groq import Groq
 import os
 import streamlit as st
 import numpy as np
+import openturns as ot
 
 # Validation logic
 expected_params = {
@@ -15,7 +16,23 @@ expected_params = {
 }
 
 def validate_problem_structure(problem):
-    """Validates the structure of the 'problem' dictionary."""
+    """Validates the structure of the problem definition."""
+    # Handle OpenTURNS Distribution
+    if isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        # For OpenTURNS distributions, we just need to verify it's properly configured
+        try:
+            dimension = problem.getDimension()
+            # Test that we can get a sample
+            test_sample = problem.getSample(1)
+            # Test that we can get descriptions
+            descriptions = problem.getDescription()
+            if len(descriptions) != dimension:
+                raise ValueError("Distribution description length does not match dimension")
+            return
+        except Exception as e:
+            raise ValueError(f"Invalid OpenTURNS distribution: {str(e)}")
+
+    # Legacy validation for dictionary-based problems
     required_keys = ['num_vars', 'names', 'distributions']
     for key in required_keys:
         if key not in problem:
@@ -36,34 +53,28 @@ def validate_problem_structure(problem):
     if len(problem['distributions']) != problem['num_vars']:
         raise ValueError("Length of problem['distributions'] must match problem['num_vars'].")
 
-    distribution_expected_structures = {
-        'Uniform': "{'type': 'Uniform', 'params': [lower_bound, upper_bound]}",
-        'Normal': "{'type': 'Normal', 'params': [mean, standard_deviation]}",
-        'LogNormalMuSigma': "{'type': 'LogNormalMuSigma', 'params': [mu, sigma       gamma]}",
-        'LogNormal': "{'type': 'LogNormal', 'params': [mu_log, sigma_log, gamma]}",
-        'Beta': "{'type': 'Beta', 'params': [alpha, beta, lower_bound, upper_bound]}",
-        'Gumbel': "{'type': 'Gumbel', 'params': [beta_param, gamma_param]}",
-        'Triangular': "{'type': 'Triangular', 'params': [a, mode, b]}"
-    }
-
-    for dist_info in problem['distributions']:
-        if not isinstance(dist_info, dict):
-            raise ValueError("Each distribution entry must be a dictionary.")
-        if 'type' not in dist_info or 'params' not in dist_info:
-            raise ValueError("Each distribution must have 'type' and 'params' keys.")
-        dist_type = dist_info['type']
-        params = dist_info['params']
+    for i, dist in enumerate(problem['distributions']):
+        if not isinstance(dist, dict):
+            raise ValueError(f"Distribution {i} must be a dictionary.")
+        
+        if 'type' not in dist:
+            raise ValueError(f"Distribution {i} missing 'type' key.")
+            
+        if 'params' not in dist:
+            raise ValueError(f"Distribution {i} missing 'params' key.")
+            
+        if not isinstance(dist['params'], list):
+            raise ValueError(f"Parameters for distribution {i} must be a list.")
+            
+        dist_type = dist['type']
         if dist_type not in expected_params:
-            raise ValueError(f"Unsupported distribution type: {dist_type}")
-        if not isinstance(params, list):
-            raise ValueError(f"params for distribution '{dist_type}' must be a list.")
-        expected_count = expected_params[dist_type]
-        if len(params) != expected_count:
-            expected_structure = distribution_expected_structures[dist_type]
+            raise ValueError(f"Unknown distribution type '{dist_type}' in distribution {i}.")
+            
+        expected_param_count = expected_params[dist_type]
+        if len(dist['params']) != expected_param_count:
             raise ValueError(
-                f"Incorrect number of parameters for '{dist_type}' distribution. "
-                f"Expected {expected_count}, got {len(params)}. The expected structure is:\n\n"
-                f"{expected_structure}"
+                f"Distribution {i} ({dist_type}) expects {expected_param_count} "
+                f"parameters but got {len(dist['params'])}."
             )
 
 def get_human_friendly_error_explanation(code_snippet, error_message, model_name):
@@ -241,24 +252,16 @@ def get_human_friendly_error_explanation(code_snippet, error_message, model_name
     
 def test_model(model, problem, code, language_model):
     """Tests the model with a small sample to catch potential errors early on."""
-    from modules.statistical_utils import sample_inputs
-    # Try a small sample
     try:
-        test_samples = sample_inputs(5, problem)
+        # For OpenTURNS models and distributions
+        if isinstance(model, ot.Function) and isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+            test_sample = problem.getSample(1)
+            model(test_sample)
+            return
+        
+        # For legacy Python function and dictionary-based problems
+        from modules.monte_carlo import monte_carlo_simulation
+        monte_carlo_simulation(2, model, problem)
     except Exception as e:
-        explanation = get_human_friendly_error_explanation(code, str(e), language_model)
-        st.error("Model Input Sampling Error:")
-        st.error(explanation)
-        return False
-
-    for X in test_samples:
-        try:
-            result = model(X)
-            if not isinstance(result, (list, np.ndarray)) or len(result) == 0:
-                raise ValueError("Model did not return a non-empty list/array.")
-        except Exception as e:
-            explanation = get_human_friendly_error_explanation(code, str(e), language_model)
-            st.error("Model Execution Error:")
-            st.error(explanation)
-            return False
-    return True
+        error_explanation = get_human_friendly_error_explanation(code, str(e), language_model)
+        raise ValueError(f"Model test failed: {error_explanation}")

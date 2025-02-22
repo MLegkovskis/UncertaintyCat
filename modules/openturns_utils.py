@@ -1,72 +1,52 @@
 import openturns as ot
+import numpy as np
 
 def get_ot_distribution(problem):
-    """
-    Return the OpenTURNS model
+    """Get OpenTURNS distribution from problem definition."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+    return problem
 
-    Parameters
-    ----------
-    problem : the problem
-        The probabilistic problem
+def get_distribution_names(problem):
+    """Get names of variables from problem definition."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+    return problem.getDescription()
 
-    Returns
-    -------
-    distribution : ot.Distribution
-        The probabilistic model
-    """
-    marginals = []
-    for dist_info in problem["distributions"]:
-        dist_type = dist_info["type"]
-        params = dist_info["params"]
-        if dist_type == "Uniform":
-            a, b = params
-            marginals.append(ot.Uniform(a, b))
-        elif dist_type == "Normal":
-            mu, sigma = params
-            marginals.append(ot.Normal(mu, sigma))
-        elif dist_type == "Gumbel":
-            beta_param, gamma_param = params
-            marginals.append(ot.Gumbel(beta_param, gamma_param))
-        elif dist_type == "Triangular":
-            a, m, b = params
-            marginals.append(ot.Triangular(a, m, b))
-        elif dist_type == "Beta":
-            alpha, beta_value, a, b = params
-            marginals.append(ot.Beta(alpha, beta_value, a, b))
-        elif dist_type == "LogNormal":
-            mu, sigma, gamma = params
-            marginals.append(ot.LogNormal(mu, sigma, gamma))
-        elif dist_type == "LogNormalMuSigma":
-            mu, sigma, gamma = params
-            marginals.append(
-                ot.ParametrizedDistribution(ot.LogNormalMuSigma(mu, sigma, gamma))
-            )
-        else:
-            raise ValueError(f"Unsupported distribution type: {dist_type}")
+def get_dimension(problem):
+    """Get dimension of the problem."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+    return problem.getDimension()
 
-    distribution = ot.ComposedDistribution(marginals)
-    distribution.setDescription(problem["names"])
-    return distribution
+def get_distribution_types(problem):
+    """Get types of distributions for each variable."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+    dimension = problem.getDimension()
+    types = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        types.append(marginal.getName())
+    return types
 
+def get_distribution_parameters(problem):
+    """Get parameters of distributions for each variable."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+    dimension = problem.getDimension()
+    parameters = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        parameters.append(list(marginal.getParameter()))
+    return parameters
 
 def get_ot_model(model, problem):
-    """
-    Return the OpenTURNS model
-
-    Parameters
-    ----------
-    model : the model
-        The physical model
-    problem : the problem
-        The probabilistic problem
-
-    Returns
-    -------
-    physical_model : ot.Function
-        The physical model g
-    """
-    ot_model = ot.PythonFunction(problem["num_vars"], 1, model)
-    return ot_model
+    """Get OpenTURNS model from Python function."""
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        raise ValueError("Only OpenTURNS distributions are supported")
+    dimension = problem.getDimension()
+    return ot.PythonFunction(dimension, 1, model)
 
 def ot_point_to_list(point):
     """
@@ -101,9 +81,7 @@ class SuperPoint():
                 code += ", "
         code += "])"
         return code
-    
 
-#
 class SuperSample():
     def __init__(self, sample):
         self.sample = sample
@@ -126,9 +104,7 @@ class SuperSample():
                 code += ", "
         code += "])"
         return code
-    
 
-#
 class SuperDistribution():
     def __init__(self, distribution):
         self.distribution = distribution
@@ -164,30 +140,38 @@ class SuperDistribution():
     def _toPythonNd(self, variableName="", indentation=""):
         copula = self.distribution.getCopula()
         copulaName = copula.getImplementation().getClassName()
-        if copulaName != "IndependentCopula":
-            raise ValueError(f"Non independent copula {copulaName} is not implemented yet")
-        className = self.distribution.getClassName()
-        if className == "Distribution":
-            # Overwrite class name
-            className = self.distribution.getImplementation().getClassName()
-        if className == "JointDistribution":
-            code = f"{indentation}marginals = []\n"
-            dimension = self.distribution.getDimension()
+        
+        # Generate code for marginals first
+        code = f"{indentation}marginals = []\n"
+        dimension = self.distribution.getDimension()
+        for i in range(dimension):
+            marginal = self.distribution.getMarginal(i)
+            superMarginal = SuperDistribution(marginal)
+            code += f"{indentation}marginals.append({superMarginal.toPython()})\n"
+        
+        # Handle different copula types
+        if copulaName == "NormalCopula":
+            correlation = copula.getCorrelation()
+            code += f"{indentation}R = CorrelationMatrix({dimension})\n"
             for i in range(dimension):
-                marginal = self.distribution.getMarginal(i)
-                superMarginal = SuperDistribution(marginal)
-                code += f"{indentation}marginals.append({superMarginal.toPython()})\n"
+                for j in range(i+1, dimension):
+                    if abs(correlation[i,j]) > 1e-10:  # Only add non-zero correlations
+                        code += f"{indentation}R[{i}, {j}] = {correlation[i,j]}\n"
+            code += f"{indentation}copula = NormalCopula(R)\n"
+            if variableName != "":
+                code += f"{indentation}{variableName} = JointDistribution(marginals, copula)\n"
+            else:
+                code += f"{indentation}JointDistribution(marginals, copula)\n"
+        elif copulaName == "IndependentCopula":
             if variableName != "":
                 code += f"{indentation}{variableName} = JointDistribution(marginals)\n"
             else:
                 code += f"{indentation}JointDistribution(marginals)\n"
         else:
-            raise ValueError(f"Distribution {className} is not implemented yet")
+            raise ValueError(f"Copula {copulaName} is not implemented yet")
+        
         return code
 
-
-
-#
 class SuperChaosResult():
     def __init__(self, functionalChaosResult):
         self.functionalChaosResult = functionalChaosResult
@@ -214,24 +198,23 @@ class SuperChaosResult():
 inputDimension = distribution.getDimension()
 polynomials = PolynomialFamilyCollection(inputDimension)
 for i in range(inputDimension):
-    marginalPolynomial = StandardDistributionPolynomialFactory(marginals[i])
+    marginal = distribution.getMarginal(i)
+    marginalPolynomial = StandardDistributionPolynomialFactory(marginal)
     polynomials[i] = marginalPolynomial
 enumerate = LinearEnumerateFunction(inputDimension)
 basis = OrthogonalProductPolynomialFactory(polynomials, enumerate)
 # Set the function collection
-function_collection = []
-numberOfIndices = len(indices)
-for i in range(numberOfIndices):
-    function_collection.append(basis.build(indices[i]))
-# Set the composed metamodel, set the transformation, create the metamodel
-composedMetaModel = DualLinearCombinationFunction(function_collection, coefficients)
-measure = basis.getMeasure()
-transformation = DistributionTransformation(distribution, measure)
-metaModel = ComposedFunction(composedMetaModel, transformation)
+functionFactory = UniVariateFunctionFactory(basis)
+functions = []
+indices_size = indices.getSize()
+for i in range(indices_size):
+    functions.append(functionFactory.build(indices[i]))
+# Set the model
+metamodel = LinearCombinationFunction(functions, coefficients)
 
 def function_of_interest(X):
     # Evaluate the metamodel
-    Y = metaModel(X)
+    Y = metamodel(X)
     return [Y[0]]
 """
         return code

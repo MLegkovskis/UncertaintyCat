@@ -1,5 +1,7 @@
+import openturns as ot
 import numpy as np
 
+# Rocket Trajectory Function
 def function_of_interest(X):
     m0, mf, ve, theta, g = X  # Initial mass, fuel mass, exhaust velocity, launch angle, gravity
     # Calculate the final velocity using Tsiolkovsky rocket equation
@@ -10,20 +12,34 @@ def function_of_interest(X):
     # Calculate maximum altitude (assuming vertical motion under gravity)
     h_max = (vy ** 2) / (2 * g)
     # Calculate horizontal range
-    range = (vx * vy) / g
+    range_ = (vx * vy) / g
     return [h_max]
 
-# Problem definition
-problem = {
-    'num_vars': 5,
-    'names': ['m0', 'mf', 've', 'theta', 'g'],
-    'distributions': [
-        {'type': 'Uniform', 'params': [50000, 60000]},    # m0: Initial mass (kg)
-        {'type': 'Uniform', 'params': [10000, 20000]},    # mf: Fuel mass (kg)
-        {'type': 'Normal', 'params': [3000, 100]},        # ve: Exhaust velocity (m/s)
-        {'type': 'Uniform', 'params': [80, 90]},          # theta: Launch angle (degrees)
-        {'type': 'Uniform', 'params': [9.8, 9.81]}        # g: Gravity (m/s²)
-    ]
-}
+model = ot.PythonFunction(5, 1, function_of_interest)
 
-model = function_of_interest
+# Problem definition for the Rocket Trajectory Model
+# Define distributions with corrected descriptions
+m0 = ot.Uniform(50000, 60000)    # m0: Initial mass (kg)
+m0.setDescription(["m0"])
+
+mf = ot.Uniform(10000, 20000)    # mf: Fuel mass (kg)
+mf.setDescription(["mf"])
+
+ve = ot.Normal()
+ve.setParameter(ot.LogNormalMuSigma()([3000, 100, 0]))  # Assuming LogNormalMuSigma is applicable
+ve.setDescription(["ve"])
+
+theta = ot.Uniform(80, 90)        # theta: Launch angle (degrees)
+theta.setDescription(["theta"])
+
+g = ot.Uniform(9.8, 9.81)         # g: Gravity (m/s²)
+g.setDescription(["g"])
+
+# Define joint distribution (independent)
+problem = ot.JointDistribution([
+    m0,
+    mf,
+    ve,
+    theta,
+    g
+])

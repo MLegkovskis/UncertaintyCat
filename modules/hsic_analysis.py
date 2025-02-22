@@ -6,88 +6,31 @@ import streamlit as st
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.openturns_utils import get_ot_distribution, get_ot_model
-
+from .statistical_utils import sample_inputs
 
 def hsic_analysis(model, problem, model_code_str, language_model='groq'):
-    # Create distributions
-    distribution = get_ot_distribution(problem)
+    # Handle OpenTURNS distribution
+    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        dimension = problem.getDimension()
+        input_names = []
+        for i in range(dimension):
+            marginal = problem.getMarginal(i)
+            input_names.append(marginal.getDescription()[0])
+    else:
+        dimension = problem['num_vars']
+        input_names = problem['names']
 
-    # Create the OpenTURNS model
-    ot_model = get_ot_model(model, problem)
-
-    # Define sample size for HSIC analysis
-    sample_size = 250
-    input_design = distribution.getSample(sample_size)
-    output_design = ot_model(input_design)
-
-    # Define covariance models for HSIC analysis
-    covariance_model_collection = []
-    for i in range(problem['num_vars']):
-        Xi = input_design.getMarginal(i)
-        input_covariance = ot.SquaredExponential()
-        sigma = Xi.computeStandardDeviation()[0]
-        input_covariance.setScale([sigma])  # Wrap sigma in a list to create a Point
-        covariance_model_collection.append(input_covariance)
-
-    # Add output covariance model
-    output_covariance = ot.SquaredExponential()
-    sigma_Y = output_design.computeStandardDeviation()[0]
-    output_covariance.setScale([sigma_Y])  # Wrap sigma_Y in a list to create a Point
-    covariance_model_collection.append(output_covariance)
-
-    # HSIC global sensitivity analysis
-    estimator_type = ot.HSICUStat()
-    hsic_algo = ot.HSICEstimatorGlobalSensitivity(covariance_model_collection, input_design, output_design, estimator_type)
-
-    # Get HSIC results
-    R2HSICIndices = hsic_algo.getR2HSICIndices()
-    HSICIndices = hsic_algo.getHSICIndices()
-    pvperm = hsic_algo.getPValuesPermutation()
-    pvas = hsic_algo.getPValuesAsymptotic()
-
-    hsic_results_list = []
-    for i in range(len(problem['names'])):
-        hsic_results_list.append({
-            "Variable": problem['names'][i],
-            "R2-HSIC Index": R2HSICIndices[i],
-            "HSIC Index": HSICIndices[i],
-            "p-value (permutation)": pvperm[i],
-            "p-value (asymptotic)": pvas[i]
-        })
+    # Compute HSIC indices
+    hsic_results = compute_hsic_indices(model, problem, N=1000, seed=42)
 
     # Create DataFrame from the list of dictionaries
-    hsic_results = pd.DataFrame(hsic_results_list)
+    hsic_df = create_hsic_dataframe(hsic_results)
 
     # Plot HSIC results
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12,6), dpi=100)
-
-    x = np.arange(len(problem['names']))
-    ax1.bar(x, hsic_results['R2-HSIC Index'], color='orange', edgecolor='black')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(problem['names'], rotation=45, ha='right', fontsize=8)
-    ax1.set_title('R2-HSIC Indices', fontsize=14)
-    ax1.set_ylabel('R2-HSIC', fontsize=12)
-
-    ax2.bar(x, hsic_results['HSIC Index'], color='blue', edgecolor='black')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(problem['names'], rotation=45, ha='right', fontsize=8)
-    ax2.set_title('HSIC Indices', fontsize=14)
-    ax2.set_ylabel('HSIC', fontsize=12)
-
-    width = 0.35
-    ax3.bar(x - width/2, hsic_results['p-value (permutation)'], width, label='p-value (permutation)', color='red', edgecolor='black')
-    ax3.bar(x + width/2, hsic_results['p-value (asymptotic)'], width, label='p-value (asymptotic)', color='green', edgecolor='black')
-    ax3.set_xticks(x)
-    ax3.set_xticklabels(problem['names'], rotation=45, ha='right', fontsize=8)
-    ax3.set_title('HSIC p-values', fontsize=14)
-    ax3.set_ylabel('p-value', fontsize=12)
-    ax3.legend()
-
-    plt.tight_layout()
-    
+    fig = plot_hsic_indices(hsic_results, figsize=(10, 6))
 
     # Prepare data for the API call
-    hsic_md_table = hsic_results.to_markdown(index=False, floatfmt=".4e")
+    hsic_md_table = hsic_df.to_markdown(index=False, floatfmt=".4e")
 
     # Use the provided model_code_str directly
     model_code = model_code_str
@@ -97,12 +40,22 @@ def hsic_analysis(model, problem, model_code_str, language_model='groq'):
 
     # Prepare the input parameters and their uncertainties
     input_parameters = []
-    for name, dist_info in zip(problem['names'], problem['distributions']):
-        input_parameters.append({
-            'Variable': name,
-            'Distribution': dist_info['type'],
-            'Parameters': dist_info['params']
-        })
+    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        for i in range(dimension):
+            marginal = problem.getMarginal(i)
+            name = marginal.getDescription()[0]
+            input_parameters.append({
+                'Variable': name,
+                'Distribution': marginal.__class__.__name__,
+                'Parameters': list(marginal.getParameter())
+            })
+    else:
+        for name, dist_info in zip(problem['names'], problem['distributions']):
+            input_parameters.append({
+                'Variable': name,
+                'Distribution': dist_info['type'],
+                'Parameters': dist_info['params']
+            })
 
     inputs_df = pd.DataFrame(input_parameters)
     inputs_md_table = inputs_df.to_markdown(index=False)
@@ -123,7 +76,7 @@ and the following uncertain input distributions:
 
 The results of the HSIC analysis are given below:
 
-{hsic_results}
+{hsic_df}
 
 Please:
   - Tabulate all the HSIC data and present it in an effective way.
@@ -155,3 +108,86 @@ Please:
     # Display the results
     st.markdown(response_markdown)
     st.pyplot(fig)
+
+def compute_hsic_indices(model, problem, N=1000, seed=42):
+    """Compute HSIC-based sensitivity indices."""
+    # Handle OpenTURNS distribution
+    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        dimension = problem.getDimension()
+        input_names = []
+        for i in range(dimension):
+            marginal = problem.getMarginal(i)
+            input_names.append(marginal.getDescription()[0])
+    else:
+        dimension = problem['num_vars']
+        input_names = problem['names']
+
+    # Generate samples
+    X = sample_inputs(N, problem, seed)
+    Y = np.array([model(x) for x in X])
+
+    # Compute kernel matrices
+    K = np.zeros((N, N))
+    L = np.zeros((N, N))
+    H = np.eye(N) - np.ones((N, N)) / N
+
+    # Compute output kernel matrix
+    for i in range(N):
+        for j in range(N):
+            L[i, j] = np.exp(-0.5 * (Y[i] - Y[j])**2)
+
+    # Center kernel matrices
+    L = H @ L @ H
+
+    # Compute HSIC indices
+    hsic_indices = np.zeros(dimension)
+    for i in range(dimension):
+        # Compute input kernel matrix for variable i
+        for k in range(N):
+            for l in range(N):
+                K[k, l] = np.exp(-0.5 * (X[k, i] - X[l, i])**2)
+        
+        # Center kernel matrix
+        K = H @ K @ H
+        
+        # Compute HSIC
+        hsic_indices[i] = np.trace(K @ L) / (N - 1)**2
+
+    # Normalize indices
+    total_hsic = np.sum(hsic_indices)
+    normalized_indices = hsic_indices / total_hsic if total_hsic > 0 else np.zeros_like(hsic_indices)
+
+    # Create results dictionary
+    results = {
+        'hsic_indices': hsic_indices,
+        'normalized_indices': normalized_indices,
+        'input_names': input_names
+    }
+
+    return results
+
+def plot_hsic_indices(results, figsize=(10, 6)):
+    """Plot HSIC-based sensitivity indices."""
+    normalized_indices = results['normalized_indices']
+    input_names = results['input_names']
+
+    # Create bar plot
+    fig, ax = plt.subplots(figsize=figsize)
+    x = np.arange(len(input_names))
+    ax.bar(x, normalized_indices)
+    ax.set_xticks(x)
+    ax.set_xticklabels(input_names, rotation=45, ha='right')
+    ax.set_ylabel('Normalized HSIC Index')
+    ax.set_title('HSIC-based Sensitivity Analysis')
+    plt.tight_layout()
+
+    return fig
+
+def create_hsic_dataframe(results):
+    """Create a DataFrame with HSIC analysis results."""
+    df = pd.DataFrame({
+        'Variable': results['input_names'],
+        'HSIC_Index': results['hsic_indices'],
+        'Normalized_Index': results['normalized_indices']
+    })
+    return df

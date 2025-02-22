@@ -1,15 +1,39 @@
+import numpy as np
+import pandas as pd
+import openturns as ot
 import streamlit as st
 from modules.api_utils import call_groq_api
 from modules.common_prompt import RETURN_INSTRUCTION
 from modules.forbidden_patterns import forbidden_patterns
 
 def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
-    # Prepare the input parameters and their uncertainties
-    input_parameters = []
-    for name, dist_info in zip(problem['names'], problem['distributions']):
-        input_parameters.append(f"- **{name}**: {dist_info['type']} distribution with parameters {dist_info['params']}")
+    """Generate a description of the model and its uncertain inputs."""
+    # Handle OpenTURNS distribution
+    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+        dimension = problem.getDimension()
+        input_names = [problem.getMarginal(i).getDescription()[0] for i in range(dimension)]
+        distributions = []
+        for i in range(dimension):
+            marginal = problem.getMarginal(i)
+            distributions.append({
+                'type': marginal.__class__.__name__,
+                'params': list(marginal.getParameter())
+            })
+    else:
+        input_names = problem['names']
+        distributions = problem['distributions']
 
-    inputs_description = '\n'.join(input_parameters)
+    # Create DataFrame for input parameters
+    input_parameters = []
+    for name, dist_info in zip(input_names, distributions):
+        input_parameters.append({
+            'Variable': name,
+            'Distribution': dist_info['type'],
+            'Parameters': dist_info['params']
+        })
+
+    inputs_df = pd.DataFrame(input_parameters)
+    inputs_md_table = inputs_df.to_markdown(index=False)
 
     # Format the model code for inclusion in the prompt
     model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
@@ -45,7 +69,7 @@ Ensure:
 Any deviation (such as logical words inside equations, or reprinting code) invalidates the response.
 
 Additional Input Distributions:
-{inputs_description}
+{inputs_md_table}
 
 Original Python code (for reference, do not reprint):
 ```python

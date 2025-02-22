@@ -1,10 +1,7 @@
+import openturns as ot
 import numpy as np
 
-# **Borehole Model Function**
-# 
-# *Description:*
-# This function models the water flow rate through a borehole penetrating two aquifers. It calculates the water flow based on eight input variables representing physical properties of the borehole and aquifer system. The model is commonly used in reliability and sensitivity analyses due to its nonlinear behavior and interaction between variables.
-
+# Borehole Model Function
 def function_of_interest(X):
     rw, r, Tu, Hu, Tl, Hl, L, Kw = X
     # rw  # Radius of borehole (m)
@@ -26,20 +23,42 @@ def function_of_interest(X):
 
     return [Y]
 
-# **Problem Definition for the Borehole Model**
-problem = {
-    'num_vars': 8,
-    'names': ['rw', 'r', 'Tu', 'Hu', 'Tl', 'Hl', 'L', 'Kw'],
-    'distributions': [
-        {'type': 'Normal', 'params': [0.10, 0.0161812]},        # rw: Normally distributed
-        {'type': 'LogNormal', 'params': [7.71, 1.0056, 0]},     # r: Log-normally distributed
-        {'type': 'Uniform', 'params': [63070, 115600]},         # Tu: Uniformly distributed
-        {'type': 'Uniform', 'params': [990, 1110]},             # Hu: Uniformly distributed
-        {'type': 'Uniform', 'params': [63.1, 116]},             # Tl: Uniformly distributed
-        {'type': 'Uniform', 'params': [700, 820]},              # Hl: Uniformly distributed
-        {'type': 'Uniform', 'params': [1120, 1680]},            # L: Uniformly distributed
-        {'type': 'Uniform', 'params': [9855, 12045]}            # Kw: Uniformly distributed
-    ]
-}
+model = ot.PythonFunction(8, 1, function_of_interest)
 
-model = function_of_interest
+# Problem definition for the Borehole Model
+# Define distributions with corrected descriptions
+rw = ot.Normal(0.10, 0.0161812)
+rw.setDescription(["rw"])
+
+r = ot.LogNormal(7.71, 1.0056)
+r.setDescription(["r"])
+
+Tu = ot.Uniform(63070, 115600)
+Tu.setDescription(["Tu"])
+
+Hu = ot.Uniform(990, 1110)
+Hu.setDescription(["Hu"])
+
+Tl = ot.Uniform(63.1, 116)
+Tl.setDescription(["Tl"])
+
+Hl = ot.Uniform(700, 820)
+Hl.setDescription(["Hl"])
+
+L = ot.Uniform(1120, 1680)
+L.setDescription(["L"])
+
+Kw = ot.Uniform(9855, 12045)
+Kw.setDescription(["Kw"])
+
+# Define joint distribution (independent)
+problem = ot.JointDistribution([
+    rw,
+    r,
+    Tu,
+    Hu,
+    Tl,
+    Hl,
+    L,
+    Kw
+])
