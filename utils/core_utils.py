@@ -1,7 +1,101 @@
+# utils/core_utils.py
+
+"""
+Core utilities for the UncertaintyCat application.
+This module contains API utilities, session state management, and model options.
+"""
+
+import os
 import streamlit as st
+import re
+from groq import Groq
+
+# ================ API Utilities ================
+
+def call_groq_api(prompt, model_name="gemma2-9b-it"):
+    """
+    Call the Groq API with a provided prompt.
+    
+    Parameters
+    ----------
+    prompt : str
+        The prompt to send to the API
+    model_name : str, optional
+        The model to use, by default "gemma2-9b-it"
+        
+    Returns
+    -------
+    str
+        The response text from the API
+    """
+    client = Groq(
+        api_key=os.getenv('GROQ_API_KEY'),
+    )
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        model=model_name
+    )
+    response_text = chat_completion.choices[0].message.content
+    response_text = re.sub(r'<think>.*?</think>\s*', '', response_text, flags=re.DOTALL)
+
+    return response_text
+
+# ================ Session State Utilities ================
+
+def initialize_session_state():
+    """Initialize minimal required session state variables."""
+    defaults = {
+        "code": "",
+        "morris_results": None,
+        "fixed_values": {},
+        "reduced_model": None,
+        "model_file": '(Select or define your own model)',
+        "simulation_results": None,
+        "run_simulation": False,
+        "markdown_output": None,
+        "morris_analysis_done": False
+    }
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
+def reset_analysis():
+    """Reset analysis results."""
+    st.session_state.morris_results = None
+    st.session_state.fixed_values = {}
+    st.session_state.reduced_model = None
+
+def get_session_state(key, default=None):
+    """Returns the value for the given key from session state, or the default value if the key doesn't exist."""
+    return st.session_state.get(key, default)
+
+# ================ Model Options ================
+
+model_options = [
+    'Beam.py', 'Bike_Speed.py', 'Borehole_Model.py', 'Chaboche_Model.py', 'Chemical_Reactor.py',
+    'Cylinder_heating.py', 'Damped_Oscillator.py', 'Epidemic_Model.py',
+    'FloodModel.py', 'Ishigami.py', 'Logistic_Model.py', 'Material_Stress.py', 'Morris_Function.py',
+    'Portfolio_Risk.py', 'Rocket_Trajectory.py', 'Stiffened_Panel.py', 'Solar_Panel_Output.py',
+    'Truss_Model.py', 'Tube_Deflection.py', 'Undamped_Oscillator.py',
+    'Viscous_Freefall.py', 'Wind_Turbine_Power.py'
+]
+
+# ================ Instructions ================
 
 def show_instructions():
-    """Displays instructions in an expander."""
+    """
+    Displays instructions in an expander.
+    
+    This function creates an expandable section in the Streamlit interface
+    that contains detailed instructions on how to use the UncertaintyCat application.
+    """
     with st.expander("Instructions"):
         st.markdown("""
         # Uncertainty Quantification and Sensitivity Analysis Application
@@ -91,7 +185,7 @@ def show_instructions():
         ## Additional Notes
 
         - **Supported Distributions:**
-            - Uniform, Normal, LogNormal, Beta, Gumbel, Triangular, etc.
+            - Uniform, Normal, LogNormalMuSigma, LogNormal, Beta, Gumbel, Triangular, etc.
             - Specify distributions in the `problem` dictionary with appropriate parameters.
 
         - **Imports:**

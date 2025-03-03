@@ -5,14 +5,14 @@ import pandas as pd
 import openturns as ot
 import matplotlib.pyplot as plt
 import streamlit as st
-from modules.api_utils import call_groq_api
-from modules.common_prompt import RETURN_INSTRUCTION
-from modules.openturns_utils import get_ot_distribution, get_ot_model
-from .statistical_utils import get_bounds
+import re
+from utils.core_utils import call_groq_api
+from utils.markdown_utils import RETURN_INSTRUCTION
+from utils.model_utils import get_ot_distribution, get_ot_model
 
 def compute_taylor_indices(model, problem, h=1e-6):
     """Compute Taylor-based sensitivity indices."""
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
         raise ValueError("Only OpenTURNS distributions are supported")
 
     # Get input names and dimension
@@ -21,7 +21,8 @@ def compute_taylor_indices(model, problem, h=1e-6):
     nominal_point = np.zeros(dimension)
     for i in range(dimension):
         marginal = problem.getMarginal(i)
-        input_names.append(marginal.getDescription()[0])
+        name = marginal.getDescription()[0]
+        input_names.append(name if name != "" else f"X{i+1}")
         nominal_point[i] = marginal.getMean()[0]
 
     # Compute nominal value
@@ -83,17 +84,21 @@ def create_taylor_dataframe(results):
 
 def taylor_analysis(model, problem, model_code_str, language_model='groq'):
     """Perform Taylor analysis on the model."""
-    # Get input names from either OpenTURNS distribution or legacy dictionary
-    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        input_names = problem.getDescription()
-        distribution = problem  # Already an OpenTURNS distribution
-        ot_model = model  # Already an OpenTURNS function
-    else:
-        raise ValueError("Only OpenTURNS distributions are supported")
-
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+    
+    # Get input names
+    dimension = problem.getDimension()
+    input_names = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        name = marginal.getDescription()[0]
+        input_names.append(name if name != "" else f"X{i+1}")
+    
     # Define the output as the result of the model applied to the input vector
-    input_vector = ot.RandomVector(distribution)
-    output_vector = ot.CompositeRandomVector(ot_model, input_vector)
+    input_vector = ot.RandomVector(problem)
+    output_vector = ot.CompositeRandomVector(model, input_vector)
 
     # Perform Taylor expansion moments and importance factors analysis
     taylor = ot.TaylorExpansionMoments(output_vector)

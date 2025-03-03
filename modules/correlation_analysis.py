@@ -3,10 +3,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import openturns as ot
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
-from modules.statistical_utils import get_bounds
+from utils.model_utils import sample_inputs
 
 def correlation_analysis(model, problem, code_snippet, language_model="llama-3.3-70b-versatile"):
     """Perform correlation analysis."""
+    
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
     
     # Run Monte Carlo simulation to get samples
     N = 1000
@@ -18,20 +22,30 @@ def correlation_analysis(model, problem, code_snippet, language_model="llama-3.3
     corr_spearman = data.corr(method='spearman')
     
     # Create a dictionary of correlation methods
-    methods = {
-        'Pearson': corr_pearson['Y'].drop('Y'),
-        'Spearman': corr_spearman['Y'].drop('Y')
-    }
+    # Handle both single and multiple outputs
+    output_cols = [col for col in data.columns if col == 'Y' or col.startswith('Y')]
+    if len(output_cols) == 1:
+        output_col = output_cols[0]
+        methods = {
+            'Pearson': corr_pearson[output_col].drop(output_cols),
+            'Spearman': corr_spearman[output_col].drop(output_cols)
+        }
+    else:
+        # For multiple outputs, use the first output for now
+        # This could be enhanced to show correlations for all outputs
+        output_col = output_cols[0]
+        methods = {
+            'Pearson': corr_pearson[output_col].drop(output_cols),
+            'Spearman': corr_spearman[output_col].drop(output_cols)
+        }
     
     # Get variable names
-    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        dimension = problem.getDimension()
-        names = []
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            names.append(marginal.getDescription()[0])
-    else:
-        names = problem['names']
+    dimension = problem.getDimension()
+    names = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        name = marginal.getDescription()[0]
+        names.append(name if name != "" else f"X{i+1}")
     
     # Create DataFrame with correlation results
     df = pd.DataFrame(methods, index=names)
@@ -47,16 +61,11 @@ def correlation_analysis(model, problem, code_snippet, language_model="llama-3.3
     plt.tight_layout()
     
     # Generate description of input distributions
-    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        inputs_description = ""
-        for i in range(problem.getDimension()):
-            marginal = problem.getMarginal(i)
-            param_name = marginal.getDescription()[0]
-            inputs_description += f"{param_name}: {marginal.__class__.__name__}, parameters {list(marginal.getParameter())}\n"
-    else:
-        inputs_description = ""
-        for name, dist_info in zip(names, problem['distributions']):
-            inputs_description += f"{name}: {dist_info}\n"
+    inputs_description = ""
+    for i in range(problem.getDimension()):
+        marginal = problem.getMarginal(i)
+        param_name = marginal.getDescription()[0]
+        inputs_description += f"{param_name}: {marginal.__class__.__name__}, parameters {list(marginal.getParameter())}\n"
     
     # Store results
     results = {

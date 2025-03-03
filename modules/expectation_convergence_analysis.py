@@ -1,11 +1,11 @@
-import openturns as ot
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
+import openturns as ot
+import matplotlib.pyplot as plt
 import streamlit as st
-from modules.api_utils import call_groq_api
-from modules.common_prompt import RETURN_INSTRUCTION
-from modules.openturns_utils import get_ot_distribution, get_ot_model, get_distribution_names
+from utils.core_utils import call_groq_api
+from utils.markdown_utils import RETURN_INSTRUCTION
+from utils.model_utils import get_ot_distribution, get_ot_model, get_distribution_names
 
 
 def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8000, language_model='groq'):
@@ -219,11 +219,19 @@ Please:
 
 def expectation_convergence_analysis_joint(model, problem, model_code_str, N_samples=8000, language_model='groq'):
     """Analyze convergence of Monte Carlo estimation."""
-    # Get OpenTURNS distribution
-    distribution = get_ot_distribution(problem)
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+    
+    # Use the distribution directly
+    distribution = problem
     
     # Get variable names
-    variable_names = get_distribution_names(problem)
+    dimension = distribution.getDimension()
+    variable_names = []
+    for i in range(dimension):
+        marginal = distribution.getMarginal(i)
+        variable_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
     
     # Set up sample sizes
     N_values = np.unique(np.logspace(1, np.log10(N_samples), 20).astype(int))

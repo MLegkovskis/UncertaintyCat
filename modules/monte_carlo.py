@@ -3,28 +3,48 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-from .statistical_utils import sample_inputs
+from utils.model_utils import sample_inputs
 
 def monte_carlo_simulation(model, problem, N=1000, seed=42):
     """Run Monte Carlo simulation."""
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        raise ValueError("Only OpenTURNS distributions are supported")
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
 
     # Get input names from marginals
     dimension = problem.getDimension()
     input_names = []
     for i in range(dimension):
         marginal = problem.getMarginal(i)
-        input_names.append(marginal.getDescription()[0])
+        input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
 
     # Generate samples
     X = sample_inputs(N, problem, seed)
-    Y = np.array([model(x) for x in X])
-
+    
+    # Evaluate model for each sample
+    # Handle both scalar and vector outputs
+    Y_list = []
+    for x in X:
+        y = model(x)
+        # Convert scalar or list to numpy array
+        if isinstance(y, (int, float)):
+            y = np.array([y])
+        elif isinstance(y, list):
+            y = np.array(y)
+        Y_list.append(y)
+    
+    Y = np.vstack(Y_list)
+    
     # Compute statistics
-    mean = np.mean(Y)
-    std = np.std(Y)
-    quantiles = np.percentile(Y, [2.5, 97.5])
+    if Y.shape[1] == 1:
+        Y = Y.flatten()
+        mean = np.mean(Y)
+        std = np.std(Y)
+        quantiles = np.percentile(Y, [2.5, 97.5])
+    else:
+        mean = np.mean(Y, axis=0)
+        std = np.std(Y, axis=0)
+        quantiles = np.array([np.percentile(Y[:, i], [2.5, 97.5]) for i in range(Y.shape[1])])
 
     # Create results dictionary
     results = {
@@ -39,15 +59,28 @@ def monte_carlo_simulation(model, problem, N=1000, seed=42):
     return results
 
 def create_monte_carlo_dataframe(results):
-    """Create a DataFrame with Monte Carlo results."""
+    """Create a DataFrame from Monte Carlo simulation results."""
+    # Extract data from results
     X = results['samples']
     Y = results['responses']
     input_names = results['input_names']
-
-    # Create DataFrame
+    
+    # Create DataFrame with input variables
     data = pd.DataFrame(X, columns=input_names)
-    data['Y'] = Y
-
+    
+    # Add response column(s)
+    if isinstance(Y, np.ndarray):
+        if Y.ndim == 1:
+            # Single output
+            data['Y'] = Y
+        else:
+            # Multiple outputs
+            for i in range(Y.shape[1]):
+                data[f'Y{i+1}'] = Y[:, i]
+    else:
+        # Fallback for any other case
+        data['Y'] = Y
+    
     return data
 
 def print_monte_carlo_summary(results):

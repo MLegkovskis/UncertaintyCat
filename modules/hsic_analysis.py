@@ -3,22 +3,21 @@ import pandas as pd
 import openturns as ot
 import matplotlib.pyplot as plt
 import streamlit as st
-from modules.api_utils import call_groq_api
-from modules.common_prompt import RETURN_INSTRUCTION
-from modules.openturns_utils import get_ot_distribution, get_ot_model
-from .statistical_utils import sample_inputs
+from utils.core_utils import call_groq_api
+from utils.markdown_utils import RETURN_INSTRUCTION
+from utils.model_utils import get_ot_distribution, get_ot_model, sample_inputs
 
 def hsic_analysis(model, problem, model_code_str, language_model='groq'):
-    # Handle OpenTURNS distribution
-    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        dimension = problem.getDimension()
-        input_names = []
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            input_names.append(marginal.getDescription()[0])
-    else:
-        dimension = problem['num_vars']
-        input_names = problem['names']
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+    
+    # Get input names from distribution
+    dimension = problem.getDimension()
+    input_names = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
 
     # Compute HSIC indices
     hsic_results = compute_hsic_indices(model, problem, N=1000, seed=42)
@@ -40,22 +39,14 @@ def hsic_analysis(model, problem, model_code_str, language_model='groq'):
 
     # Prepare the input parameters and their uncertainties
     input_parameters = []
-    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            name = marginal.getDescription()[0]
-            input_parameters.append({
-                'Variable': name,
-                'Distribution': marginal.__class__.__name__,
-                'Parameters': list(marginal.getParameter())
-            })
-    else:
-        for name, dist_info in zip(problem['names'], problem['distributions']):
-            input_parameters.append({
-                'Variable': name,
-                'Distribution': dist_info['type'],
-                'Parameters': dist_info['params']
-            })
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        name = marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}"
+        input_parameters.append({
+            'Variable': name,
+            'Distribution': marginal.__class__.__name__,
+            'Parameters': list(marginal.getParameter())
+        })
 
     inputs_df = pd.DataFrame(input_parameters)
     inputs_md_table = inputs_df.to_markdown(index=False)
@@ -111,16 +102,16 @@ Please:
 
 def compute_hsic_indices(model, problem, N=1000, seed=42):
     """Compute HSIC-based sensitivity indices."""
-    # Handle OpenTURNS distribution
-    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        dimension = problem.getDimension()
-        input_names = []
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            input_names.append(marginal.getDescription()[0])
-    else:
-        dimension = problem['num_vars']
-        input_names = problem['names']
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+
+    # Get input names from distribution
+    dimension = problem.getDimension()
+    input_names = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
 
     # Generate samples
     X = sample_inputs(N, problem, seed)

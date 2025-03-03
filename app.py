@@ -4,29 +4,33 @@ import numpy as np
 import openturns as ot
 import pandas as pd
 
-# Import your modules
+# Import modules
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
 from modules.model_understanding import model_understanding
 from modules.exploratory_data_analysis import exploratory_data_analysis
-from modules.expectation_convergence_analysis import expectation_convergence_analysis, expectation_convergence_analysis_joint
+from modules.expectation_convergence_analysis import expectation_convergence_analysis_joint
 from modules.sobol_sensitivity_analysis import sobol_sensitivity_analysis
 from modules.taylor_analysis import taylor_analysis
 from modules.correlation_analysis import correlation_analysis
 from modules.hsic_analysis import hsic_analysis
 from modules.ml_analysis import ml_analysis
-from modules.markdown_utils import get_markdown_from_code
-from modules.instructions import show_instructions
-from modules.code_safety import check_code_safety
-from modules.model_options_list import model_options
-from modules.model_validation import (
+
+# Import utils
+from utils.markdown_utils import get_markdown_from_code, RETURN_INSTRUCTION
+from utils.core_utils import (
+    show_instructions,
+    initialize_session_state,
+    reset_analysis,
+    get_session_state,
+    model_options,
+    call_groq_api
+)
+from utils.model_utils import (
+    check_code_safety,
     validate_problem_structure,
     get_human_friendly_error_explanation,
     test_model,
-)
-from modules.session_state_utils import (
-    initialize_session_state,
-    reset_analysis,
-    get_session_state
+    sample_inputs
 )
 
 ###############################################################################
@@ -233,6 +237,7 @@ def run_simulation():
         problem = local_namespace['problem']
 
         # Validate the problem structure
+        from utils.model_utils import validate_problem_structure
         validate_problem_structure(problem)
 
         # Get number of samples from UI
@@ -252,9 +257,6 @@ def run_simulation():
             "N": N,
             "analysis_options": analysis_options
         }
-        
-        # Update the plot
-        # update_plot()
         
     except Exception as e:
         st.error(f"Error during simulation: {str(e)}")
@@ -303,16 +305,10 @@ if st.session_state.get("simulation_results"):
     st.markdown("---")
     st.header("Expectation Convergence Analysis")
     with st.spinner("Running Expectation Convergence Analysis..."):
-        if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-            expectation_convergence_analysis_joint(
-                model, problem, snippet_for_modules, N_samples=N,
-                language_model=selected_language_model
-            )
-        else:
-            expectation_convergence_analysis(
-                model, problem, snippet_for_modules, N_samples=N,
-                language_model=selected_language_model
-            )
+        expectation_convergence_analysis_joint(
+            model, problem, snippet_for_modules, N_samples=N,
+            language_model=selected_language_model
+        )
 
     if analysis_options["Sobol Sensitivity Analysis"]:
         st.markdown("---")

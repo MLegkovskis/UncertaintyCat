@@ -1,9 +1,11 @@
 import numpy as np
+import pandas as pd
+import openturns as ot
+from SALib.analyze import sobol
+from utils.core_utils import call_groq_api
+from utils.markdown_utils import RETURN_INSTRUCTION
 import matplotlib.pyplot as plt
 import streamlit as st
-import openturns as ot
-from modules.api_utils import call_groq_api
-from modules.common_prompt import RETURN_INSTRUCTION
 
 def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
     """Perform Sobol sensitivity analysis.
@@ -25,8 +27,8 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
         # Verify input types
         if not isinstance(model, ot.Function):
             raise TypeError("Model must be an OpenTURNS Function")
-        if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-            raise TypeError("Problem must be an OpenTURNS Distribution or JointDistribution")
+        if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+            raise TypeError("Problem must be an OpenTURNS Distribution")
             
         # Get dimension from the model's input dimension
         dimension = model.getInputDimension()
@@ -36,7 +38,11 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
         independent_dist = ot.JointDistribution(marginals)
         
         # Get variable names
-        variable_names = [problem.getMarginal(i).getDescription()[0] for i in range(dimension)]
+        variable_names = []
+        for i in range(dimension):
+            marginal = problem.getMarginal(i)
+            name = marginal.getDescription()[0]
+            variable_names.append(name if name != "" else f"X{i+1}")
         
         # Create Sobol algorithm
         compute_second_order = True

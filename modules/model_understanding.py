@@ -2,26 +2,27 @@ import numpy as np
 import pandas as pd
 import openturns as ot
 import streamlit as st
-from modules.api_utils import call_groq_api
-from modules.common_prompt import RETURN_INSTRUCTION
-from modules.forbidden_patterns import forbidden_patterns
+from utils.core_utils import call_groq_api
+from utils.markdown_utils import RETURN_INSTRUCTION, forbidden_patterns
 
 def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
     """Generate a description of the model and its uncertain inputs."""
-    # Handle OpenTURNS distribution
-    if isinstance(problem, (ot.Distribution, ot.JointDistribution)):
-        dimension = problem.getDimension()
-        input_names = [problem.getMarginal(i).getDescription()[0] for i in range(dimension)]
-        distributions = []
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            distributions.append({
-                'type': marginal.__class__.__name__,
-                'params': list(marginal.getParameter())
-            })
-    else:
-        input_names = problem['names']
-        distributions = problem['distributions']
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+    
+    dimension = problem.getDimension()
+    input_names = []
+    distributions = []
+    
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        name = marginal.getDescription()[0]
+        input_names.append(name if name != "" else f"X{i+1}")
+        distributions.append({
+            'type': marginal.__class__.__name__,
+            'params': list(marginal.getParameter())
+        })
 
     # Create DataFrame for input parameters
     input_parameters = []
