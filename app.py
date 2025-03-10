@@ -22,13 +22,11 @@ from utils.core_utils import (
     initialize_session_state,
     reset_analysis,
     get_session_state,
-    model_options,
+    get_model_options,
     call_groq_api
 )
 from utils.model_utils import (
-    check_code_safety,
     validate_problem_structure,
-    get_human_friendly_error_explanation,
     test_model,
     sample_inputs
 )
@@ -101,7 +99,7 @@ initialize_session_state()
 # 4) MODEL SELECT / UPLOAD
 ###############################################################################
 # Insert placeholder item at index 0 for "no model selected"
-dropdown_items = ["(Select or define your own model)"] + model_options
+dropdown_items = ["(Select or define your own model)"] + get_model_options()
 
 # We'll store the dropdown’s current selection in st.session_state["model_selectbox"]
 # Use on_change callback to apply that selection immediately

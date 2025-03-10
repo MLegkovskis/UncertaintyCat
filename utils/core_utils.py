@@ -78,14 +78,25 @@ def get_session_state(key, default=None):
 
 # ================ Model Options ================
 
-model_options = [
-    'Beam.py', 'Bike_Speed.py', 'Borehole_Model.py', 'Chaboche_Model.py', 'Chemical_Reactor.py',
-    'Cylinder_heating.py', 'Damped_Oscillator.py', 'Epidemic_Model.py',
-    'FloodModel.py', 'Ishigami.py', 'Logistic_Model.py', 'Material_Stress.py', 'Morris_Function.py',
-    'Portfolio_Risk.py', 'Rocket_Trajectory.py', 'Stiffened_Panel.py', 'Solar_Panel_Output.py',
-    'Truss_Model.py', 'Tube_Deflection.py', 'Undamped_Oscillator.py',
-    'Viscous_Freefall.py', 'Wind_Turbine_Power.py'
-]
+def get_model_options():
+    """
+    Dynamically get a list of available model files from the examples directory.
+    
+    Returns
+    -------
+    list
+        List of Python files in the examples directory
+    """
+    examples_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    model_files = []
+    
+    if os.path.exists(examples_dir) and os.path.isdir(examples_dir):
+        for file in os.listdir(examples_dir):
+            if file.endswith('.py'):
+                model_files.append(file)
+    
+    # Sort alphabetically for consistent display
+    return sorted(model_files)
 
 # ================ Instructions ================
 

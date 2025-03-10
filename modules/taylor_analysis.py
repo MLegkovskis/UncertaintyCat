@@ -8,7 +8,7 @@ import streamlit as st
 import re
 from utils.core_utils import call_groq_api
 from utils.markdown_utils import RETURN_INSTRUCTION
-from utils.model_utils import get_ot_distribution, get_ot_model
+from utils.model_utils import get_ot_model
 
 def compute_taylor_indices(model, problem, h=1e-6):
     """Compute Taylor-based sensitivity indices."""

@@ -5,15 +5,19 @@ import matplotlib.pyplot as plt
 import streamlit as st
 from utils.core_utils import call_groq_api
 from utils.markdown_utils import RETURN_INSTRUCTION
-from utils.model_utils import get_ot_distribution, get_ot_model, get_distribution_names
+from utils.model_utils import get_ot_model
 
 
 def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8000, language_model='groq'):
-    # Create distributions
-    distribution = get_ot_distribution(problem)
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+    
+    # Use the distribution directly
+    distribution = problem
 
-    # Create OpenTURNS model
-    ot_model = get_ot_model(model, problem)
+    # Create OpenTURNS model if needed
+    ot_model = get_ot_model(model)
 
     # Define the input random vector and the output random vector
     input_random_vector = ot.RandomVector(distribution)

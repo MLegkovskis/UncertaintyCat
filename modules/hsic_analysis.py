@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import streamlit as st
 from utils.core_utils import call_groq_api
 from utils.markdown_utils import RETURN_INSTRUCTION
-from utils.model_utils import get_ot_distribution, get_ot_model, sample_inputs
+from utils.model_utils import get_ot_model, sample_inputs
 
 def hsic_analysis(model, problem, model_code_str, language_model='groq'):
     # Ensure problem is an OpenTURNS distribution
