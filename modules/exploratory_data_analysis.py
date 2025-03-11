@@ -196,139 +196,6 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
             
             st.plotly_chart(fig, use_container_width=True)
     
-    # Output distribution analysis with integrated statistics
-    with st.expander("Output Analysis", expanded=True):
-        st.write("### Output Distribution Analysis")
-        
-        # Calculate statistics for outputs
-        output_stats = data[output_columns].describe().copy()
-        output_stats.rename(columns=display_names, inplace=True)
-        
-        skewness = data[output_columns].skew()
-        kurtosis = data[output_columns].kurtosis()
-        
-        additional_stats = pd.DataFrame({
-            'Skewness': skewness,
-            'Kurtosis': kurtosis
-        })
-        additional_stats.rename(columns=display_names, inplace=True)
-        
-        # Display statistics tables
-        st.write("#### Output Summary Statistics")
-        st.dataframe(output_stats, use_container_width=True)
-        
-        st.write("#### Additional Output Statistics")
-        st.dataframe(additional_stats, use_container_width=True)
-        
-        # Create a figure with subplots - one row per output
-        subplot_titles = []
-        for output_col in output_columns:
-            display_output = display_names[output_col]
-            subplot_titles.extend([f"Box Plot of {display_output}", f"Distribution of {display_output}"])
-            
-        fig = sp.make_subplots(
-            rows=len(output_columns), 
-            cols=2,
-            subplot_titles=subplot_titles,
-            specs=[[{"type": "box"}, {"type": "histogram"}] for _ in output_columns],
-            vertical_spacing=0.15
-        )
-        
-        for i, output_col in enumerate(output_columns):
-            row = i + 1
-            display_output = display_names[output_col]
-            
-            # Add box plot
-            fig.add_trace(
-                go.Box(
-                    y=data[output_col],
-                    name=display_output,
-                    boxmean=True,
-                    marker_color='royalblue',
-                    boxpoints='outliers'
-                ),
-                row=row, col=1
-            )
-            
-            # Add histogram with KDE
-            hist_data = [data[output_col]]
-            group_labels = [display_output]
-            
-            # Add histogram
-            fig.add_trace(
-                go.Histogram(
-                    x=data[output_col],
-                    histnorm='probability density',
-                    name=display_output,
-                    marker=dict(color='royalblue', opacity=0.6)
-                ),
-                row=row, col=2
-            )
-            
-            # Add KDE
-            kde_x = np.linspace(data[output_col].min(), data[output_col].max(), 1000)
-            kde = stats.gaussian_kde(data[output_col])
-            kde_y = kde(kde_x)
-            
-            fig.add_trace(
-                go.Scatter(
-                    x=kde_x,
-                    y=kde_y,
-                    mode='lines',
-                    name='KDE',
-                    line=dict(color='firebrick', width=2)
-                ),
-                row=row, col=2
-            )
-            
-            # Add reference lines for mean and median
-            mean_val = data[output_col].mean()
-            median_val = data[output_col].median()
-            
-            # Add mean line to histogram
-            fig.add_vline(
-                x=mean_val,
-                line_dash="dash",
-                line_color="green",
-                annotation_text=f"Mean: {mean_val:.2f}",
-                annotation_position="top right",
-                row=row, col=2
-            )
-            
-            # Add median line to histogram
-            fig.add_vline(
-                x=median_val,
-                line_dash="dash",
-                line_color="orange",
-                annotation_text=f"Median: {median_val:.2f}",
-                annotation_position="top left",
-                row=row, col=2
-            )
-        
-        # Update layout
-        fig.update_layout(
-            height=400 * len(output_columns),
-            showlegend=False,
-            title_text="Output Distribution Analysis",
-            margin=dict(l=60, r=50, t=80, b=50)
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Add quantile information
-        st.write("#### Quantile Information")
-        
-        quantiles_df = pd.DataFrame()
-        for output_col in output_columns:
-            display_output = display_names[output_col]
-            quantiles = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
-            quantile_values = np.quantile(data[output_col], quantiles)
-            
-            quantiles_df[display_output] = quantile_values
-        
-        quantiles_df.index = [f"{q*100}%" for q in quantiles]
-        st.dataframe(quantiles_df, use_container_width=True)
-    
     # Generate AI insights if requested
     if language_model:
         with st.expander("AI Insights", expanded=True):
@@ -342,8 +209,8 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
                 {data.describe().to_string()}
                 
                 Additional statistics:
-                Skewness: {skewness.to_string()}
-                Kurtosis: {kurtosis.to_string()}
+                Skewness: {data[output_columns].skew().to_string()}
+                Kurtosis: {data[output_columns].kurtosis().to_string()}
                 
                 Correlation matrix:
                 {data.corr().to_string()}

@@ -4,11 +4,18 @@ import openturns as ot
 from SALib.analyze import sobol
 from utils.core_utils import call_groq_api
 from utils.markdown_utils import RETURN_INSTRUCTION
-import matplotlib.pyplot as plt
 import streamlit as st
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
 
 def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
-    """Perform Sobol sensitivity analysis.
+    """Perform enterprise-grade Sobol sensitivity analysis.
+    
+    This module provides comprehensive global sensitivity analysis using the Sobol method,
+    which decomposes the variance of the model output into contributions from each input
+    variable and their interactions. The analysis helps identify which uncertain inputs
+    have the most significant impact on model outputs.
     
     Parameters
     ----------
@@ -45,7 +52,7 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
             variable_names.append(name if name != "" else f"X{i+1}")
         
         # Create Sobol algorithm
-        compute_second_order = True
+        compute_second_order = dimension <= 10  # Only compute second order for reasonable dimensions
         sie = ot.SobolIndicesExperiment(independent_dist, N, compute_second_order)
         input_design = sie.generate()
         
@@ -58,7 +65,6 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
         # Get first and total order indices
         S1 = sensitivity_analysis.getFirstOrderIndices()
         ST = sensitivity_analysis.getTotalOrderIndices()
-        S2 = sensitivity_analysis.getSecondOrderIndices()
         
         # Get confidence intervals
         S1_interval = sensitivity_analysis.getFirstOrderIndicesInterval()
@@ -73,95 +79,452 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
             ST_lower = ST_interval.getLowerBound()[i]
             ST_upper = ST_interval.getUpperBound()[i]
             
+            # Calculate interaction effect for this variable
+            interaction = float(ST[i]) - float(S1[i])
+            
             indices_data.append({
                 'Variable': name,
                 'First Order': float(S1[i]),
-                'First Order CI': f"[{S1_lower:.4f}, {S1_upper:.4f}]",
+                'First Order Lower': float(S1_lower),
+                'First Order Upper': float(S1_upper),
                 'Total Order': float(ST[i]),
-                'Total Order CI': f"[{ST_lower:.4f}, {ST_upper:.4f}]"
+                'Total Order Lower': float(ST_lower),
+                'Total Order Upper': float(ST_upper),
+                'Interaction': interaction,
+                'Interaction %': interaction / float(ST[i]) * 100 if float(ST[i]) > 0 else 0
             })
         
-        # Plot results
-        st.write("### Sobol Sensitivity Indices")
-        st.write("This analysis shows the contribution of each input variable to the output variance.")
+        # Create DataFrame for display
+        indices_df = pd.DataFrame(indices_data)
         
-        # Bar plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        x = np.arange(len(variable_names))
-        width = 0.35
+        # Add formatted confidence intervals for display
+        indices_df['First Order CI'] = indices_df.apply(
+            lambda row: f"[{row['First Order Lower']:.4f}, {row['First Order Upper']:.4f}]", 
+            axis=1
+        )
+        indices_df['Total Order CI'] = indices_df.apply(
+            lambda row: f"[{row['Total Order Lower']:.4f}, {row['Total Order Upper']:.4f}]", 
+            axis=1
+        )
         
-        ax.bar(x - width/2, [d['First Order'] for d in indices_data], width, 
-               label='First Order', color='skyblue')
-        ax.bar(x + width/2, [d['Total Order'] for d in indices_data], width, 
-               label='Total Order', color='lightcoral')
+        # Sort by total order index for better visualization
+        indices_df = indices_df.sort_values('Total Order', ascending=False)
         
-        ax.set_ylabel('Sensitivity Index')
-        ax.set_title('Sobol Sensitivity Indices')
-        ax.set_xticks(x)
-        ax.set_xticklabels(variable_names, rotation=45, ha='right')
-        ax.legend()
+        # Calculate total sensitivity and interaction effects
+        sum_first_order = sum(float(S1[i]) for i in range(dimension))
+        sum_total_order = sum(float(ST[i]) for i in range(dimension))
+        interaction_effect = 1 - sum_first_order
         
-        plt.tight_layout()
-        st.pyplot(fig)
-        plt.close()
+        # Create second-order indices matrix if available and dimension is reasonable
+        S2_matrix = None
+        if compute_second_order and dimension > 1 and dimension <= 10:
+            try:
+                # Get second order indices if available
+                S2 = sensitivity_analysis.getSecondOrderIndices()
+                
+                # Create a matrix for visualization
+                S2_matrix = np.zeros((dimension, dimension))
+                
+                # In OpenTURNS, second order indices are stored in a specific order
+                # We need to map them to the correct position in our matrix
+                idx = 0
+                for i in range(dimension):
+                    for j in range(i+1, dimension):
+                        if idx < S2.getDimension():
+                            S2_matrix[i, j] = S2[idx]
+                            S2_matrix[j, i] = S2_matrix[i, j]  # Symmetric
+                            idx += 1
+            except:
+                # Silently handle the error - we'll just skip second-order indices
+                S2_matrix = None
         
-        # Display numerical results
-        st.write("\n### Numerical Results")
-        for data in indices_data:
-            st.write(f"**{data['Variable']}**")
-            st.write(f"- First Order Index: {data['First Order']:.4f} ({data['First Order CI']})")
-            st.write(f"- Total Order Index: {data['Total Order']:.4f} ({data['Total Order CI']})")
+        # Create distribution information for the prompt
+        dist_info = []
+        for i, name in enumerate(variable_names):
+            marginal = problem.getMarginal(i)
+            dist_info.append({
+                'Variable': name,
+                'Distribution': marginal.__class__.__name__,
+                'Parameters': str(list(marginal.getParameter()))
+            })
+        dist_df = pd.DataFrame(dist_info)
         
-        # Calculate total sensitivity
-        total_sensitivity = sum(d['First Order'] for d in indices_data)
-        st.write(f"\nTotal First Order Sensitivity: {total_sensitivity:.4f}")
+        # Create Plotly bar chart for sensitivity indices
+        fig_bar = go.Figure()
         
-        if abs(1 - total_sensitivity) > 0.1:
-            st.write("\n**Note:** The sum of first-order indices is significantly different from 1, "
-                     "indicating important interaction effects between variables.")
+        # Add first order indices
+        fig_bar.add_trace(go.Bar(
+            x=indices_df['Variable'],
+            y=indices_df['First Order'],
+            name='First Order (S₁)',
+            error_y=dict(
+                type='data',
+                symmetric=False,
+                array=indices_df['First Order Upper'] - indices_df['First Order'],
+                arrayminus=indices_df['First Order'] - indices_df['First Order Lower']
+            ),
+            marker_color='rgba(31, 119, 180, 0.8)'
+        ))
         
-        # Generate prompt for GPT
+        # Add total order indices
+        fig_bar.add_trace(go.Bar(
+            x=indices_df['Variable'],
+            y=indices_df['Total Order'],
+            name='Total Order (S₁ᵀ)',
+            error_y=dict(
+                type='data',
+                symmetric=False,
+                array=indices_df['Total Order Upper'] - indices_df['Total Order'],
+                arrayminus=indices_df['Total Order'] - indices_df['Total Order Lower']
+            ),
+            marker_color='rgba(214, 39, 40, 0.8)'
+        ))
+        
+        # Update layout
+        fig_bar.update_layout(
+            title='Sobol Sensitivity Indices',
+            xaxis_title='Input Variables',
+            yaxis_title='Sensitivity Index',
+            barmode='group',
+            template='plotly_white',
+            height=500,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        # Create pie chart for variance decomposition
+        first_order_values = indices_df['First Order'].tolist()
+        first_order_labels = indices_df['Variable'].tolist()
+        
+        # Add interaction effect to the pie chart
+        if interaction_effect > 0.01:  # Only show if it's significant
+            first_order_values.append(interaction_effect)
+            first_order_labels.append('Interactions')
+        
+        fig_pie = px.pie(
+            values=first_order_values,
+            names=first_order_labels,
+            title='Variance Decomposition',
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
+        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+        fig_pie.update_layout(height=500, template='plotly_white')
+        
+        # Create interaction comparison chart
+        fig_interaction = go.Figure()
+        
+        # Sort by interaction percentage for this chart
+        interaction_df = indices_df.sort_values('Interaction %', ascending=False)
+        
+        # Add bars for interaction percentage
+        fig_interaction.add_trace(go.Bar(
+            x=interaction_df['Variable'],
+            y=interaction_df['Interaction %'],
+            name='Interaction Contribution (%)',
+            marker_color='rgba(44, 160, 44, 0.8)'
+        ))
+        
+        # Update layout
+        fig_interaction.update_layout(
+            title='Variable Interaction Contribution',
+            xaxis_title='Input Variables',
+            yaxis_title='Interaction Contribution (%)',
+            template='plotly_white',
+            height=400
+        )
+        
+        # Display results in expandable sections
+        with st.expander("Sensitivity Analysis Overview", expanded=True):
+            st.write("### Sobol Sensitivity Analysis")
+            st.write("""
+            Sobol sensitivity analysis is a variance-based method that quantifies the contribution of each input variable 
+            to the variance of the model output. This analysis helps identify which uncertain inputs have the most 
+            significant impact on model outputs and should be prioritized for uncertainty reduction efforts.
+            """)
+            
+            # Create summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                most_influential = indices_df.iloc[0]['Variable']
+                most_influential_total = indices_df.iloc[0]['Total Order']
+                st.metric(
+                    "Most Influential Variable", 
+                    most_influential,
+                    f"Total Order: {most_influential_total:.4f}"
+                )
+            with col2:
+                st.metric("Sum of First-Order Indices", f"{sum_first_order:.4f}")
+                if sum_first_order > 1.01:  # Allow for small numerical errors
+                    st.warning("""
+                    **Note:** Sum of first-order indices exceeds 1.0, which indicates numerical approximation errors. 
+                    This can happen due to limited sample size or computational precision. Consider increasing the 
+                    sample size for more accurate results.
+                    """)
+            with col3:
+                st.metric("Sum of Total-Order Indices", f"{sum_total_order:.4f}")
+                if sum_total_order < sum_first_order:
+                    st.warning("""
+                    **Note:** Sum of total-order indices is less than sum of first-order indices, which indicates 
+                    numerical approximation errors. Theoretically, total-order indices should be greater than or 
+                    equal to first-order indices for each variable.
+                    """)
+            
+            # Add explanation of metrics
+            st.write("""
+            **Key Metrics Explained:**
+            - **Most Influential Variable**: The input parameter with the highest total-order sensitivity index, indicating its overall importance
+            - **Sum of First-Order Indices**: Sum of all direct contributions to output variance (theoretically should be ≤ 1.0)
+            - **Sum of Total-Order Indices**: Sum of all total contributions including interactions (can exceed 1.0 due to counting interactions multiple times)
+            
+            **Note on Sobol Indices:**
+            - First-order indices (S₁) should theoretically be between 0 and 1, with their sum ≤ 1
+            - Total-order indices (S₁ᵀ) should also be between 0 and 1 for each variable
+            - For each variable, S₁ᵀ ≥ S₁ (total effect includes direct effect)
+            - The sum of total-order indices can exceed 1 because interactions are counted multiple times
+            """)
+        
+        with st.expander("Variance-Based Sensitivity Analysis", expanded=True):
+            # Create two columns for the charts
+            col1, col2 = st.columns([3, 2])
+            
+            with col1:
+                st.write("### Sobol Sensitivity Indices")
+                st.write("""
+                **First-Order Index (S₁)**: Measures the direct contribution of each input to output variance.
+                
+                **Total-Order Index (S₁ᵀ)**: Measures the total contribution including interactions with other variables.
+                
+                **Error bars**: Represent 95% confidence intervals for the sensitivity estimates.
+                """)
+                st.plotly_chart(fig_bar, use_container_width=True)
+            
+            with col2:
+                st.write("### Variance Decomposition")
+                st.write("""
+                This pie chart visualizes how the total output variance is distributed:
+                
+                - **Individual variable slices**: The portion of output variance directly explained by each input variable (first-order effects)
+                - **Interactions slice**: The portion of variance that can only be explained by interactions between variables
+                
+                The variance decomposition follows the principle that the total normalized variance equals 1.0, with:
+                - Sum of all first-order effects ≤ 1.0
+                - If sum < 1.0, the remainder is attributed to interactions
+                """)
+                st.plotly_chart(fig_pie, use_container_width=True)
+            
+            # Add interpretation based on results
+            if interaction_effect > 0.1:
+                st.info("""
+                **Significant interaction effects detected.** The sum of first-order indices is substantially 
+                less than 1, indicating important interactions between variables. This means the model behavior 
+                cannot be understood by studying each variable in isolation.
+                """)
+            elif sum_first_order > 0.9:
+                st.success("""
+                **Minimal interaction effects detected.** The sum of first-order indices is close to 1, indicating 
+                that variables act mostly independently. The model behavior can be understood by studying the 
+                effect of each variable separately.
+                """)
+        
+        with st.expander("Interaction Analysis", expanded=True):
+            st.write("### Variable Interaction Effects")
+            st.write("""
+            This section analyzes how variables interact with each other in the model. Understanding interactions 
+            is crucial for:
+            
+            1. **Model interpretation**: Identifying coupled parameters that must be considered together
+            2. **Risk assessment**: Detecting compound effects that may amplify risks
+            3. **Optimization**: Finding synergistic parameter combinations for better performance
+            """)
+            
+            # Show top interacting variables first
+            interaction_sorted = indices_df.sort_values('Interaction', ascending=False).head(3)
+            if not interaction_sorted.empty:
+                st.write("#### Top Interacting Variables")
+                for _, row in interaction_sorted.iterrows():
+                    var_name = row['Variable']
+                    first_order = row['First Order']
+                    total_order = row['Total Order']
+                    interaction = total_order - first_order
+                    percentage = interaction / total_order * 100 if total_order > 0 else 0
+                    
+                    st.write(f"**{var_name}**: {interaction:.4f} ({percentage:.1f}% of its total effect)")
+            
+            # Create interaction table with simplified columns
+            st.write("#### Interaction Summary Table")
+            interaction_table = indices_df.copy()
+            interaction_table = interaction_table[['Variable', 'First Order', 'Total Order']]
+            
+            # Add interaction columns
+            interaction_table['Interaction (S₁ᵀ - S₁)'] = interaction_table.apply(
+                lambda row: f"{float(row['Total Order']) - float(row['First Order']):.4f}", axis=1
+            )
+            interaction_table['% of Total Effect'] = interaction_table.apply(
+                lambda row: f"{(float(row['Total Order']) - float(row['First Order'])) / float(row['Total Order']) * 100:.1f}%" 
+                if float(row['Total Order']) > 0 else "0.0%", axis=1
+            )
+            
+            # Format numeric columns
+            interaction_table['First Order'] = interaction_table['First Order'].map('{:.4f}'.format)
+            interaction_table['Total Order'] = interaction_table['Total Order'].map('{:.4f}'.format)
+            
+            # Display the table
+            st.dataframe(interaction_table, use_container_width=True)
+            
+            # Show interaction chart with clearer explanation
+            st.write("#### Variable Interaction Contribution")
+            st.write("""
+            This chart shows the percentage of each variable's total effect that comes from interactions.
+            
+            **How to interpret:**
+            - **High percentage**: Variable primarily influences output through interactions with other variables
+            - **Low percentage**: Variable primarily influences output through its direct effect
+            """)
+            st.plotly_chart(fig_interaction, use_container_width=True)
+            
+            # Display second-order indices if available
+            if S2_matrix is not None:
+                st.write("### Pairwise Interactions")
+                st.write("""
+                The heatmap below shows the strength of interactions between specific pairs of variables.
+                
+                **How to read this heatmap:**
+                - Each cell represents the interaction strength between two variables
+                - Darker colors indicate stronger interactions
+                - These are second-order Sobol indices that measure how much output variance is explained by the joint effect of two variables beyond their individual effects
+                """)
+                
+                # Create heatmap for second-order indices
+                fig_heatmap = px.imshow(
+                    S2_matrix,
+                    x=variable_names,
+                    y=variable_names,
+                    color_continuous_scale='RdBu_r',
+                    title='Second-Order Interaction Effects',
+                    labels=dict(color='Interaction Index')
+                )
+                fig_heatmap.update_layout(height=500, template='plotly_white')
+                st.plotly_chart(fig_heatmap, use_container_width=True)
+                
+                # Find top interactions
+                interactions = []
+                for i in range(dimension):
+                    for j in range(i+1, dimension):
+                        interactions.append({
+                            'Variables': f"{variable_names[i]} × {variable_names[j]}",
+                            'Interaction Index': float(S2_matrix[i, j])
+                        })
+                
+                if interactions:
+                    interactions_df = pd.DataFrame(interactions).sort_values('Interaction Index', ascending=False).head(5)
+                    st.write("#### Top Interaction Pairs")
+                    st.write("These variable pairs have the strongest interactions in the model:")
+                    st.dataframe(interactions_df, use_container_width=True)
+        
+        with st.expander("Detailed Numerical Results", expanded=True):
+            st.write("### Sensitivity Indices with Confidence Intervals")
+            st.write("""
+            This table presents the complete sensitivity analysis results with 95% confidence intervals.
+            Higher values indicate greater influence on the model output.
+            """)
+            
+            # Create display dataframe with formatted values
+            display_df = indices_df[['Variable', 'First Order', 'First Order CI', 'Total Order', 'Total Order CI']].copy()
+            display_df['First Order'] = display_df['First Order'].map('{:.4f}'.format)
+            display_df['Total Order'] = display_df['Total Order'].map('{:.4f}'.format)
+            
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Add interpretation guidance
+            st.write("""
+            **Interpretation Guide:**
+            
+            - **First Order Index (S₁)**: Direct contribution of the variable to output variance
+              - S₁ ≈ 0: Variable has little direct influence
+              - S₁ ≈ 1: Variable dominates the model behavior
+            
+            - **Total Order Index (S₁ᵀ)**: Total contribution including interactions
+              - S₁ᵀ > S₁: Variable is involved in interactions
+              - S₁ᵀ ≈ S₁: Variable has minimal interactions
+            
+            - **Confidence Intervals (CI)**: 95% confidence bounds for the sensitivity estimates
+            """)
+        
+        # Generate prompt for AI insights
         indices_table = "\n".join(
-            f"- {data['Variable']}:\n"
-            f"  First Order: {data['First Order']:.4f} {data['First Order CI']}\n"
-            f"  Total Order: {data['Total Order']:.4f} {data['Total Order CI']}"
-            for data in indices_data
+            f"- {row['Variable']}:\n"
+            f"  First Order: {row['First Order']:.4f} {row['First Order CI']}\n"
+            f"  Total Order: {row['Total Order']:.4f} {row['Total Order CI']}\n"
+            f"  Interaction: {row['Total Order'] - row['First Order']:.4f} ({row['Interaction %']:.1f}%)"
+            for _, row in indices_df.iterrows()
         )
         
         # Add distribution information
-        dist_info = "\n".join(
-            f"- {name}: {problem.getMarginal(i).__class__.__name__}, "
-            f"parameters {problem.getMarginal(i).getParameter()}"
-            for i, name in enumerate(variable_names)
+        dist_info_text = "\n".join(
+            f"- {row['Variable']}: {row['Distribution']}, parameters {row['Parameters']}"
+            for _, row in dist_df.iterrows()
         )
         
         prompt = f"""
-Analyze these Sobol sensitivity analysis results:
+{RETURN_INSTRUCTION}
+
+Analyze these Sobol sensitivity analysis results for an enterprise-grade engineering model:
 
 ```python
 {model_code_str}
 ```
 
 Input Distributions:
-{dist_info}
+{dist_info_text}
 
 Sobol Indices:
 {indices_table}
 
-Total First Order Sensitivity: {total_sensitivity:.4f}
+Sum of First-Order Indices: {sum_first_order:.4f}
+Sum of Total-Order Indices: {sum_total_order:.4f}
+Interaction Effect: {interaction_effect:.4f}
 
-Please provide:
-1. A technical interpretation of these sensitivity indices
-2. Explanation of which parameters are most influential and why
-3. Discussion of any significant interaction effects
-4. Recommendations for model simplification or improvement
+Please provide a comprehensive enterprise-grade analysis that includes:
 
-{RETURN_INSTRUCTION}
+1. Executive Summary
+   - Key findings and their business implications
+   - Most influential parameters and their significance
+   - Overall assessment of model robustness
+
+2. Technical Analysis
+   - Detailed interpretation of first-order and total-order indices
+   - Analysis of confidence intervals and statistical significance
+   - Evaluation of interaction effects and their implications
+
+3. Risk Assessment
+   - Identification of critical variables for risk management
+   - Quantification of uncertainty propagation through the model
+   - Potential failure modes based on sensitivity patterns
+
+4. Optimization Opportunities
+   - Variables that offer the greatest potential for system improvement
+   - Cost-benefit analysis of reducing uncertainty in specific inputs
+   - Recommendations for model simplification if appropriate
+
+5. Decision Support
+   - Specific actionable recommendations for stakeholders
+   - Prioritized list of variables for further investigation
+   - Guidance for monitoring and control strategies
+
+Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations that would be valuable for executive decision-makers in an engineering context.
 """
         
-        # Call GPT API and display response
-        response = call_groq_api(prompt, language_model)
-        st.markdown(response)
+        # Display AI insights
+        with st.expander("Expert Analysis", expanded=True):
+            st.write("### AI-Generated Expert Analysis")
+            with st.spinner("Generating expert analysis..."):
+                response = call_groq_api(prompt, language_model)
+                st.markdown(response)
         
     except Exception as e:
         st.error(f"Error in Sobol sensitivity analysis: {str(e)}")
