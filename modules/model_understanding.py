@@ -5,7 +5,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 from utils.core_utils import call_groq_api
-from utils.markdown_utils import RETURN_INSTRUCTION, forbidden_patterns
+from utils.constants import RETURN_INSTRUCTION
 
 def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
     """
@@ -59,7 +59,6 @@ def model_understanding(model, problem, model_code_str, is_pce_used=False, origi
             "Parameters": [dist_params]
         })], ignore_index=True)
     
-    st.write("## Model Understanding")
     
     # Format the model code for inclusion in the prompt
     model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
@@ -155,25 +154,8 @@ Input Parameters:
                     print("Raw Response from API:")
                     print(response_text)
 
-                    # Check for forbidden patterns
-                    found_problems = False
-                    problem_feedback = ""
-                    for fp in forbidden_patterns:
-                        if fp in response_text:
-                            found_problems = True
-                            problem_feedback += f"\n- The phrase '{fp.strip()}' was found. Remove or replace such words from equations. Use piecewise definitions and inequalities as instructed."
-
-                    if found_problems:
-                        print("Issues found. Updating the prompt with additional instructions.")
-                        # Update the prompt with the additional instructions to correct the issues
-                        prompt = generate_prompt(problem_feedback)
-                        best_response_text = response_text
-                    else:
-                        print("No forbidden patterns detected. Returning this response.")
-                        st.session_state[response_key] = response_text
-                        break
-
-                    attempts += 1
+                    st.session_state[response_key] = response_text
+                    break
 
                 if response_key not in st.session_state:
                     # If we have no valid response after max_attempts, return best effort

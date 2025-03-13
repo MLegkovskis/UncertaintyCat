@@ -11,7 +11,7 @@ import plotly.figure_factory as ff
 import plotly.subplots as sp
 import scipy.stats as stats
 from utils.core_utils import call_groq_api
-from utils.markdown_utils import RETURN_INSTRUCTION
+from utils.constants import RETURN_INSTRUCTION
 import seaborn as sns
 from typing import Dict, List, Tuple, Any, Optional, Union
 

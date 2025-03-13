@@ -3,7 +3,7 @@ import pandas as pd
 import openturns as ot
 from SALib.analyze import sobol
 from utils.core_utils import call_groq_api
-from utils.markdown_utils import RETURN_INSTRUCTION
+from utils.constants import RETURN_INSTRUCTION
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots

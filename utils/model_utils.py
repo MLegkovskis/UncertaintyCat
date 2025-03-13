@@ -15,31 +15,6 @@ import traceback
 from groq import Groq
 import os
 
-# ================ OpenTURNS Utilities ================
-
-def get_distribution_names(problem):
-    """
-    Get the names of input variables from a problem distribution.
-    
-    Parameters
-    ----------
-    problem : ot.Distribution or ot.ComposedDistribution
-        OpenTURNS distribution object
-        
-    Returns
-    -------
-    list
-        List of variable names
-    """
-    if isinstance(problem, (ot.Distribution, ot.ComposedDistribution)):
-        names = []
-        for i in range(problem.getDimension()):
-            marginal = problem.getMarginal(i)
-            name = marginal.getDescription()[0]
-            names.append(name if name != "" else f"X{i+1}")
-        return names
-    else:
-        raise ValueError("Problem must be an OpenTURNS distribution")
 
 def get_ot_model(model):
     """
@@ -69,53 +44,6 @@ def get_ot_model(model):
     return ot.PythonFunction(model.__code__.co_argcount, 1, wrapper)
 
 # ================ Model Validation ================
-
-def extract_model_and_problem(code):
-    """
-    Extract model function and problem distribution from code.
-    
-    Parameters
-    ----------
-    code : str
-        Code string containing model and problem definitions
-        
-    Returns
-    -------
-    tuple
-        (model, problem) tuple
-    """
-    try:
-        # Create a namespace to execute the code
-        namespace = {}
-        
-        # Execute the code in the namespace
-        exec(code, namespace)
-        
-        # Look for model and problem in the namespace
-        model = namespace.get('model')
-        if model is None:
-            # Look for a function named 'function_of_interest'
-            model = namespace.get('function_of_interest')
-        
-        problem = namespace.get('problem')
-        
-        # Validate model and problem
-        if model is None:
-            raise ValueError("No 'model' or 'function_of_interest' function found in the code")
-        
-        if problem is None:
-            raise ValueError("No 'problem' dictionary found in the code")
-        
-        # Validate that problem is an OpenTURNS distribution
-        if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
-            raise ValueError("Problem must be an OpenTURNS distribution")
-        
-        return model, problem
-    
-    except Exception as e:
-        # Get the traceback for more detailed error information
-        tb = traceback.format_exc()
-        raise ValueError(f"Error extracting model and problem: {str(e)}\n{tb}")
 
 def validate_problem_structure(problem):
     """

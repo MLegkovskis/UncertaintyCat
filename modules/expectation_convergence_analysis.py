@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import openturns as ot
 import streamlit as st
+from utils.constants import RETURN_INSTRUCTION
 from utils.core_utils import call_groq_api
-from utils.markdown_utils import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model
 from scipy import stats
 import plotly.graph_objects as go
