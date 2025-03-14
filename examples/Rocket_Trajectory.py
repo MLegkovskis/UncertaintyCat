@@ -25,8 +25,7 @@ m0.setDescription(["m0"])
 mf = ot.Uniform(10000, 20000)    # mf: Fuel mass (kg)
 mf.setDescription(["mf"])
 
-ve = ot.Normal()
-ve.setParameter(ot.LogNormalMuSigma()([3000, 100, 0]))  # Assuming LogNormalMuSigma is applicable
+ve = ot.Normal(3000, 100)  # ve: Exhaust velocity (m/s)
 ve.setDescription(["ve"])
 
 theta = ot.Uniform(80, 90)        # theta: Launch angle (degrees)

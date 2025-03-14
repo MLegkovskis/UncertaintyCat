@@ -20,15 +20,13 @@ model = ot.PythonFunction(4, 1, function_of_interest)
 z0 = ot.Uniform(100.0, 150.0)  # z0
 z0.setDescription(["z0"])
 
-v0 = ot.Normal()
-v0.setParameter(ot.NormalMuSigma()([55.0, 10.0, 0]))
+v0 = ot.Normal(55.0, 10.0)  # Initial velocity
 v0.setDescription(["v0"])
 
-m = ot.Normal()
-m.setParameter(ot.NormalMuSigma()([80.0, 8.0, 0]))
+m = ot.Normal(80.0, 8.0)  # Mass
 m.setDescription(["m"])
 
-c = ot.Uniform(0.0, 30.0)       # c
+c = ot.Uniform(0.0, 30.0)  # Drag coefficient
 c.setDescription(["c"])
 
 # Define joint distribution (independent)

@@ -23,8 +23,7 @@ A.setDescription(["A"])
 Cp = ot.Uniform(0.4, 0.5)            # Cp: Power coefficient (dimensionless)
 Cp.setDescription(["Cp"])
 
-v_wind = ot.Normal()
-v_wind.setParameter(ot.NormalMuSigma()([8, 2, 0]))  # Assuming LogNormalMuSigma is not applicable here
+v_wind = ot.Normal(8, 2)  # v_wind: Wind speed (m/s)
 v_wind.setDescription(["v_wind"])
 
 eta = ot.Uniform(0.9, 0.95)          # eta: Efficiency (dimensionless)

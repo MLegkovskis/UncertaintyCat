@@ -34,37 +34,79 @@ def function_of_interest(X):
 model = ot.PythonFunction(8, 1, function_of_interest)
 
 # Problem definition for the Damped Oscillator Model
-# Define distributions with corrected descriptions
+# Create LogNormal distributions using the original parameters
+# Convert from mu_log, sigma_log to the appropriate OpenTURNS parameters
+
+# m_p: Primary mass
 m_p = ot.LogNormal()
-m_p.setParameter(ot.LogNormalMuSigma()([0.4004899, 0.0997513, 0]))
+mu_log = 0.4004899
+sigma_log = 0.0997513
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+m_p.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 m_p.setDescription(["m_p"])
 
+# m_s: Secondary mass
 m_s = ot.LogNormal()
-m_s.setParameter(ot.LogNormalMuSigma()([-4.6101453, 0.0997513, 0]))
+mu_log = -4.6101453
+sigma_log = 0.0997513
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+m_s.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 m_s.setDescription(["m_s"])
 
+# k_p: Primary stiffness
 k_p = ot.LogNormal()
-k_p.setParameter(ot.LogNormalMuSigma()([-0.0196103, 0.1980422, 0]))
+mu_log = -0.0196103
+sigma_log = 0.1980422
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+k_p.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 k_p.setDescription(["k_p"])
 
+# k_s: Secondary stiffness
 k_s = ot.LogNormal()
-k_s.setParameter(ot.LogNormalMuSigma()([-4.6247805, 0.1980422, 0]))
+mu_log = -4.6247805
+sigma_log = 0.1980422
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+k_s.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 k_s.setDescription(["k_s"])
 
+# zeta_p: Primary damping ratio
 zeta_p = ot.LogNormal()
-zeta_p.setParameter(ot.LogNormalMuSigma()([-3.069942, 0.3856625, 0]))
+mu_log = -3.069942
+sigma_log = 0.3856625
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+zeta_p.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 zeta_p.setDescription(["zeta_p"])
 
+# zeta_s: Secondary damping ratio
 zeta_s = ot.LogNormal()
-zeta_s.setParameter(ot.LogNormalMuSigma()([-4.023594, 0.4723807, 0]))
+mu_log = -4.023594
+sigma_log = 0.4723807
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+zeta_s.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 zeta_s.setDescription(["zeta_s"])
 
+# S_0: Excitation intensity
 S_0 = ot.LogNormal()
-S_0.setParameter(ot.LogNormalMuSigma()([4.600195, 0.0997513, 0]))
+mu_log = 4.600195
+sigma_log = 0.0997513
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+S_0.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 S_0.setDescription(["S_0"])
 
+# F_s: Force capacity
 F_s = ot.LogNormal()
-F_s.setParameter(ot.LogNormalMuSigma()([2.703075, 0.0997513, 0]))
+mu_log = 2.703075
+sigma_log = 0.0997513
+mu = np.exp(mu_log + sigma_log**2/2)  # Convert to mean of LogNormal
+sigma = mu * np.sqrt(np.exp(sigma_log**2) - 1)  # Convert to std of LogNormal
+F_s.setParameter(ot.LogNormalMuSigma()([mu, sigma, 0]))
 F_s.setDescription(["F_s"])
 
 # Define joint distribution (independent)

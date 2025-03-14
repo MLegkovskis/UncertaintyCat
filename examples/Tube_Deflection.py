@@ -13,25 +13,22 @@ model = ot.PythonFunction(6, 1, function_of_interest)
 
 # Problem definition for the Tube Deflection Model
 # Define distributions with corrected descriptions
-F = ot.Normal()
-F.setParameter(ot.LogNormalMuSigma()([1.0, 0.1, 0]))
+F = ot.Normal(1.0, 0.1)  # Force
 F.setDescription(["F"])
 
-L = ot.Normal()
-L.setParameter(ot.LogNormalMuSigma()([1.5, 0.01, 0]))
+L = ot.Normal(1.5, 0.01)  # Length
 L.setDescription(["L"])
 
-a = ot.Uniform(0.7, 1.2)
+a = ot.Uniform(0.7, 1.2)  # Position of force
 a.setDescription(["a"])
 
-De = ot.Uniform(0.75, 0.85)
+De = ot.Uniform(0.75, 0.85)  # External diameter
 De.setDescription(["De"])
 
-di = ot.Uniform(0.09, 0.11)
+di = ot.Uniform(0.09, 0.11)  # Internal diameter
 di.setDescription(["di"])
 
-E = ot.Normal()
-E.setParameter(ot.LogNormalMuSigma()([200000, 2000, 0]))
+E = ot.Normal(200000, 2000)  # Young's modulus
 E.setDescription(["E"])
 
 # Define joint distribution (independent)

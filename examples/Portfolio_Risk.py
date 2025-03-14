@@ -31,12 +31,11 @@ model = ot.PythonFunction(4, 1, function_of_interest)
 S0 = ot.Uniform(800000, 1200000)  # S0: $800,000 - $1,200,000
 S0.setDescription(["S0"])
 
-mu = ot.Normal()
-mu.setParameter(ot.NormalMuSigma()([0.1, 0.02, 0]))
+# Create Normal distributions with mean and standard deviation directly
+mu = ot.Normal(0.1, 0.02)  # mu: Expected annual return (10%)
 mu.setDescription(["mu"])
 
-sigma = ot.Normal()
-sigma.setParameter(ot.NormalMuSigma()([0.2, 0.05, 0]))
+sigma = ot.Normal(0.2, 0.05)  # sigma: Volatility (20%)
 sigma.setDescription(["sigma"])
 
 T = ot.Uniform(0.5, 1.5)          # T: 0.5 - 1.5 years
