@@ -55,7 +55,7 @@ def hsic_analysis(model, problem, model_code_str, language_model='groq'):
         """)
         
         # Create expandable section for methodology
-        with st.expander("HSIC Methodology Explained", expanded=False):
+        with st.expander("HSIC Methodology Explained", expanded=True):
             st.markdown("""
             ### HSIC Methodology
             
@@ -95,7 +95,7 @@ def hsic_analysis(model, problem, model_code_str, language_model='groq'):
             """)
         
         # Create expandable section for interpreting results
-        with st.expander("Understanding HSIC Results", expanded=False):
+        with st.expander("Understanding HSIC Results", expanded=True):
             st.markdown("""
             ### Interpreting HSIC Results
             

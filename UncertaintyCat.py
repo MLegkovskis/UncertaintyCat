@@ -29,40 +29,6 @@ from utils.model_utils import (
 from utils.constants import RETURN_INSTRUCTION
 
 ###############################################################################
-# 1) SURROGATE DETECTION & SNIPPET EXTRACTION
-###############################################################################
-def is_surrogate_model(code_str: str) -> bool:
-    """Returns True if the code snippet includes 'Y = metaModel(X)'."""
-    return "Y = metaModel(X)" in code_str
-
-def extract_surrogate_snippet(full_code: str) -> str:
-    """
-    If code is a surrogate, keep only lines from:
-      def function_of_interest(X): ... up to ... model = function_of_interest
-    Otherwise, return entire code.
-    """
-    if not is_surrogate_model(full_code):
-        return full_code
-
-    lines = full_code.splitlines(keepends=False)
-    start_idx, end_idx = None, None
-
-    for i, line in enumerate(lines):
-        if "def function_of_interest(" in line:
-            start_idx = i
-            break
-
-    for j in range(len(lines) - 1, -1, -1):
-        if "model = function_of_interest" in lines[j]:
-            end_idx = j
-            break
-
-    if (start_idx is None) or (end_idx is None) or (start_idx > end_idx):
-        return full_code
-
-    return "\n".join(lines[start_idx : end_idx + 1])
-
-###############################################################################
 # 2) LOAD MODEL CODE FROM EXAMPLES
 ###############################################################################
 def load_model_code(selected_model_name: str) -> str:
@@ -230,11 +196,10 @@ if selected_page == "Main Analysis":
                     st.markdown("---")
                     st.header("Model Understanding")
                     with st.spinner("Running Model Understanding..."):
-                        snippet_for_modules = extract_surrogate_snippet(current_code)
                         model_understanding(
                             model,
                             problem,
-                            snippet_for_modules,
+                            current_code,
                             language_model=selected_language_model
                         )
 
@@ -242,7 +207,7 @@ if selected_page == "Main Analysis":
                     st.header("Exploratory Data Analysis")
                     with st.spinner("Running Exploratory Data Analysis..."):
                         exploratory_data_analysis(
-                            data, N, model, problem, snippet_for_modules,
+                            data, N, model, problem, current_code,
                             language_model=selected_language_model
                         )
 
@@ -250,7 +215,7 @@ if selected_page == "Main Analysis":
                     st.header("Expectation Convergence Analysis")
                     with st.spinner("Running Expectation Convergence Analysis..."):
                         expectation_convergence_analysis_joint(
-                            model, problem, snippet_for_modules,
+                            model, problem, current_code,
                             language_model=selected_language_model
                         )
 
@@ -259,7 +224,7 @@ if selected_page == "Main Analysis":
                         st.header("Sobol Sensitivity Analysis")
                         with st.spinner("Running Sobol Sensitivity Analysis..."):
                             sobol_sensitivity_analysis(
-                                1024, model, problem, snippet_for_modules,
+                                1024, model, problem, current_code,
                                 language_model=selected_language_model
                             )
 
@@ -268,7 +233,7 @@ if selected_page == "Main Analysis":
                         st.header("Taylor Analysis")
                         with st.spinner("Running Taylor Analysis..."):
                             taylor_analysis(
-                                model, problem, snippet_for_modules,
+                                model, problem, current_code,
                                 language_model=selected_language_model
                             )
 
@@ -277,7 +242,7 @@ if selected_page == "Main Analysis":
                         st.header("Correlation Analysis")
                         with st.spinner("Running Correlation Analysis..."):
                             correlation_analysis(
-                                model, problem, snippet_for_modules,
+                                model, problem, current_code,
                                 language_model=selected_language_model
                             )
 
@@ -286,7 +251,7 @@ if selected_page == "Main Analysis":
                         st.header("HSIC Analysis")
                         with st.spinner("Running HSIC Analysis..."):
                             hsic_analysis(
-                                model, problem, snippet_for_modules,
+                                model, problem, current_code,
                                 language_model=selected_language_model
                             )
 
@@ -295,7 +260,7 @@ if selected_page == "Main Analysis":
                         st.header("SHAP Analysis")
                         with st.spinner("Running SHAP Analysis..."):
                             ml_analysis(
-                                data, problem, snippet_for_modules,
+                                data, problem, current_code,
                                 language_model=selected_language_model
                             )
                     
@@ -331,11 +296,8 @@ elif selected_page == "Dimensionality Reduction":
                     model = local_namespace['model']
                     problem = local_namespace['problem']
                     
-                    # Extract code snippet for modules
-                    code_snippet = extract_surrogate_snippet(current_code)
-                    
                     # Run Morris analysis
-                    morris_analysis(model, problem, code_snippet, selected_language_model)
+                    morris_analysis(model, problem, current_code, selected_language_model)
                 else:
                     st.error("The model code must define both 'model' and 'problem'.")
             except Exception as e:
@@ -343,10 +305,7 @@ elif selected_page == "Dimensionality Reduction":
         # If we already have a model, just run the analysis
         elif model is not None:
             try:
-                # Extract code snippet for modules
-                code_snippet = extract_surrogate_snippet(current_code)
-                
                 # Run Morris analysis
-                morris_analysis(model, problem, code_snippet, selected_language_model)
+                morris_analysis(model, problem, current_code, selected_language_model)
             except Exception as e:
                 st.error(f"Error during Morris analysis: {str(e)}")

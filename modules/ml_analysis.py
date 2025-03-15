@@ -64,7 +64,7 @@ def ml_analysis(data, problem, model_code_str, language_model='groq'):
         """)
         
         # Create expandable section for methodology
-        with st.expander("ML Sensitivity Analysis Methodology", expanded=False):
+        with st.expander("ML Sensitivity Analysis Methodology", expanded=True):
             st.markdown("""
             ### Machine Learning Sensitivity Analysis Methodology
             
@@ -213,7 +213,7 @@ def train_surrogate_model(data, input_names):
     create_validation_plot(performance_metrics['y_test'], performance_metrics['y_pred'])
     
     # Interpretation of metrics
-    with st.expander("Understanding Model Performance Metrics", expanded=False):
+    with st.expander("Understanding Model Performance Metrics", expanded=True):
         st.markdown("""
         ### Interpreting Model Performance Metrics
         

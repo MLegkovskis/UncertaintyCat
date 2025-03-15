@@ -55,7 +55,7 @@ def correlation_analysis(model, problem, model_code_str, language_model="groq"):
         """)
         
         # Create expandable section for methodology
-        with st.expander("Correlation Methods Explained", expanded=False):
+        with st.expander("Correlation Methods Explained", expanded=True):
             st.markdown("""
             ### Correlation Methods
             
@@ -92,7 +92,7 @@ def correlation_analysis(model, problem, model_code_str, language_model="groq"):
             """)
         
         # Create expandable section for interpreting negative correlations
-        with st.expander("Understanding Correlation Signs", expanded=False):
+        with st.expander("Understanding Correlation Signs", expanded=True):
             st.markdown("""
             ### Interpreting Positive and Negative Correlations
             
