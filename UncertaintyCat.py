@@ -16,6 +16,7 @@ from modules.correlation_analysis import correlation_analysis
 from modules.hsic_analysis import hsic_analysis
 from modules.ml_analysis import ml_analysis
 from modules.morris_analysis import morris_analysis
+from modules.fast_ancova_analysis import fast_sensitivity_analysis, ancova_sensitivity_analysis
 
 # Import utils
 from utils.core_utils import (
@@ -229,7 +230,6 @@ if "📊 Main Analysis" in selected_page:
     st.markdown('<h2 class="sub-header">Uncertainty Analysis Dashboard</h2>', unsafe_allow_html=True)
     
     # Create a card for the run button
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<p style="font-weight: bold;">Run Comprehensive Analysis</p>', unsafe_allow_html=True)
     st.markdown('<p>Click the button below to run a full suite of uncertainty and sensitivity analyses on your model.</p>', unsafe_allow_html=True)
     run_button = st.button("Run Analysis", key="run_main_simulation")
@@ -313,6 +313,77 @@ if "📊 Main Analysis" in selected_page:
                             language_model=selected_language_model
                         )
 
+                    # Add FAST Analysis
+                    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+                    st.markdown('<h2 class="sub-header">FAST Sensitivity Analysis</h2>', unsafe_allow_html=True)
+                    with st.spinner("Running FAST Sensitivity Analysis..."):
+                        fast_results = fast_sensitivity_analysis(
+                            model, problem, size=400, model_code_str=current_code,
+                            language_model=selected_language_model
+                        )
+                        
+                        if fast_results:
+                            # Display the explanation
+                            st.markdown(fast_results['explanation'], unsafe_allow_html=True)
+                            
+                            # Display the indices table
+                            st.markdown('<p style="font-weight: bold; margin-top: 20px;">FAST Sensitivity Indices</p>', unsafe_allow_html=True)
+                            st.dataframe(fast_results['indices_df'][['Variable', 'First Order', 'Total Order', 'Interaction', 'Interaction %']], use_container_width=True)
+                            
+                            # Display the bar chart
+                            st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
+                            
+                            # Display pie charts in two columns
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.plotly_chart(fast_results['fig_pie_first'], use_container_width=True)
+                            with col2:
+                                st.plotly_chart(fast_results['fig_pie_total'], use_container_width=True)
+                            
+                            # Display LLM insights if available
+                            if fast_results['llm_insights'] and selected_language_model:
+                                st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+                                st.markdown('<h3 class="sub-header">FAST Analysis Insights</h3>', unsafe_allow_html=True)
+                                st.markdown(fast_results['llm_insights'], unsafe_allow_html=True)
+                                st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Add ANCOVA Analysis
+                    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+                    st.markdown('<h2 class="sub-header">ANCOVA Sensitivity Analysis</h2>', unsafe_allow_html=True)
+                    with st.spinner("Running ANCOVA Sensitivity Analysis..."):
+                        ancova_results = ancova_sensitivity_analysis(
+                            model, problem, size=2000, model_code_str=current_code,
+                            language_model=selected_language_model
+                        )
+                        
+                        if ancova_results:
+                            # Display the explanation
+                            st.markdown(ancova_results['explanation'], unsafe_allow_html=True)
+                            
+                            # Display the indices table
+                            st.markdown('<p style="font-weight: bold; margin-top: 20px;">ANCOVA Sensitivity Indices</p>', unsafe_allow_html=True)
+                            st.dataframe(ancova_results['indices_df'][['Variable', 'ANCOVA Index', 'Uncorrelated Index', 'Correlated Index', 'Correlation %']], use_container_width=True)
+                            
+                            # Display the bar chart
+                            st.plotly_chart(ancova_results['fig_bar'], use_container_width=True)
+                            
+                            # Display stacked bar chart
+                            st.plotly_chart(ancova_results['fig_stacked'], use_container_width=True)
+                            
+                            # Display pie chart and heatmap in two columns
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.plotly_chart(ancova_results['fig_pie'], use_container_width=True)
+                            with col2:
+                                st.plotly_chart(ancova_results['fig_heatmap'], use_container_width=True)
+                            
+                            # Display LLM insights if available
+                            if ancova_results['llm_insights'] and selected_language_model:
+                                st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+                                st.markdown('<h3 class="sub-header">ANCOVA Analysis Insights</h3>', unsafe_allow_html=True)
+                                st.markdown(ancova_results['llm_insights'], unsafe_allow_html=True)
+                                st.markdown('</div>', unsafe_allow_html=True)
+
                     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
                     st.markdown('<h2 class="sub-header">Taylor Analysis</h2>', unsafe_allow_html=True)
                     with st.spinner("Running Taylor Analysis..."):
@@ -357,7 +428,6 @@ elif "📉 Dimensionality Reduction" in selected_page:
     if not current_code and model is None:
         st.markdown('<div class="info-box status-box">Please define your model in the Model Definition section first.</div>', unsafe_allow_html=True)
         
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<p style="font-weight: bold;">How to use the Morris Analysis:</p>', unsafe_allow_html=True)
         st.markdown("""
         1. First, define or load your model in the **Model Definition** section
@@ -383,7 +453,6 @@ elif "📉 Dimensionality Reduction" in selected_page:
                 st.markdown(f'<div class="error-box status-box">Error executing model code: {str(e)}</div>', unsafe_allow_html=True)
         
         # Create a card for the configuration
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<p style="font-weight: bold;">Morris Analysis Configuration</p>', unsafe_allow_html=True)
         
         # Configuration controls

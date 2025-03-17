@@ -315,7 +315,7 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
                 r2_color = 'off'
                 r2_warning = "Poor linear approximation. Taylor indices may not be reliable."
             elif r2_value < 0.9:
-                r2_color = 'warning'
+                r2_color = 'normal'  
                 r2_warning = "Moderate linear approximation. Use Taylor indices with caution."
             else:
                 r2_warning = "Good linear approximation. Taylor indices are reliable."
