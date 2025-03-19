@@ -9,7 +9,7 @@ from utils.core_utils import call_groq_api
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model
 
-def correlation_analysis(model, problem, model_code_str, language_model="groq"):
+def correlation_analysis(model, problem, model_code_str=None, language_model="groq"):
     """
     Perform comprehensive correlation analysis with enterprise-grade visualizations.
     
@@ -22,7 +22,7 @@ def correlation_analysis(model, problem, model_code_str, language_model="groq"):
         The model function to analyze
     problem : ot.Distribution
         OpenTURNS distribution representing the input uncertainty
-    model_code_str : str
+    model_code_str : str, optional
         String representation of the model code for documentation
     language_model : str, optional
         Language model to use for analysis, by default "groq"
@@ -45,87 +45,12 @@ def correlation_analysis(model, problem, model_code_str, language_model="groq"):
             name = marginal.getDescription()[0]
             input_names.append(name if name != "" else f"X{i+1}")
         
-        # Display the header and introduction
-        st.markdown("## Correlation Analysis")
-        st.markdown("""
-        Correlation analysis quantifies the statistical relationship between input variables and model outputs.
-        This analysis helps identify which inputs have the strongest linear and monotonic relationships with the output.
-        
-        Multiple correlation metrics are calculated to provide a comprehensive understanding of variable relationships:
-        """)
-        
-        # Create expandable section for methodology
-        with st.expander("Correlation Methods Explained", expanded=True):
-            st.markdown("""
-            ### Correlation Methods
-            
-            This analysis uses six different correlation measures:
-            
-            1. **Pearson Correlation Coefficient (PCC)**
-               - Measures linear correlation between variables
-               - Range: -1 (perfect negative) to +1 (perfect positive)
-               - Assumption: Linear relationship between variables
-            
-            2. **Partial Correlation Coefficient (PCC)**
-               - Measures linear correlation between two variables while controlling for other variables
-               - Helps identify direct relationships by removing indirect effects
-            
-            3. **Partial Rank Correlation Coefficient (PRCC)**
-               - Rank-based version of PCC
-               - More robust to nonlinear relationships
-               - Maintains the control for other variables
-            
-            4. **Spearman Rank Correlation Coefficient**
-               - Measures monotonic relationships (not just linear)
-               - Based on ranks rather than raw values
-               - More robust to outliers and nonlinear relationships
-            
-            5. **Standardized Regression Coefficient (SRC)**
-               - Regression coefficients standardized to have unit variance
-               - Represents the change in output (in standard deviations) per unit change in input
-               - Useful for comparing the relative importance of variables
-            
-            6. **Standardized Rank Regression Coefficient (SRRC)**
-               - Rank-based version of SRC
-               - More robust to nonlinear relationships
-               - Maintains the standardization for comparison
-            """)
-        
-        # Create expandable section for interpreting negative correlations
-        with st.expander("Understanding Correlation Signs", expanded=True):
-            st.markdown("""
-            ### Interpreting Positive and Negative Correlations
-            
-            The sign of a correlation coefficient (positive or negative) indicates the direction of the relationship between an input variable and the output:
-            
-            #### Positive Correlation (> 0)
-            - As the input variable increases, the output tends to increase
-            - Indicates a direct relationship
-            - Example: Increasing temperature might increase reaction rate
-            
-            #### Negative Correlation (< 0)
-            - As the input variable increases, the output tends to decrease
-            - Indicates an inverse relationship
-            - Example: Increasing pressure might decrease volume (Boyle's Law)
-            
-            #### Correlation Strength
-            - Values close to +1 or -1 indicate strong relationships
-            - Values close to 0 indicate weak or no relationship
-            - The absolute value of the correlation is what matters for sensitivity ranking
-            
-            #### Engineering Implications
-            - Negative correlations are just as important as positive ones for sensitivity analysis
-            - For risk reduction, focus on variables with high absolute correlation values
-            - Understanding the sign helps in determining control strategies (increase or decrease the variable)
-            """)
-        
         # Generate samples
         n_samples = 1000  # Number of samples for correlation analysis
-        st.info(f"Generating {n_samples} samples for correlation analysis...")
-        
-        # Generate samples
-        sample_X = problem.getSample(n_samples)
-        sample_Y = model(sample_X)
+        with st.spinner(f"Generating {n_samples} samples for correlation analysis..."):
+            # Generate samples
+            sample_X = problem.getSample(n_samples)
+            sample_Y = model(sample_X)
         
         # Check if output is multivariate
         if isinstance(sample_Y, ot.Sample) and sample_Y.getDimension() > 1:
@@ -143,150 +68,166 @@ def correlation_analysis(model, problem, model_code_str, language_model="groq"):
         # Process each output
         all_correlation_results = {}
         
-        # Create tabs for multiple outputs if needed
-        if is_multivariate and output_dimension > 1:
-            tabs = st.tabs(output_names)
-        
-        for output_idx in range(output_dimension):
-            # Get the current output name
-            output_name = output_names[output_idx]
+        # Results Section
+        with st.expander("Results", expanded=True):
+            st.subheader("Correlation Analysis")
+            st.markdown("""
+            Correlation analysis quantifies the statistical relationship between input variables and model outputs.
+            This analysis helps identify which inputs have the strongest linear and monotonic relationships with the output.
             
-            # Extract current output data
-            if is_multivariate:
-                current_output = ot.Sample(n_samples, 1)
-                for i in range(n_samples):
-                    current_output[i, 0] = sample_Y[i, output_idx]
-                current_output.setDescription([output_name])
-            else:
-                current_output = sample_Y
+            Multiple correlation metrics are calculated to provide a comprehensive understanding of variable relationships:
             
-            # Perform correlation analysis
-            corr_analysis = ot.CorrelationAnalysis(sample_X, current_output)
+            - **Pearson Correlation**: Measures linear correlation between variables
+            - **Spearman Correlation**: Measures monotonic relationships using ranks
+            - **Partial Correlation (PCC)**: Measures linear correlation while controlling for other variables
+            - **Partial Rank Correlation (PRCC)**: Rank-based version of PCC for nonlinear relationships
+            - **Standardized Regression Coefficient (SRC)**: Standardized coefficients from linear regression
+            - **Standardized Rank Regression Coefficient (SRRC)**: Rank-based version of SRC
+            """)
             
-            # Calculate all correlation methods
-            methods = {
-                "Pearson": list(corr_analysis.computeLinearCorrelation()),
-                "Spearman": list(corr_analysis.computeSpearmanCorrelation()),
-                "PCC": list(corr_analysis.computePCC()),
-                "PRCC": list(corr_analysis.computePRCC()),
-                "SRC": list(corr_analysis.computeSRC()),
-                "SRRC": list(corr_analysis.computeSRRC())
-            }
-            
-            # Create DataFrame for correlation results
-            corr_df = pd.DataFrame(methods, index=input_names)
-            
-            # Sort by absolute Pearson correlation for better visualization
-            corr_df['abs_pearson'] = corr_df['Pearson'].abs()
-            corr_df = corr_df.sort_values('abs_pearson', ascending=False)
-            corr_df = corr_df.drop('abs_pearson', axis=1)
-            
-            # Store results
-            all_correlation_results[output_name] = corr_df
-            
-            # Display results in the appropriate context
+            # Create tabs for multiple outputs if needed
             if is_multivariate and output_dimension > 1:
-                # Use the appropriate tab for this output
-                tab_content = tabs[output_idx]
+                tabs = st.tabs(output_names)
+            
+            for output_idx in range(output_dimension):
+                # Get the current output name
+                output_name = output_names[output_idx]
                 
-                # Create visualization tabs within this output tab
-                with tab_content:
+                # Extract current output data
+                if is_multivariate:
+                    current_output = ot.Sample(n_samples, 1)
+                    for i in range(n_samples):
+                        current_output[i, 0] = sample_Y[i, output_idx]
+                    current_output.setDescription([output_name])
+                else:
+                    current_output = sample_Y
+                
+                # Perform correlation analysis
+                corr_analysis = ot.CorrelationAnalysis(sample_X, current_output)
+                
+                # Calculate all correlation methods
+                methods = {
+                    "Pearson": list(corr_analysis.computeLinearCorrelation()),
+                    "Spearman": list(corr_analysis.computeSpearmanCorrelation()),
+                    "PCC": list(corr_analysis.computePCC()),
+                    "PRCC": list(corr_analysis.computePRCC()),
+                    "SRC": list(corr_analysis.computeSRC()),
+                    "SRRC": list(corr_analysis.computeSRRC())
+                }
+                
+                # Create DataFrame for correlation results
+                corr_df = pd.DataFrame(methods, index=input_names)
+                
+                # Sort by absolute Pearson correlation for better visualization
+                corr_df['abs_pearson'] = corr_df['Pearson'].abs()
+                corr_df = corr_df.sort_values('abs_pearson', ascending=False)
+                corr_df = corr_df.drop('abs_pearson', axis=1)
+                
+                # Store results
+                all_correlation_results[output_name] = corr_df
+                
+                # Display results in the appropriate context
+                if is_multivariate and output_dimension > 1:
+                    # Use the appropriate tab for this output
+                    tab_content = tabs[output_idx]
+                    
+                    # Create visualization tabs within this output tab
+                    with tab_content:
+                        display_correlation_results(corr_df, input_names, output_name, sample_X, sample_Y, output_idx, n_samples, is_multivariate)
+                else:
+                    # For single output, display directly
                     display_correlation_results(corr_df, input_names, output_name, sample_X, sample_Y, output_idx, n_samples, is_multivariate)
-            else:
-                # For single output, display directly
-                display_correlation_results(corr_df, input_names, output_name, sample_X, sample_Y, output_idx, n_samples, is_multivariate)
         
         # Generate AI insights
-        with st.expander("Expert Analysis", expanded=True):
-            st.markdown("### AI-Generated Expert Analysis")
-            
-            # Prepare the data for the API call
-            # Use the first output if multivariate
-            primary_output = output_names[0]
-            correlation_df = all_correlation_results[primary_output]
-            correlation_md_table = correlation_df.to_markdown(index=True, floatfmt=".4f")
-            
-            # Format the model code for inclusion in the prompt
-            model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
-            
-            # Prepare the inputs description
-            input_parameters = []
-            for i in range(dimension):
-                marginal = problem.getMarginal(i)
-                name = input_names[i]
-                dist_type = marginal.__class__.__name__
-                params = marginal.getParameter()
-                input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
-            
-            inputs_description = '\n'.join(input_parameters)
-            
-            # Add information about output dimensionality
-            output_info = ""
-            if is_multivariate and output_dimension > 1:
-                output_info = f"""
-                The model has multiple outputs: {', '.join(output_names)}
-                The correlation analysis shown below is for the first output: {primary_output}
+        if language_model:
+            with st.expander("AI Insights", expanded=True):
+                # Prepare the data for the API call
+                # Use the first output if multivariate
+                primary_output = output_names[0]
+                correlation_df = all_correlation_results[primary_output]
+                correlation_md_table = correlation_df.to_markdown(index=True, floatfmt=".4f")
+                
+                # Format the model code for inclusion in the prompt
+                model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')]) if model_code_str else ""
+                
+                # Prepare the inputs description
+                input_parameters = []
+                for i in range(dimension):
+                    marginal = problem.getMarginal(i)
+                    name = input_names[i]
+                    dist_type = marginal.__class__.__name__
+                    params = marginal.getParameter()
+                    input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
+                
+                inputs_description = '\n'.join(input_parameters)
+                
+                # Add information about output dimensionality
+                output_info = ""
+                if is_multivariate and output_dimension > 1:
+                    output_info = f"""
+                    The model has multiple outputs: {', '.join(output_names)}
+                    The correlation analysis shown below is for the first output: {primary_output}
+                    """
+                
+                # Prepare the prompt
+                prompt = f"""
+                {RETURN_INSTRUCTION}
+                
+                Given the following user-defined model defined in Python code:
+                
+                ```python
+                {model_code_formatted}
+                ```
+                
+                and the following uncertain input distributions:
+                
+                {inputs_description}
+                
+                {output_info}
+                
+                The results of the correlation analysis are given in the table below:
+                
+                {correlation_md_table}
+                
+                Please provide an expert analysis of the correlation results:
+                
+                1. **Methodology Overview**
+                   - Explain the mathematical basis of each correlation method (PCC, PRCC, Spearman, SRC, SRRC)
+                   - Discuss when each method is most appropriate to use
+                   - Explain the differences between these methods and what insights each provides
+                
+                2. **Results Interpretation**
+                   - Identify which variables have the strongest positive and negative correlations with the output
+                   - Discuss consistency or inconsistency in the sensitivity predictions across the different correlation methods
+                   - Explain what these patterns suggest about the model behavior and input-output relationships
+                   - Specifically explain what negative correlations indicate about the model behavior
+                
+                3. **Nonlinearity Assessment**
+                   - Compare Pearson vs. Spearman and PCC vs. PRCC to assess nonlinearity in relationships
+                   - Identify variables that show significant differences between linear and rank-based methods
+                   - Explain what these differences indicate about the underlying model structure
+                
+                4. **Recommendations**
+                   - Suggest which variables should be prioritized for uncertainty reduction based on correlation strength
+                   - Recommend additional analyses that might be valuable given these correlation patterns
+                   - Provide guidance on how these results can inform decision-making or model refinement
+                
+                Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
                 """
-            
-            # Prepare the prompt
-            prompt = f"""
-            {RETURN_INSTRUCTION}
-            
-            Given the following user-defined model defined in Python code:
-            
-            ```python
-            {model_code_formatted}
-            ```
-            
-            and the following uncertain input distributions:
-            
-            {inputs_description}
-            
-            {output_info}
-            
-            The results of the correlation analysis are given in the table below:
-            
-            {correlation_md_table}
-            
-            Please provide an expert analysis of the correlation results:
-            
-            1. **Methodology Overview**
-               - Explain the mathematical basis of each correlation method (PCC, PRCC, Spearman, SRC, SRRC)
-               - Discuss when each method is most appropriate to use
-               - Explain the differences between these methods and what insights each provides
-            
-            2. **Results Interpretation**
-               - Identify which variables have the strongest positive and negative correlations with the output
-               - Discuss consistency or inconsistency in the sensitivity predictions across the different correlation methods
-               - Explain what these patterns suggest about the model behavior and input-output relationships
-               - Specifically explain what negative correlations indicate about the model behavior
-            
-            3. **Nonlinearity Assessment**
-               - Compare Pearson vs. Spearman and PCC vs. PRCC to assess nonlinearity in relationships
-               - Identify variables that show significant differences between linear and rank-based methods
-               - Explain what these differences indicate about the underlying model structure
-            
-            4. **Recommendations**
-               - Suggest which variables should be prioritized for uncertainty reduction based on correlation strength
-               - Recommend additional analyses that might be valuable given these correlation patterns
-               - Provide guidance on how these results can inform decision-making or model refinement
-            
-            Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
-            """
-            
-            # Check if the results are already in session state
-            response_key = f"correlation_response_markdown_{primary_output}"
-            if response_key not in st.session_state:
-                # Call the AI API
-                with st.spinner("Generating expert analysis..."):
-                    response_markdown = call_groq_api(prompt, model_name=language_model)
-                # Store the response in session state
-                st.session_state[response_key] = response_markdown
-            else:
-                response_markdown = st.session_state[response_key]
-            
-            # Display the response
-            st.markdown(response_markdown)
+                
+                # Check if the results are already in session state
+                response_key = f"correlation_response_markdown_{primary_output}"
+                if response_key not in st.session_state:
+                    # Call the AI API
+                    with st.spinner("Generating expert analysis..."):
+                        response_markdown = call_groq_api(prompt, model_name=language_model)
+                    # Store the response in session state
+                    st.session_state[response_key] = response_markdown
+                else:
+                    response_markdown = st.session_state[response_key]
+                
+                # Display the response
+                st.markdown(response_markdown)
         
         # Return results dictionary
         return {
@@ -328,6 +269,45 @@ def display_correlation_results(corr_df, input_names, output_name, sample_X, sam
     is_multivariate : bool
         Whether the output is multivariate
     """
+    # Find strongest positive and negative correlations
+    strongest_pos = corr_df['Pearson'].max()
+    strongest_pos_var = corr_df['Pearson'].idxmax()
+    strongest_neg = corr_df['Pearson'].min()
+    strongest_neg_var = corr_df['Pearson'].idxmin()
+    
+    # Find strongest absolute correlation (regardless of sign)
+    strongest_abs = corr_df['Pearson'].abs().max()
+    strongest_abs_var = corr_df['Pearson'].abs().idxmax()
+    strongest_abs_sign = "positive" if corr_df.loc[strongest_abs_var, 'Pearson'] > 0 else "negative"
+    
+    # Check for consistency across methods
+    consistency_df = corr_df.copy()
+    # Get the sign of each correlation
+    sign_df = consistency_df.applymap(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    # Check if all methods agree on the sign for each variable
+    consistent_signs = sign_df.apply(lambda row: row.nunique() == 1, axis=1)
+    
+    # Display summary metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(
+            "Most Influential Variable", 
+            strongest_abs_var,
+            f"Pearson: {strongest_abs:.4f} ({strongest_abs_sign})"
+        )
+    with col2:
+        st.metric(
+            "Strongest Positive", 
+            strongest_pos_var,
+            f"Pearson: {strongest_pos:.4f}"
+        )
+    with col3:
+        st.metric(
+            "Strongest Negative", 
+            strongest_neg_var,
+            f"Pearson: {strongest_neg:.4f}"
+        )
+    
     # Create a stacked 2x1 subplot with bar chart and heatmap (one above the other)
     fig = make_subplots(
         rows=2, 
@@ -392,29 +372,11 @@ def display_correlation_results(corr_df, input_names, output_name, sample_X, sam
     st.plotly_chart(fig, use_container_width=True)
     
     # Display correlation table
-    st.markdown("### Correlation Coefficients Table")
+    st.subheader("Correlation Coefficients Table")
     st.dataframe(corr_df.style.format("{:.4f}"), use_container_width=True)
     
     # Display interpretation
-    st.markdown("### Interpretation")
-    
-    # Find strongest positive and negative correlations
-    strongest_pos = corr_df['Pearson'].max()
-    strongest_pos_var = corr_df['Pearson'].idxmax()
-    strongest_neg = corr_df['Pearson'].min()
-    strongest_neg_var = corr_df['Pearson'].idxmin()
-    
-    # Find strongest absolute correlation (regardless of sign)
-    strongest_abs = corr_df['Pearson'].abs().max()
-    strongest_abs_var = corr_df['Pearson'].abs().idxmax()
-    strongest_abs_sign = "positive" if corr_df.loc[strongest_abs_var, 'Pearson'] > 0 else "negative"
-    
-    # Check for consistency across methods
-    consistency_df = corr_df.copy()
-    # Get the sign of each correlation
-    sign_df = consistency_df.applymap(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
-    # Check if all methods agree on the sign for each variable
-    consistent_signs = sign_df.apply(lambda row: row.nunique() == 1, axis=1)
+    st.subheader("Interpretation")
     
     # Display key insights
     st.markdown(f"""

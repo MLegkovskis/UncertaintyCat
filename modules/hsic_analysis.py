@@ -11,7 +11,7 @@ from utils.core_utils import call_groq_api
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
 
-def hsic_analysis(model, problem, model_code_str, language_model='groq'):
+def hsic_analysis(model, problem, model_code_str=None, language_model='groq'):
     """
     Perform HSIC (Hilbert-Schmidt Independence Criterion) analysis with enterprise-grade visualizations.
     
@@ -24,7 +24,7 @@ def hsic_analysis(model, problem, model_code_str, language_model='groq'):
         The model function to analyze
     problem : ot.Distribution
         OpenTURNS distribution representing the input uncertainty
-    model_code_str : str
+    model_code_str : str, optional
         String representation of the model code for documentation
     language_model : str, optional
         Language model to use for analysis, by default "groq"
@@ -46,207 +46,165 @@ def hsic_analysis(model, problem, model_code_str, language_model='groq'):
             marginal = problem.getMarginal(i)
             input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
         
-        # Display the header and introduction
-        st.markdown("## HSIC Analysis")
-        st.markdown("""
-        HSIC (Hilbert-Schmidt Independence Criterion) analysis is a powerful method for detecting non-linear dependencies 
-        between input variables and model outputs. Unlike correlation-based methods, HSIC can capture complex, non-linear 
-        relationships without making assumptions about the underlying model structure.
-        """)
-        
-        # Create expandable section for methodology
-        with st.expander("HSIC Methodology Explained", expanded=True):
+        # Results Section
+        with st.expander("Results", expanded=True):
+            st.subheader("HSIC Analysis")
             st.markdown("""
-            ### HSIC Methodology
+            HSIC (Hilbert-Schmidt Independence Criterion) analysis is a powerful method for detecting non-linear dependencies 
+            between input variables and model outputs. Unlike correlation-based methods, HSIC can capture complex, non-linear 
+            relationships without making assumptions about the underlying model structure.
             
-            The Hilbert-Schmidt Independence Criterion (HSIC) is a kernel-based measure of dependence between random variables. 
-            It quantifies the distance between the joint distribution of two random variables and the product of their marginal 
-            distributions using reproducing kernel Hilbert spaces (RKHS).
+            The HSIC method provides several key metrics:
             
-            #### Mathematical Foundation
+            - **Raw HSIC Indices**: Measure the absolute strength of dependence between each input and the output
+            - **Normalized HSIC Indices**: Represent the relative importance of each input (values sum to 1)
+            - **p-values**: Determine the statistical significance of the dependencies
             
-            For random variables X and Y with joint distribution P_XY and marginal distributions P_X and P_Y:
-            
-            1. **HSIC Definition**: HSIC(X, Y) = ||C_XY||²_HS
-               - Where C_XY is the cross-covariance operator in the RKHS
-               - ||·||²_HS is the Hilbert-Schmidt norm
-            
-            2. **Empirical Estimation**: For samples {(x₁, y₁), ..., (xₙ, yₙ)}:
-               - HSIC(X, Y) ≈ (1/n²) · Tr(KHLH)
-               - K and L are kernel matrices for X and Y
-               - H is the centering matrix (I - 1/n · 11ᵀ)
-            
-            3. **Kernel Choice**: Typically Gaussian kernels are used:
-               - k(x, x') = exp(-||x - x'||²/2σ²)
-               - The bandwidth parameter σ is often set to the median distance
-            
-            #### Advantages of HSIC
-            
-            - Detects both linear and non-linear dependencies
-            - Makes no assumptions about the distribution of variables
-            - Can handle high-dimensional data
-            - Provides a consistent test of independence
-            
-            #### Interpretation
-            
-            - **Raw HSIC Values**: Measure the absolute strength of dependence
-            - **Normalized HSIC (R²-HSIC)**: Relative importance of each input
-            - **p-values**: Statistical significance of the dependence
+            HSIC can detect both linear and non-linear dependencies and makes no assumptions about the distribution of variables,
+            making it particularly valuable for complex models with unknown structures.
             """)
-        
-        # Create expandable section for interpreting results
-        with st.expander("Understanding HSIC Results", expanded=True):
-            st.markdown("""
-            ### Interpreting HSIC Results
             
-            #### Raw HSIC Indices
+            # Compute HSIC indices with progress indicator
+            with st.spinner("Computing HSIC indices..."):
+                hsic_results = compute_hsic_indices(model, problem, N=1000, seed=42)
             
-            The raw HSIC index for an input variable measures the absolute strength of its dependence with the output:
+            # Create DataFrame from the results
+            hsic_df = create_hsic_dataframe(hsic_results)
             
-            - **Higher values** indicate stronger dependence (linear or non-linear)
-            - Raw values depend on the kernel and data scaling, making direct comparison difficult
+            # Find most influential variables
+            top_var = hsic_df.sort_values('Normalized_Index', ascending=False).iloc[0]
+            significant_vars = hsic_df[hsic_df['p_value_asymptotic'] < 0.05]
             
-            #### Normalized R²-HSIC Indices
+            # Display summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    "Most Influential Variable", 
+                    top_var['Variable'],
+                    f"HSIC: {top_var['Normalized_Index']:.4f}"
+                )
+            with col2:
+                st.metric(
+                    "Significant Variables", 
+                    f"{len(significant_vars)} of {len(hsic_df)}",
+                    f"{len(significant_vars)/len(hsic_df)*100:.1f}%"
+                )
+            with col3:
+                # Find variable with lowest p-value
+                min_p_var = hsic_df.sort_values('p_value_asymptotic').iloc[0]
+                st.metric(
+                    "Most Significant Variable", 
+                    min_p_var['Variable'],
+                    f"p-value: {min_p_var['p_value_asymptotic']:.2e}"
+                )
             
-            Normalized indices (R²-HSIC) represent the relative importance of each input variable:
+            # Create visualizations using Plotly
+            fig = create_hsic_plots(hsic_results)
             
-            - **Scale**: 0 to 1 (or 0% to 100%)
-            - **Interpretation**: Proportion of the total dependence explained by each input
-            - **Sum**: All normalized indices sum to 1 (or 100%)
+            # Display the interactive plot
+            st.plotly_chart(fig, use_container_width=True)
             
-            #### p-values
+            # Display the results table
+            st.subheader("HSIC Indices")
+            st.dataframe(hsic_df.style.format({
+                'HSIC_Index': '{:.6e}',
+                'Normalized_Index': '{:.4f}',
+                'p_value_asymptotic': '{:.4e}',
+                'p_value_permutation': '{:.4e}'
+            }), use_container_width=True)
             
-            p-values determine the statistical significance of the dependence:
+            # Display interpretation
+            st.subheader("Interpretation")
             
-            - **p < 0.05**: Statistically significant dependence (95% confidence)
-            - **p < 0.01**: Highly significant dependence (99% confidence)
-            - **p > 0.05**: No significant evidence of dependence
+            st.markdown(f"""
+            **Key Insights:**
             
-            Two types of p-values are calculated:
+            - **Most influential variable**: {top_var['Variable']} (Normalized HSIC: {top_var['Normalized_Index']:.4f})
+            - **Statistically significant variables**: {len(significant_vars)} out of {len(hsic_df)} variables
+            - **Total captured dependence**: The HSIC analysis captures both linear and non-linear dependencies
             
-            1. **Asymptotic p-value**: Based on asymptotic distribution (faster but less accurate)
-            2. **Permutation p-value**: Based on permutation tests (more accurate but computationally intensive)
+            **Significance Analysis:**
+            
+            - Variables with p-values < 0.05 have statistically significant relationships with the output
+            - Lower p-values indicate stronger evidence against the null hypothesis of independence
             """)
-        
-        # Compute HSIC indices with progress indicator
-        with st.spinner("Computing HSIC indices..."):
-            hsic_results = compute_hsic_indices(model, problem, N=1000, seed=42)
-        
-        # Create DataFrame from the results
-        hsic_df = create_hsic_dataframe(hsic_results)
-        
-        # Create visualizations using Plotly
-        fig = create_hsic_plots(hsic_results)
-        
-        # Display the interactive plot
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Display the results table
-        st.markdown("### HSIC Indices")
-        st.dataframe(hsic_df.style.format({
-            'HSIC_Index': '{:.6e}',
-            'Normalized_Index': '{:.4f}',
-            'p_value_asymptotic': '{:.4e}',
-            'p_value_permutation': '{:.4e}'
-        }), use_container_width=True)
-        
-        # Display interpretation
-        st.markdown("### Interpretation")
-        
-        # Find most influential variables
-        top_var = hsic_df.sort_values('Normalized_Index', ascending=False).iloc[0]
-        significant_vars = hsic_df[hsic_df['p_value_asymptotic'] < 0.05]
-        
-        st.markdown(f"""
-        **Key Insights:**
-        
-        - **Most influential variable**: {top_var['Variable']} (Normalized HSIC: {top_var['Normalized_Index']:.4f})
-        - **Statistically significant variables**: {len(significant_vars)} out of {len(hsic_df)} variables
-        - **Total captured dependence**: The HSIC analysis captures both linear and non-linear dependencies
-        
-        **Significance Analysis:**
-        
-        - Variables with p-values < 0.05 have statistically significant relationships with the output
-        - Lower p-values indicate stronger evidence against the null hypothesis of independence
-        """)
         
         # Generate AI insights
-        with st.expander("Expert Analysis", expanded=True):
-            st.markdown("### AI-Generated Expert Analysis")
-            
-            # Prepare the data for the API call
-            hsic_md_table = hsic_df.to_markdown(index=False, floatfmt=".4e")
-            
-            # Format the model code for inclusion in the prompt
-            model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
-            
-            # Prepare the inputs description
-            input_parameters = []
-            for i in range(dimension):
-                marginal = problem.getMarginal(i)
-                name = input_names[i]
-                dist_type = marginal.__class__.__name__
-                params = marginal.getParameter()
-                input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
-            
-            inputs_description = '\n'.join(input_parameters)
-            
-            # Prepare the prompt
-            prompt = f"""
-            {RETURN_INSTRUCTION}
-            
-            Given the following user-defined model defined in Python code:
-            
-            ```python
-            {model_code_formatted}
-            ```
-            
-            and the following uncertain input distributions:
-            
-            {inputs_description}
-            
-            The results of the HSIC analysis are given in the table below:
-            
-            {hsic_md_table}
-            
-            Please provide an expert analysis of the HSIC results:
-            
-            1. **Methodology Overview**
-               - Explain the mathematical basis of the HSIC method in sensitivity analysis
-               - Discuss the advantages of HSIC over traditional correlation-based methods
-               - Explain how HSIC captures both linear and non-linear dependencies
-            
-            2. **Results Interpretation**
-               - Identify which variables have the strongest dependencies with the output based on HSIC indices
-               - Discuss the statistical significance of these dependencies based on p-values
-               - Explain what these patterns suggest about the model behavior and input-output relationships
-            
-            3. **Comparison with Other Methods**
-               - Discuss how HSIC results might differ from variance-based or correlation-based methods
-               - Explain when HSIC is particularly valuable (e.g., for highly non-linear models)
-               - Identify potential limitations of the HSIC approach
-            
-            4. **Recommendations**
-               - Suggest which variables should be prioritized for uncertainty reduction based on HSIC indices
-               - Recommend additional analyses that might be valuable given these HSIC patterns
-               - Provide guidance on how these results can inform decision-making or model refinement
-            
-            Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
-            """
-            
-            # Check if the results are already in session state
-            response_key = 'hsic_response_markdown'
-            if response_key not in st.session_state:
-                # Call the AI API
-                with st.spinner("Generating expert analysis..."):
-                    response_markdown = call_groq_api(prompt, model_name=language_model)
-                # Store the response in session state
-                st.session_state[response_key] = response_markdown
-            else:
-                response_markdown = st.session_state[response_key]
-            
-            # Display the response
-            st.markdown(response_markdown)
+        if language_model:
+            with st.expander("AI Insights", expanded=True):
+                # Prepare the data for the API call
+                hsic_md_table = hsic_df.to_markdown(index=False, floatfmt=".4e")
+                
+                # Format the model code for inclusion in the prompt
+                model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')]) if model_code_str else ""
+                
+                # Prepare the inputs description
+                input_parameters = []
+                for i in range(dimension):
+                    marginal = problem.getMarginal(i)
+                    name = input_names[i]
+                    dist_type = marginal.__class__.__name__
+                    params = marginal.getParameter()
+                    input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
+                
+                inputs_description = '\n'.join(input_parameters)
+                
+                # Prepare the prompt
+                prompt = f"""
+                {RETURN_INSTRUCTION}
+                
+                Given the following user-defined model defined in Python code:
+                
+                ```python
+                {model_code_formatted}
+                ```
+                
+                and the following uncertain input distributions:
+                
+                {inputs_description}
+                
+                The results of the HSIC analysis are given in the table below:
+                
+                {hsic_md_table}
+                
+                Please provide an expert analysis of the HSIC results:
+                
+                1. **Methodology Overview**
+                   - Explain the mathematical basis of the HSIC method in sensitivity analysis
+                   - Discuss the advantages of HSIC over traditional correlation-based methods
+                   - Explain how HSIC captures both linear and non-linear dependencies
+                
+                2. **Results Interpretation**
+                   - Identify which variables have the strongest dependencies with the output based on HSIC indices
+                   - Discuss the statistical significance of these dependencies based on p-values
+                   - Explain what these patterns suggest about the model behavior and input-output relationships
+                
+                3. **Comparison with Other Methods**
+                   - Discuss how HSIC results might differ from variance-based or correlation-based methods
+                   - Explain when HSIC is particularly valuable (e.g., for highly non-linear models)
+                   - Identify potential limitations of the HSIC approach
+                
+                4. **Recommendations**
+                   - Suggest which variables should be prioritized for uncertainty reduction based on HSIC indices
+                   - Recommend additional analyses that might be valuable given these HSIC patterns
+                   - Provide guidance on how these results can inform decision-making or model refinement
+                
+                Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
+                """
+                
+                # Check if the results are already in session state
+                response_key = 'hsic_response_markdown'
+                if response_key not in st.session_state:
+                    # Call the AI API
+                    with st.spinner("Generating expert analysis..."):
+                        response_markdown = call_groq_api(prompt, model_name=language_model)
+                    # Store the response in session state
+                    st.session_state[response_key] = response_markdown
+                else:
+                    response_markdown = st.session_state[response_key]
+                
+                # Display the response
+                st.markdown(response_markdown)
         
         # Return results dictionary
         return {

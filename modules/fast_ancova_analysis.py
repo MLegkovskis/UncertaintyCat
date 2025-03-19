@@ -605,68 +605,114 @@ def display_fast_results(fast_results, language_model=None):
         Language model used for analysis, by default None
     """
     if fast_results:
-        # Display the explanation
-        st.markdown(fast_results['explanation'], unsafe_allow_html=True)
+        # Results Section
+        with st.expander("Results", expanded=True):
+            # Overview
+            st.subheader("FAST Sensitivity Analysis Overview")
+            st.markdown("""
+            The Fourier Amplitude Sensitivity Test (FAST) is a global sensitivity analysis method that uses 
+            the Fourier decomposition of the model response to quantify the correlation between input variables 
+            and output variables.
+            
+            #### Interpreting the Results:
+            
+            - **First Order Indices**: Measure the direct contribution of each input variable to the output variance.
+            - **Total Order Indices**: Measure the contribution of each input variable including all its interactions with other variables.
+            - **Interaction**: The difference between Total and First order indices, representing the contribution due to interactions.
+            
+            The indices range from 0 to 1, where values closer to 1 indicate greater sensitivity of the model to that variable.
+            
+            > **Note**: FAST analysis requires independent inputs, so the marginals of your distribution are used while ignoring any correlation structure.
+            > For models with correlated inputs, consider the ANCOVA analysis which specifically accounts for correlations.
+            """)
+            
+            # Display the indices table
+            st.subheader("Sensitivity Indices")
+            
+            # Get most influential variable
+            most_influential = fast_results['indices_df'].iloc[0]['Variable']
+            most_influential_total = fast_results['indices_df'].iloc[0]['Total Order']
+            
+            # Calculate sums
+            sum_first_order = fast_results['indices_df']['First Order'].sum()
+            sum_total_order = fast_results['indices_df']['Total Order'].sum()
+            interaction_effect = 1.0 - sum_first_order if sum_first_order <= 1.0 else 0.0
+            
+            # Create summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    "Most Influential Variable", 
+                    most_influential,
+                    f"Total Order: {most_influential_total:.4f}"
+                )
+            with col2:
+                st.metric("Sum of First-Order Indices", f"{sum_first_order:.4f}")
+                if sum_first_order > 1.01:  # Allow for small numerical errors
+                    st.warning("""
+                    **Note:** Sum of first-order indices exceeds 1.0, which indicates numerical approximation errors. 
+                    This can happen due to limited sample size or computational precision. Consider increasing the 
+                    sample size for more accurate results.
+                    """)
+            with col3:
+                st.metric("Sum of Total-Order Indices", f"{sum_total_order:.4f}")
+                if sum_total_order < sum_first_order:
+                    st.warning("""
+                    **Note:** Sum of total-order indices is less than sum of first-order indices, which indicates 
+                    numerical approximation errors. Theoretically, total-order indices should be greater than or 
+                    equal to first-order indices for each variable.
+                    """)
+            
+            # Display the indices table
+            st.subheader("Detailed Numerical Results")
+            display_df = fast_results['indices_df'][['Variable', 'First Order', 'Total Order', 'Interaction', 'Interaction %']]
+            display_df['Interaction %'] = display_df['Interaction %'].apply(lambda x: f"{x:.2f}%")
+            display_df.columns = ['Variable', 'First Order (S₁)', 'Total Order (S₁ᵀ)', 'Interaction Effect', 'Interaction %']
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Visualizations
+            st.subheader("Sensitivity Visualizations")
+            
+            # Display the bar chart
+            st.markdown("#### FAST Sensitivity Indices")
+            st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
+            
+            # Display pie charts in two columns
+            st.markdown("#### Variance Decomposition")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("##### First Order Indices Distribution")
+                st.markdown("""
+                This pie chart shows how the direct effects of each variable contribute to the output variance.
+                Larger slices indicate variables with stronger direct influence on the model output.
+                """)
+                st.plotly_chart(fast_results['fig_pie_first'], use_container_width=True)
+            with col2:
+                st.markdown("##### Total Order Indices Distribution")
+                st.markdown("""
+                This pie chart shows the total contribution of each variable (including interactions) to the output variance.
+                Comparing with the first-order chart helps identify variables involved in significant interactions.
+                """)
+                st.plotly_chart(fast_results['fig_pie_total'], use_container_width=True)
+            
+            # Add interpretation based on results
+            if interaction_effect > 0.1:
+                st.info("""
+                **Significant interaction effects detected.** The sum of first-order indices is substantially 
+                less than 1, indicating important interactions between variables. This means the model behavior 
+                cannot be understood by studying each variable in isolation.
+                """)
+            elif sum_first_order > 0.9:
+                st.success("""
+                **Minimal interaction effects detected.** The sum of first-order indices is close to 1, indicating 
+                that variables act mostly independently. The model behavior can be understood by studying the 
+                effect of each variable separately.
+                """)
         
-        # Display the indices table
-        st.markdown('<p style="font-weight: bold; margin-top: 20px;">FAST Sensitivity Indices</p>', unsafe_allow_html=True)
-        st.dataframe(fast_results['indices_df'][['Variable', 'First Order', 'Total Order', 'Interaction', 'Interaction %']], use_container_width=True)
-        
-        # Display the bar chart
-        st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
-        
-        # Display pie charts in two columns
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(fast_results['fig_pie_first'], use_container_width=True)
-        with col2:
-            st.plotly_chart(fast_results['fig_pie_total'], use_container_width=True)
-        
-        # Display LLM insights if available
+        # AI Insights Section
         if fast_results['llm_insights'] and language_model:
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            st.markdown('<h3 class="sub-header">FAST Analysis Insights</h3>', unsafe_allow_html=True)
-            st.markdown(fast_results['llm_insights'], unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-def display_ancova_results(ancova_results, language_model=None):
-    """
-    Display ANCOVA sensitivity analysis results in the Streamlit interface.
-    
-    Parameters
-    ----------
-    ancova_results : dict
-        Dictionary containing the results of the ANCOVA analysis
-    language_model : str, optional
-        Language model used for analysis, by default None
-    """
-    if ancova_results:
-        # Display the explanation
-        st.markdown(ancova_results['explanation'], unsafe_allow_html=True)
-        
-        # Display the indices table
-        st.markdown('<p style="font-weight: bold; margin-top: 20px;">ANCOVA Sensitivity Indices</p>', unsafe_allow_html=True)
-        st.dataframe(ancova_results['indices_df'][['Variable', 'ANCOVA Index', 'Uncorrelated Index', 'Correlated Index', 'Correlation %']], use_container_width=True)
-        
-        # Display the bar chart
-        st.plotly_chart(ancova_results['fig_bar'], use_container_width=True)
-        
-        # Display stacked bar chart
-        st.plotly_chart(ancova_results['fig_stacked'], use_container_width=True)
-        
-        # Display pie chart and heatmap in two columns
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(ancova_results['fig_pie'], use_container_width=True)
-        with col2:
-            st.plotly_chart(ancova_results['fig_heatmap'], use_container_width=True)
-        
-        # Display LLM insights if available
-        if ancova_results['llm_insights'] and language_model:
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            st.markdown('<h3 class="sub-header">ANCOVA Analysis Insights</h3>', unsafe_allow_html=True)
-            st.markdown(ancova_results['llm_insights'], unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            with st.expander("AI Insights", expanded=True):
+                st.markdown(fast_results['llm_insights'])
 
 def fast_analysis(model, problem, size=400, model_code_str=None, language_model=None):
     """
@@ -688,8 +734,6 @@ def fast_analysis(model, problem, size=400, model_code_str=None, language_model=
     language_model : str, optional
         Language model to use for analysis
     """
-    st.markdown("## FAST Sensitivity Analysis")
-    
     with st.spinner("Running FAST Sensitivity Analysis..."):
         fast_results = fast_sensitivity_analysis(
             model, problem, size=size, model_code_str=model_code_str,
@@ -697,6 +741,134 @@ def fast_analysis(model, problem, size=400, model_code_str=None, language_model=
         )
         
         display_fast_results(fast_results, language_model)
+
+def display_ancova_results(ancova_results, language_model=None):
+    """
+    Display ANCOVA sensitivity analysis results in the Streamlit interface.
+    
+    Parameters
+    ----------
+    ancova_results : dict
+        Dictionary containing the results of the ANCOVA analysis
+    language_model : str, optional
+        Language model used for analysis, by default None
+    """
+    if ancova_results:
+        # Results Section
+        with st.expander("Results", expanded=True):
+            # Overview
+            st.subheader("ANCOVA Sensitivity Analysis Overview")
+            st.markdown("""
+            ANCOVA (Analysis of Covariance) sensitivity analysis is particularly useful for models with correlated inputs. 
+            It separates the variance explained by individual variables from that explained by correlations with other inputs.
+            
+            #### Interpreting the Results:
+            
+            - **ANCOVA Index**: Total sensitivity of the output to each input variable
+            - **Uncorrelated Index**: Portion of sensitivity due to the variable's independent effect
+            - **Correlated Index**: Portion of sensitivity due to correlations with other variables
+            - **Correlation %**: Percentage of the total sensitivity that comes from correlations
+            
+            Unlike FAST analysis, ANCOVA specifically accounts for input correlations, making it more appropriate 
+            for models with dependent inputs.
+            """)
+            
+            # Display the indices table
+            st.subheader("Sensitivity Indices")
+            
+            # Get most influential variable
+            most_influential = ancova_results['indices_df'].iloc[0]['Variable']
+            most_influential_index = ancova_results['indices_df'].iloc[0]['ANCOVA Index']
+            
+            # Calculate sums
+            sum_ancova = ancova_results['indices_df']['ANCOVA Index'].sum()
+            sum_uncorrelated = ancova_results['indices_df']['Uncorrelated Index'].sum()
+            sum_correlated = ancova_results['indices_df']['Correlated Index'].sum()
+            correlation_effect = sum_correlated / sum_ancova if sum_ancova > 0 else 0.0
+            
+            # Create summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    "Most Influential Variable", 
+                    most_influential,
+                    f"ANCOVA Index: {most_influential_index:.4f}"
+                )
+            with col2:
+                st.metric("Sum of ANCOVA Indices", f"{sum_ancova:.4f}")
+            with col3:
+                st.metric(
+                    "Correlation Effect", 
+                    f"{correlation_effect:.2%}",
+                    f"Sum of Correlated: {sum_correlated:.4f}"
+                )
+            
+            # Display the indices table
+            st.subheader("Detailed Numerical Results")
+            display_df = ancova_results['indices_df'][['Variable', 'ANCOVA Index', 'Uncorrelated Index', 'Correlated Index', 'Correlation %']]
+            display_df['Correlation %'] = display_df['Correlation %'].apply(lambda x: f"{x:.2f}%")
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Visualizations
+            st.subheader("Sensitivity Visualizations")
+            
+            # Display the bar chart
+            st.markdown("#### ANCOVA Sensitivity Indices")
+            st.markdown("""
+            This bar chart shows the total ANCOVA sensitivity index for each variable, 
+            indicating their overall importance to the model output.
+            """)
+            st.plotly_chart(ancova_results['fig_bar'], use_container_width=True)
+            
+            # Display stacked bar chart
+            st.markdown("#### Correlation Decomposition")
+            st.markdown("""
+            This stacked bar chart breaks down each variable's sensitivity into:
+            - **Uncorrelated Effect**: The variable's direct influence on the output (blue)
+            - **Correlated Effect**: The influence due to correlations with other variables (red)
+            
+            Variables with large red portions are strongly affected by correlations in the model.
+            """)
+            st.plotly_chart(ancova_results['fig_stacked'], use_container_width=True)
+            
+            # Display pie chart and heatmap in two columns
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("#### ANCOVA Indices Distribution")
+                st.markdown("""
+                This pie chart shows the relative contribution of each variable to the total output variance.
+                Larger slices indicate variables with stronger influence on the model output.
+                """)
+                st.plotly_chart(ancova_results['fig_pie'], use_container_width=True)
+            with col2:
+                st.markdown("#### Input Correlation Structure")
+                st.markdown("""
+                This heatmap visualizes the correlation structure between input variables:
+                - Red cells indicate positive correlations
+                - Blue cells indicate negative correlations
+                - Darker colors represent stronger correlations
+                
+                Strong correlations explain why some variables have high correlated effects.
+                """)
+                st.plotly_chart(ancova_results['fig_heatmap'], use_container_width=True)
+            
+            # Add interpretation based on results
+            if correlation_effect > 0.3:
+                st.info("""
+                **Significant correlation effects detected.** A substantial portion of the output variance 
+                is explained by correlations between input variables. This means the model behavior is strongly 
+                influenced by the joint distribution of inputs, not just their individual distributions.
+                """)
+            elif correlation_effect < 0.1:
+                st.success("""
+                **Minimal correlation effects detected.** The input correlations have little impact on the output variance.
+                The model behavior can be understood primarily by studying the effect of each variable separately.
+                """)
+        
+        # AI Insights Section
+        if ancova_results['llm_insights'] and language_model:
+            with st.expander("AI Insights", expanded=True):
+                st.markdown(ancova_results['llm_insights'])
 
 def ancova_analysis(model, problem, size=2000, model_code_str=None, language_model=None):
     """
@@ -718,8 +890,6 @@ def ancova_analysis(model, problem, size=2000, model_code_str=None, language_mod
     language_model : str, optional
         Language model to use for analysis
     """
-    st.markdown("## ANCOVA Sensitivity Analysis")
-    
     with st.spinner("Running ANCOVA Sensitivity Analysis..."):
         ancova_results = ancova_sensitivity_analysis(
             model, problem, size=size, model_code_str=model_code_str,

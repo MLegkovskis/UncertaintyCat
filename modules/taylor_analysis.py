@@ -231,7 +231,7 @@ def create_taylor_dataframe(results):
     df['Sensitivity_Index (%)'] = df['Sensitivity_Index'] * 100
     return df
 
-def taylor_analysis(model, problem, model_code_str, language_model='groq'):
+def taylor_analysis(model, problem, model_code_str=None, language_model='groq'):
     """
     Perform enterprise-grade Taylor analysis on the model.
     
@@ -244,7 +244,7 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
         OpenTURNS function to analyze
     problem : ot.Distribution
         OpenTURNS distribution (typically a JointDistribution)
-    model_code_str : str
+    model_code_str : str, optional
         String representation of the model code for documentation
     language_model : str, optional
         Language model to use for analysis
@@ -286,19 +286,23 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
         # Validate the Taylor surrogate model
         validation_results = validate_taylor_surrogate(model, problem, n_validation=100)
         
-        # Display the header and introduction
-        st.markdown("## Taylor Expansion Sensitivity Analysis")
-        st.markdown("""
-        Taylor expansion sensitivity analysis approximates the model using a first-order Taylor series
-        and estimates the contribution of each input variable to the output variance.
+        # Compute additional Taylor analysis results
+        taylor_results = compute_taylor_indices(model, problem)
+        detailed_df = create_taylor_dataframe(taylor_results)
         
-        This method is computationally efficient but relies on the assumption that the model
-        behaves linearly around the nominal point (usually the mean of the input distributions).
-        """)
-        
-        # Display surrogate model validation
-        with st.expander("Surrogate Model Validation", expanded=True):
-            st.markdown("### Linear Surrogate Model Validation")
+        # Results Section
+        with st.expander("Results", expanded=True):
+            st.subheader("Taylor Expansion Sensitivity Analysis")
+            st.markdown("""
+            Taylor expansion sensitivity analysis approximates the model using a first-order Taylor series
+            and estimates the contribution of each input variable to the output variance.
+            
+            This method is computationally efficient but relies on the assumption that the model
+            behaves linearly around the nominal point (usually the mean of the input distributions).
+            """)
+            
+            # Surrogate Model Validation
+            st.subheader("Linear Surrogate Model Validation")
             st.markdown("""
             Taylor importance factors are only meaningful when the first-order Taylor expansion
             is a good approximation of the original model. The metrics below assess how well
@@ -313,12 +317,12 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
             r2_color = 'normal'
             if r2_value < 0.7:
                 r2_color = 'off'
-                r2_warning = "Poor linear approximation. Taylor indices may not be reliable."
+                r2_warning = "Poor linear approximation"
             elif r2_value < 0.9:
                 r2_color = 'normal'  
-                r2_warning = "Moderate linear approximation. Use Taylor indices with caution."
+                r2_warning = "Moderate approximation"
             else:
-                r2_warning = "Good linear approximation. Taylor indices are reliable."
+                r2_warning = "Good approximation"
                 
             col1.metric("R² Score", f"{r2_value:.4f}", delta=r2_warning, delta_color=r2_color)
             col2.metric("RMSE", f"{validation_results['rmse']:.4f}")
@@ -386,10 +390,27 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
                 ℹ️ **Note**: The linear surrogate model provides a moderate approximation of the original model.
                 Taylor importance factors should be interpreted with caution.
                 """)
-        
-        # Display importance factors visualization
-        with st.expander("Importance Factors Visualization", expanded=True):
-            st.markdown("### Taylor Importance Factors")
+            
+            # Taylor Importance Factors
+            st.subheader("Taylor Importance Factors")
+            
+            # Get most influential variable
+            most_influential = taylor_df.iloc[0]['Variable']
+            most_influential_value = taylor_df.iloc[0]['Importance Factor (%)']
+            
+            # Calculate sum of importance factors
+            sum_importance = taylor_df['Importance Factor (%)'].sum()
+            
+            # Create summary metrics
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(
+                    "Most Influential Variable", 
+                    most_influential,
+                    f"Importance: {most_influential_value:.2f}%"
+                )
+            with col2:
+                st.metric("Sum of Importance Factors", f"{sum_importance:.2f}%")
             
             # Create tabs for different visualizations
             tab1, tab2 = st.tabs(["Bar Chart", "Pie Chart"])
@@ -437,16 +458,11 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
                 st.plotly_chart(fig_pie, use_container_width=True)
             
             # Display the importance factors table
-            st.markdown("### Importance Factors Table")
+            st.subheader("Importance Factors Table")
             st.dataframe(taylor_df, use_container_width=True)
-        
-        # Display detailed analysis
-        with st.expander("Detailed Analysis", expanded=True):
-            st.markdown("### Detailed Taylor Analysis Results")
             
-            # Compute additional Taylor analysis results
-            taylor_results = compute_taylor_indices(model, problem)
-            detailed_df = create_taylor_dataframe(taylor_results)
+            # Detailed Analysis
+            st.subheader("Detailed Taylor Analysis Results")
             
             # Display the detailed results table
             st.dataframe(detailed_df[['Variable', 'Nominal_Point', 'Gradient', 'Variance', 'Sensitivity_Index (%)']], use_container_width=True)
@@ -498,7 +514,7 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
         taylor_md_table = taylor_df.to_markdown(index=False, floatfmt=".2f")
         
         # Format the model code for inclusion in the prompt
-        model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
+        model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')]) if model_code_str else ""
         
         # Prepare the inputs description
         input_parameters = []
@@ -566,21 +582,20 @@ def taylor_analysis(model, problem, model_code_str, language_model='groq'):
         """
         
         # Display AI insights
-        with st.expander("Expert Analysis", expanded=True):
-            st.markdown("### AI-Generated Expert Analysis")
-            
-            # Check if the results are already in session state
-            if 'taylor_response_markdown' not in st.session_state:
-                # Call the AI API
-                with st.spinner("Generating expert analysis..."):
-                    response_markdown = call_groq_api(prompt, model_name=language_model)
-                # Store the response in session state
-                st.session_state.taylor_response_markdown = response_markdown
-            else:
-                response_markdown = st.session_state.taylor_response_markdown
-            
-            # Display the response
-            st.markdown(response_markdown)
+        if language_model:
+            with st.expander("AI Insights", expanded=True):
+                # Check if the results are already in session state
+                if 'taylor_response_markdown' not in st.session_state:
+                    # Call the AI API
+                    with st.spinner("Generating expert analysis..."):
+                        response_markdown = call_groq_api(prompt, model_name=language_model)
+                    # Store the response in session state
+                    st.session_state.taylor_response_markdown = response_markdown
+                else:
+                    response_markdown = st.session_state.taylor_response_markdown
+                
+                # Display the response
+                st.markdown(response_markdown)
     
     except Exception as e:
         st.error(f"Error in Taylor analysis: {str(e)}")
