@@ -592,3 +592,138 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
     except Exception as e:
         st.error(f"Error in ANCOVA sensitivity analysis: {str(e)}")
         return None
+
+def display_fast_results(fast_results, language_model=None):
+    """
+    Display FAST sensitivity analysis results in the Streamlit interface.
+    
+    Parameters
+    ----------
+    fast_results : dict
+        Dictionary containing the results of the FAST analysis
+    language_model : str, optional
+        Language model used for analysis, by default None
+    """
+    if fast_results:
+        # Display the explanation
+        st.markdown(fast_results['explanation'], unsafe_allow_html=True)
+        
+        # Display the indices table
+        st.markdown('<p style="font-weight: bold; margin-top: 20px;">FAST Sensitivity Indices</p>', unsafe_allow_html=True)
+        st.dataframe(fast_results['indices_df'][['Variable', 'First Order', 'Total Order', 'Interaction', 'Interaction %']], use_container_width=True)
+        
+        # Display the bar chart
+        st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
+        
+        # Display pie charts in two columns
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(fast_results['fig_pie_first'], use_container_width=True)
+        with col2:
+            st.plotly_chart(fast_results['fig_pie_total'], use_container_width=True)
+        
+        # Display LLM insights if available
+        if fast_results['llm_insights'] and language_model:
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<h3 class="sub-header">FAST Analysis Insights</h3>', unsafe_allow_html=True)
+            st.markdown(fast_results['llm_insights'], unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+def display_ancova_results(ancova_results, language_model=None):
+    """
+    Display ANCOVA sensitivity analysis results in the Streamlit interface.
+    
+    Parameters
+    ----------
+    ancova_results : dict
+        Dictionary containing the results of the ANCOVA analysis
+    language_model : str, optional
+        Language model used for analysis, by default None
+    """
+    if ancova_results:
+        # Display the explanation
+        st.markdown(ancova_results['explanation'], unsafe_allow_html=True)
+        
+        # Display the indices table
+        st.markdown('<p style="font-weight: bold; margin-top: 20px;">ANCOVA Sensitivity Indices</p>', unsafe_allow_html=True)
+        st.dataframe(ancova_results['indices_df'][['Variable', 'ANCOVA Index', 'Uncorrelated Index', 'Correlated Index', 'Correlation %']], use_container_width=True)
+        
+        # Display the bar chart
+        st.plotly_chart(ancova_results['fig_bar'], use_container_width=True)
+        
+        # Display stacked bar chart
+        st.plotly_chart(ancova_results['fig_stacked'], use_container_width=True)
+        
+        # Display pie chart and heatmap in two columns
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(ancova_results['fig_pie'], use_container_width=True)
+        with col2:
+            st.plotly_chart(ancova_results['fig_heatmap'], use_container_width=True)
+        
+        # Display LLM insights if available
+        if ancova_results['llm_insights'] and language_model:
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<h3 class="sub-header">ANCOVA Analysis Insights</h3>', unsafe_allow_html=True)
+            st.markdown(ancova_results['llm_insights'], unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+def fast_analysis(model, problem, size=400, model_code_str=None, language_model=None):
+    """
+    Perform and display FAST sensitivity analysis.
+    
+    This function serves as the main entry point for FAST analysis, handling both
+    the calculation and visualization of results.
+    
+    Parameters
+    ----------
+    model : ot.Function
+        OpenTURNS function to analyze
+    problem : ot.Distribution
+        OpenTURNS distribution (typically a JointDistribution)
+    size : int, optional
+        Number of samples for FAST analysis (default is 400)
+    model_code_str : str, optional
+        String representation of the model code for documentation
+    language_model : str, optional
+        Language model to use for analysis
+    """
+    st.markdown("## FAST Sensitivity Analysis")
+    
+    with st.spinner("Running FAST Sensitivity Analysis..."):
+        fast_results = fast_sensitivity_analysis(
+            model, problem, size=size, model_code_str=model_code_str,
+            language_model=language_model
+        )
+        
+        display_fast_results(fast_results, language_model)
+
+def ancova_analysis(model, problem, size=2000, model_code_str=None, language_model=None):
+    """
+    Perform and display ANCOVA sensitivity analysis.
+    
+    This function serves as the main entry point for ANCOVA analysis, handling both
+    the calculation and visualization of results.
+    
+    Parameters
+    ----------
+    model : ot.Function
+        OpenTURNS function to analyze
+    problem : ot.Distribution
+        OpenTURNS distribution (typically a JointDistribution)
+    size : int, optional
+        Number of samples for ANCOVA analysis (default is 2000)
+    model_code_str : str, optional
+        String representation of the model code for documentation
+    language_model : str, optional
+        Language model to use for analysis
+    """
+    st.markdown("## ANCOVA Sensitivity Analysis")
+    
+    with st.spinner("Running ANCOVA Sensitivity Analysis..."):
+        ancova_results = ancova_sensitivity_analysis(
+            model, problem, size=size, model_code_str=model_code_str,
+            language_model=language_model
+        )
+        
+        display_ancova_results(ancova_results, language_model)

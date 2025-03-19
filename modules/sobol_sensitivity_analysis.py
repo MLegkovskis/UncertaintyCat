@@ -244,11 +244,11 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
             template='plotly_white',
             height=400
         )
-        
-        # Display results in expandable sections
-        with st.expander("Sensitivity Analysis Overview", expanded=True):
-            st.write("### Sobol Sensitivity Analysis")
-            st.write("""
+                
+        with st.expander("Results", expanded=True):
+            # Sensitivity Analysis Overview
+            st.subheader("Sensitivity Analysis Overview")
+            st.markdown("""
             Sobol sensitivity analysis is a variance-based method that quantifies the contribution of each input variable 
             to the variance of the model output. This analysis helps identify which uncertain inputs have the most 
             significant impact on model outputs.
@@ -282,7 +282,7 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
                     """)
             
             # Add explanation of metrics
-            st.write("""
+            st.markdown("""
             **Key Metrics Explained:**
             - **Most Influential Variable**: The input parameter with the highest total-order sensitivity index, indicating its overall importance
             - **Sum of First-Order Indices**: Sum of all direct contributions to output variance (theoretically should be ≤ 1.0)
@@ -294,14 +294,16 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
             - For each variable, S₁ᵀ ≥ S₁ (total effect includes direct effect)
             - The sum of total-order indices can exceed 1 because interactions are counted multiple times
             """)
-        
-        with st.expander("Variance-Based Sensitivity Analysis", expanded=True):
+            
+            # Variance-Based Sensitivity Analysis
+            st.subheader("Variance-Based Sensitivity Analysis")
+            
             # Create two columns for the charts
             col1, col2 = st.columns([3, 2])
             
             with col1:
-                st.write("### Sobol Sensitivity Indices")
-                st.write("""
+                st.markdown("#### Sobol Sensitivity Indices")
+                st.markdown("""
                 **First-Order Index (S₁)**: Measures the direct contribution of each input to output variance.
                 
                 **Total-Order Index (S₁ᵀ)**: Measures the total contribution including interactions with other variables.
@@ -311,8 +313,8 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
                 st.plotly_chart(fig_bar, use_container_width=True)
             
             with col2:
-                st.write("### Variance Decomposition")
-                st.write("""
+                st.markdown("#### Variance Decomposition")
+                st.markdown("""
                 This pie chart visualizes how the total output variance is distributed:
                 
                 - **Individual variable slices**: The portion of output variance directly explained by each input variable (first-order effects)
@@ -337,10 +339,10 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
                 that variables act mostly independently. The model behavior can be understood by studying the 
                 effect of each variable separately.
                 """)
-        
-        with st.expander("Interaction Analysis and Detailed Numerical Results", expanded=True):
-            st.write("### Sensitivity Indices Summary")
-            st.write("""
+            
+            # Detailed Numerical Results
+            st.subheader("Detailed Numerical Results")
+            st.markdown("""
             This table summarizes the first-order and total-order Sobol indices for each input variable, 
             along with their confidence intervals and interaction effects.
             
@@ -359,8 +361,8 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
             # Display the DataFrame
             st.dataframe(display_df, use_container_width=True)
             
-            # Display summary metrics
-            st.write("### Variance Decomposition Summary")
+            # Variance Decomposition Summary
+            st.markdown("#### Variance Decomposition Summary")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -378,8 +380,7 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
                     Theoretically, total-order indices should be ≥ first-order indices.
                     """)
             
-            st.write("### Sobol Indices Interpretation")
-            st.write(f"""
+            st.markdown(f"""
             - **Sum of First-Order Indices = {sum_first_order:.4f}**: 
               - If close to 1.0, the model is primarily additive (variables act independently)
               - If significantly less than 1.0, interactions between variables are important
@@ -389,10 +390,14 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
               - Higher values indicate stronger interactions between input variables
             """)
             
+            # Display interaction chart
+            st.markdown("#### Variable Interaction Contribution")
+            st.plotly_chart(fig_interaction, use_container_width=True)
+            
             # Display second-order indices if available
             if S2_matrix is not None:
-                st.write("### Pairwise Interactions")
-                st.write("""
+                st.subheader("Pairwise Interactions")
+                st.markdown("""
                 The heatmap below shows the strength of interactions between specific pairs of variables.
                 
                 **How to read this heatmap:**
@@ -424,26 +429,29 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
                 
                 if interactions:
                     interactions_df = pd.DataFrame(interactions).sort_values('Interaction Index', ascending=False).head(5)
-                    st.write("#### Top Interaction Pairs")
-                    st.write("These variable pairs have the strongest interactions in the model:")
+                    st.markdown("#### Top Interaction Pairs")
+                    st.markdown("These variable pairs have the strongest interactions in the model:")
                     st.dataframe(interactions_df, use_container_width=True)
         
-        # Generate prompt for AI insights
-        indices_table = "\n".join(
-            f"- {row['Variable']}:\n"
-            f"  First Order: {row['First Order']:.4f} {row['First Order CI']}\n"
-            f"  Total Order: {row['Total Order']:.4f} {row['Total Order CI']}\n"
-            f"  Interaction: {row['Total Order'] - row['First Order']:.4f} ({row['Interaction %']:.1f}%)"
-            for _, row in indices_df.iterrows()
-        )
-        
-        # Add distribution information
-        dist_info_text = "\n".join(
-            f"- {row['Variable']}: {row['Distribution']}, parameters {row['Parameters']}"
-            for _, row in dist_df.iterrows()
-        )
-        
-        prompt = f"""
+        # AI INSIGHTS SECTION
+        if language_model:            
+            with st.expander("AI Insights", expanded=True):
+                # Generate prompt for AI insights
+                indices_table = "\n".join(
+                    f"- {row['Variable']}:\n"
+                    f"  First Order: {row['First Order']:.4f} {row['First Order CI']}\n"
+                    f"  Total Order: {row['Total Order']:.4f} {row['Total Order CI']}\n"
+                    f"  Interaction: {row['Total Order'] - row['First Order']:.4f} ({row['Interaction %']:.1f}%)"
+                    for _, row in indices_df.iterrows()
+                )
+                
+                # Add distribution information
+                dist_info_text = "\n".join(
+                    f"- {row['Variable']}: {row['Distribution']}, parameters {row['Parameters']}"
+                    for _, row in dist_df.iterrows()
+                )
+                
+                prompt = f"""
 {RETURN_INSTRUCTION}
 
 Analyze these Sobol sensitivity analysis results for an enterprise-grade engineering model:
@@ -491,14 +499,10 @@ Please provide a comprehensive enterprise-grade analysis that includes:
 
 Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations that would be valuable for executive decision-makers in an engineering context.
 """
-        
-        # Display AI insights
-        with st.expander("Expert Analysis", expanded=True):
-            st.write("### AI-Generated Expert Analysis")
-            
-            with st.spinner("Generating expert analysis..."):
-                response = call_groq_api(prompt, language_model)
-                st.markdown(response)
+                
+                with st.spinner("Generating expert analysis..."):
+                    response = call_groq_api(prompt, language_model)
+                    st.markdown(response)
         
     except Exception as e:
         st.error(f"Error in Sobol sensitivity analysis: {str(e)}")
