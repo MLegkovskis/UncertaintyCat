@@ -409,7 +409,7 @@ def create_hsic_plots(results):
             [{"type": "bar"}, {"type": "bar"}],
             [{"type": "bar"}, {"type": "scatter"}]
         ],
-        vertical_spacing=0.2,
+        vertical_spacing=0.3,  
         horizontal_spacing=0.1
     )
     
