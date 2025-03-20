@@ -55,88 +55,86 @@ def ml_analysis(data, problem, model_code_str=None, language_model='groq'):
             marginal = problem.getMarginal(i)
             input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
         
-        # Display the header
-        st.markdown("## Machine Learning Sensitivity Analysis")
-        
         # Results section
-        st.subheader("Results")
-        st.markdown("""
-        ### SHAP Analysis Results
-        
-        This analysis uses machine learning techniques to understand the relationship between input variables and model outputs.
-        By training a surrogate model (Random Forest) and applying SHAP (SHapley Additive exPlanations), we can identify
-        which variables have the most influence on the model output and how they affect predictions.
-        
-        **Key Concepts:**
-        - **SHAP (SHapley Additive exPlanations)**: A unified approach to explain the output of any machine learning model
-        - **Feature Importance**: Ranking of variables by their overall impact on predictions
-        - **Dependence Plots**: Show how the effect of a variable changes across its range
-        """)
-        
-        # Train the surrogate model
-        with st.spinner("Training surrogate model..."):
-            rf_model, X_test, y_test, scaler, performance_metrics = train_surrogate_model(data, input_names)
-        
-        # Calculate SHAP values
-        with st.spinner("Calculating SHAP values..."):
-            shap_results = calculate_shap_values(rf_model, X_test, input_names)
-        
-        # Display key metrics
-        top_feature = shap_results["shap_summary_df"]['Feature'].iloc[0]
-        significant_features_count = sum(shap_results["importance_df"]['Importance'] > 0.05)
-        
-        # Create metrics in columns
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Most Influential Variable", top_feature)
-        with col2:
-            st.metric("Significant Variables", f"{significant_features_count}")
-        with col3:
-            st.metric("Model Accuracy", f"{performance_metrics['r2']:.4f} R²")
-        
-        # Display model performance
-        st.subheader("Surrogate Model Performance")
-        
-        # Create metrics in columns
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("R² Score", f"{performance_metrics['r2']:.4f}")
-        with col2:
-            st.metric("RMSE", f"{performance_metrics['rmse']:.4f}")
-        with col3:
-            st.metric("Cross-Val R²", f"{performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}")
-        
-        # Add validation plot
-        create_validation_plot(performance_metrics['y_test'], performance_metrics['y_pred'])
-        
-        # Create interactive visualizations
-        with st.spinner("Creating visualizations..."):
-            create_interactive_visualizations(shap_results, X_test, input_names, performance_metrics)
-        
-        # Add model performance metrics explanation as a regular section instead of an expander
-        st.subheader("Understanding Model Performance Metrics")
-        st.markdown("""
-        - **R² Score**: Coefficient of determination (0-1)
-          - Measures the proportion of variance in the output that is predictable from the inputs
-          - Higher values indicate better fit (1.0 is perfect prediction)
-          - Values below 0.5 suggest poor model performance
-        
-        - **RMSE (Root Mean Square Error)**:
-          - Measures the average magnitude of prediction errors
-          - Lower values indicate better fit
-          - In the same units as the output variable
-        
-        - **Cross-Validation R²**:
-          - Average R² score across 5 different data splits
-          - Measures how well the model generalizes to unseen data
-          - The ± value shows the standard deviation across folds
-        
-        - **Validation Plot**:
-          - Shows actual vs. predicted values
-          - Points should fall close to the diagonal line (perfect prediction)
-          - Scatter indicates prediction uncertainty
-          - Systematic deviations suggest model bias
-        """)
+        with st.expander("Results", expanded=True):
+            st.subheader("SHAP Analysis Results")
+            st.markdown("""
+            ### SHAP Analysis Results
+            
+            This analysis uses machine learning techniques to understand the relationship between input variables and model outputs.
+            By training a surrogate model (Random Forest) and applying SHAP (SHapley Additive exPlanations), we can identify
+            which variables have the most influence on the model output and how they affect predictions.
+            
+            **Key Concepts:**
+            - **SHAP (SHapley Additive exPlanations)**: A unified approach to explain the output of any machine learning model
+            - **Feature Importance**: Ranking of variables by their overall impact on predictions
+            - **Dependence Plots**: Show how the effect of a variable changes across its range
+            """)
+            
+            # Train the surrogate model
+            with st.spinner("Training surrogate model..."):
+                rf_model, X_test, y_test, scaler, performance_metrics = train_surrogate_model(data, input_names)
+            
+            # Calculate SHAP values
+            with st.spinner("Calculating SHAP values..."):
+                shap_results = calculate_shap_values(rf_model, X_test, input_names)
+            
+            # Display key metrics
+            top_feature = shap_results["shap_summary_df"]['Feature'].iloc[0]
+            significant_features_count = sum(shap_results["importance_df"]['Importance'] > 0.05)
+            
+            # Create metrics in columns
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Most Influential Variable", top_feature)
+            with col2:
+                st.metric("Significant Variables", f"{significant_features_count}")
+            with col3:
+                st.metric("Model Accuracy", f"{performance_metrics['r2']:.4f} R²")
+            
+            # Display model performance
+            st.subheader("Surrogate Model Performance")
+            
+            # Create metrics in columns
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("R² Score", f"{performance_metrics['r2']:.4f}")
+            with col2:
+                st.metric("RMSE", f"{performance_metrics['rmse']:.4f}")
+            with col3:
+                st.metric("Cross-Val R²", f"{performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}")
+            
+            # Add validation plot
+            create_validation_plot(performance_metrics['y_test'], performance_metrics['y_pred'])
+            
+            # Create interactive visualizations
+            with st.spinner("Creating visualizations..."):
+                create_interactive_visualizations(shap_results, X_test, input_names, performance_metrics)
+            
+            # Add model performance metrics explanation as a regular section instead of an expander
+            st.subheader("Understanding Model Performance Metrics")
+            st.markdown("""
+            - **R² Score**: Coefficient of determination (0-1)
+              - Measures the proportion of variance in the output that is predictable from the inputs
+              - Higher values indicate better fit (1.0 is perfect prediction)
+              - Values below 0.5 suggest poor model performance
+            
+            - **RMSE (Root Mean Square Error)**:
+              - Measures the average magnitude of prediction errors
+              - Lower values indicate better fit
+              - In the same units as the output variable
+            
+            - **Cross-Validation R²**:
+              - Average R² score across 5 different data splits
+              - Measures how well the model generalizes to unseen data
+              - The ± value shows the standard deviation across folds
+            
+            - **Validation Plot**:
+              - Shows actual vs. predicted values
+              - Points should fall close to the diagonal line (perfect prediction)
+              - Scatter indicates prediction uncertainty
+              - Systematic deviations suggest model bias
+            """)
         
         # AI Insights section (only if language_model is provided)
         if language_model:

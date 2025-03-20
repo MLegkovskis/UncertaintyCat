@@ -29,6 +29,7 @@ from utils.model_utils import (
     sample_inputs
 )
 from utils.constants import RETURN_INSTRUCTION
+from utils.css_styles import load_css
 
 ###############################################################################
 # 2) LOAD MODEL CODE FROM EXAMPLES
@@ -49,105 +50,17 @@ def load_model_code(selected_model_name: str) -> str:
 ###############################################################################
 # 3) STREAMLIT APP START
 ###############################################################################
-# Set page configuration with custom theme
+
+# Page configuration
 st.set_page_config(
-    layout="wide",
-    page_title="UncertaintyCat | Enterprise",
+    page_title="UncertaintyCat | Enterprise Edition",
     page_icon="🐱",
-    initial_sidebar_state="expanded"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# Custom CSS for enterprise look and feel
-st.markdown("""
-<style>
-    .main-header {
-        font-family: 'Arial', sans-serif;
-        color: #2C3E50;
-        padding-bottom: 15px;
-        border-bottom: 2px solid #3498DB;
-    }
-    .sub-header {
-        font-family: 'Arial', sans-serif;
-        color: #34495E;
-        padding: 10px 0;
-        margin-top: 20px;
-    }
-    .card {
-        background-color: #FFFFFF;
-        border-radius: 8px;
-        padding: 20px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-    }
-    .sidebar .sidebar-content {
-        background-color: #F8F9FA;
-    }
-    .stButton>button {
-        background-color: #3498DB;
-        color: white;
-        font-weight: bold;
-        border-radius: 4px;
-        padding: 10px 20px;
-        border: none;
-    }
-    .stButton>button:hover {
-        background-color: #2980B9;
-    }
-    .status-box {
-        padding: 10px;
-        border-radius: 5px;
-        margin-bottom: 10px;
-    }
-    .info-box {
-        background-color: #EBF5FB;
-        border-left: 5px solid #3498DB;
-    }
-    .success-box {
-        background-color: #E9F7EF;
-        border-left: 5px solid #2ECC71;
-    }
-    .warning-box {
-        background-color: #FEF9E7;
-        border-left: 5px solid #F1C40F;
-    }
-    .error-box {
-        background-color: #FDEDEC;
-        border-left: 5px solid #E74C3C;
-    }
-    .stTextArea>div>div>textarea {
-        font-family: 'Courier New', monospace;
-        background-color: #F8F9FA;
-    }
-    .section-divider {
-        height: 3px;
-        background-color: #F0F3F4;
-        margin: 30px 0;
-        border-radius: 2px;
-    }
-    /* Custom CSS for tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #f8f9fa;
-        border-radius: 4px 4px 0 0;
-        padding: 10px 16px;
-        border: 1px solid #dee2e6;
-        border-bottom: none;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #ffffff;
-        border-bottom: 2px solid #3498DB;
-        font-weight: bold;
-    }
-    .tab-content {
-        padding: 16px;
-        border: 1px solid #dee2e6;
-        border-top: none;
-        border-radius: 0 0 4px 4px;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Load and apply custom CSS
+st.markdown(load_css(), unsafe_allow_html=True)
 
 # Header with logo and title
 col1, col2 = st.columns([1, 5])
@@ -249,13 +162,10 @@ with st.expander("Model Code Editor & Preview", expanded=True):
 # 7) PAGE-SPECIFIC CONTENT
 ###############################################################################
 if "📊 Main Analysis" in selected_page:
-    st.markdown('<h2 class="sub-header">Uncertainty Analysis Dashboard</h2>', unsafe_allow_html=True)
+    st.subheader("Uncertainty Analysis Dashboard")
     
     # Create a card for the run button
-    st.markdown('<p style="font-weight: bold;">Run Comprehensive Analysis</p>', unsafe_allow_html=True)
-    
-    # Default number of samples
-    N = st.slider("Number of Monte Carlo Samples", min_value=100, max_value=10000, value=2000, step=100)
+    st.write("Run Comprehensive Analysis")
     
     # Add run button
     run_button = st.button("Run Analysis", key="run_main_analysis")
@@ -296,8 +206,8 @@ if "📊 Main Analysis" in selected_page:
                     
                     # Run Monte Carlo simulation (always needed)
                     with st.spinner("Running Monte Carlo Simulation..."):
-                        st.markdown('<div class="info-box status-box">Running Monte Carlo simulation with ' + str(N) + ' samples...</div>', unsafe_allow_html=True)
-                        results = monte_carlo_simulation(model, problem, N=N, seed=42)
+                        st.markdown('<div class="info-box status-box">Running Monte Carlo simulation with 2000 samples...</div>', unsafe_allow_html=True)
+                        results = monte_carlo_simulation(model, problem, N=2000, seed=42)
                         data = create_monte_carlo_dataframe(results)
                         st.markdown('<div class="success-box status-box">Monte Carlo simulation completed successfully.</div>', unsafe_allow_html=True)
                     
@@ -308,7 +218,7 @@ if "📊 Main Analysis" in selected_page:
                         "problem": problem,
                         "code": current_code,
                         "selected_language_model": selected_language_model,
-                        "N": N
+                        "N": 2000
                     }
                     
                     # Mark analyses as ready to run

@@ -38,7 +38,6 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
     language_model : str, optional
         Language model to use for AI insights, by default 'groq'
     """
-    st.subheader("Exploratory Data Analysis")
     
     # Check if data is available
     if data is None or data.empty:

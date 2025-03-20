@@ -321,22 +321,19 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                 fig1, fig2 = plot_morris_results_plotly(results)
                 
                 # Display plots in styled sections
-                st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                st.markdown('<h3 class="sub-header">Morris Mean Absolute Elementary Effects</h3>', unsafe_allow_html=True)
+                st.subheader("Morris Mean Absolute Elementary Effects")
                 st.plotly_chart(fig1, use_container_width=True)
                 
-                st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                st.markdown('<h3 class="sub-header">Morris Analysis: μ* vs σ</h3>', unsafe_allow_html=True)
-                st.markdown('<div class="info-box status-box">Variables in the top-right corner have high influence and non-linear effects or interactions. Variables near the origin have low influence on the output.</div>', unsafe_allow_html=True)
+                st.subheader("Morris Analysis: μ* vs σ")
+                st.write("Variables in the top-right corner have high influence and non-linear effects or interactions. Variables near the origin have low influence on the output.")
                 st.plotly_chart(fig2, use_container_width=True)
                 
                 # Identify non-influential variables
                 non_influential = identify_non_influential_variables(results, threshold)
                 
                 if non_influential:
-                    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                    st.markdown('<h3 class="sub-header">Non-influential Variables</h3>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="info-box status-box">The following variables have effects below {threshold}% of the maximum effect and can potentially be fixed:</div>', unsafe_allow_html=True)
+                    st.subheader("Non-influential Variables")
+                    st.write(f"The following variables have effects below {threshold}% of the maximum effect and can potentially be fixed:")
                     
                     # Create a DataFrame for display
                     non_infl_df = pd.DataFrame(non_influential, columns=['Variable', 'Index', 'Effect'])
@@ -356,7 +353,7 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                     st.dataframe(enhanced_df, use_container_width=True)
                     
                     # Create a visual representation of the effects
-                    st.markdown('<p style="font-weight: bold; margin-top: 20px;">Visual Comparison of Non-influential Variables</p>', unsafe_allow_html=True)
+                    st.write("Visual Comparison of Non-influential Variables")
                     
                     # Create a horizontal bar chart with Plotly for the non-influential variables
                     fig_non_infl = px.bar(
@@ -391,8 +388,8 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                     st.plotly_chart(fig_non_infl, use_container_width=True)
                     
                     # Add contextual information
-                    with st.expander("Understanding Morris Effects", expanded=False):
-                        st.markdown("""
+                    with st.expander("Understanding Morris Effects"):
+                        st.write("""
                         ### Interpreting Morris Effects
                         
                         **What are Morris Effects?**  
@@ -411,15 +408,13 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                     var_indices = [idx for _, idx, _ in non_influential]
                     recommendations = get_recommended_fixed_values(problem, var_indices)
                     
-                    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                    st.markdown('<h3 class="sub-header">Recommended Fixed Values</h3>', unsafe_allow_html=True)
-                    st.markdown('<div class="info-box status-box">You can fix these variables at the following values in your model:</div>', unsafe_allow_html=True)
+                    st.subheader("Recommended Fixed Values")
+                    st.write("You can fix these variables at the following values in your model:")
                     st.dataframe(recommendations)
                     
                     # Add explanation with LLM if available
                     if language_model:
-                        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                        st.markdown('<h3 class="sub-header">Model Simplification Insights</h3>', unsafe_allow_html=True)
+                        st.subheader("Model Simplification Insights")
                         
                         # Create a placeholder for the insights
                         insights_placeholder = st.empty()
@@ -447,14 +442,14 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                             response = call_groq_api(prompt, model_name=language_model)
                             
                             # Display the response in the placeholder
-                            insights_placeholder.markdown('<div class="card" style="margin-top: 10px;">' + response + '</div>', unsafe_allow_html=True)
+                            insights_placeholder.write(response)
                 else:
-                    st.markdown('<div class="info-box status-box">No non-influential variables were identified. All variables appear to have significant effects on the output.</div>', unsafe_allow_html=True)
+                    st.write("No non-influential variables were identified. All variables appear to have significant effects on the output.")
                     
-                st.markdown('<div class="success-box status-box">Morris analysis completed successfully!</div>', unsafe_allow_html=True)
+                st.write("Morris analysis completed successfully!")
             except Exception as e:
-                st.markdown(f'<div class="error-box status-box">Error in Morris analysis: {str(e)}</div>', unsafe_allow_html=True)
-                st.markdown('<div class="warning-box status-box">Please try with different parameters or check your model implementation.</div>', unsafe_allow_html=True)
+                st.error(f"Error in Morris analysis: {str(e)}")
+                st.warning("Please try with different parameters or check your model implementation.")
 
 def dimensionality_reduction_page(current_code, model, problem, selected_language_model):
     """
@@ -471,21 +466,20 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
     selected_language_model : str or None
         Name of the language model to use for explanations
     """
-    st.markdown('<h2 class="sub-header">Dimensionality Reduction with Morris Method</h2>', unsafe_allow_html=True)
+    st.subheader("Dimensionality Reduction with Morris Method")
     
     # First, check if we have a model from the code editor
     if not current_code and model is None:
-        st.markdown('<div class="info-box status-box">Please define your model in the Model Definition section first.</div>', unsafe_allow_html=True)
+        st.write("Please define your model in the Model Definition section first.")
         
-        st.markdown('<p style="font-weight: bold;">How to use the Morris Analysis:</p>', unsafe_allow_html=True)
-        st.markdown("""
+        st.write("How to use the Morris Analysis:")
+        st.write("""
         1. First, define or load your model in the **Model Definition** section
         2. Click the **Run Analysis** button to perform the Morris analysis
         
         The Morris method helps identify which input variables have minimal impact on your model's output.
         This allows you to create simplified models by fixing non-influential variables at nominal values.
         """)
-        st.markdown('</div>', unsafe_allow_html=True)
     else:
         # If we have code but no model yet, try to execute it
         if current_code and model is None:
@@ -499,10 +493,10 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                     model = local_namespace['model']
                     problem = local_namespace['problem']
             except Exception as e:
-                st.markdown(f'<div class="error-box status-box">Error executing model code: {str(e)}</div>', unsafe_allow_html=True)
+                st.error(f"Error executing model code: {str(e)}")
         
         # Create a card for the configuration
-        st.markdown('<p style="font-weight: bold;">Morris Analysis Configuration</p>', unsafe_allow_html=True)
+        st.write("Morris Analysis Configuration")
         
         # Configuration controls
         col1, col2 = st.columns(2)
@@ -517,7 +511,7 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                              help="Variables with effects below this percentage of the maximum effect are considered non-influential")
         
         run_button = st.button("Run Morris Analysis", key="run_morris_analysis")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.write("")
         
         if run_button and model is not None and problem is not None:
             with st.spinner("Running Morris analysis..."):
@@ -529,22 +523,19 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                     fig1, fig2 = plot_morris_results_plotly(results)
                     
                     # Display plots in styled sections
-                    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                    st.markdown('<h3 class="sub-header">Morris Mean Absolute Elementary Effects</h3>', unsafe_allow_html=True)
+                    st.subheader("Morris Mean Absolute Elementary Effects")
                     st.plotly_chart(fig1, use_container_width=True)
                     
-                    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                    st.markdown('<h3 class="sub-header">Morris Analysis: μ* vs σ</h3>', unsafe_allow_html=True)
-                    st.markdown('<div class="info-box status-box">Variables in the top-right corner have high influence and non-linear effects or interactions. Variables near the origin have low influence on the output.</div>', unsafe_allow_html=True)
+                    st.subheader("Morris Analysis: μ* vs σ")
+                    st.write("Variables in the top-right corner have high influence and non-linear effects or interactions. Variables near the origin have low influence on the output.")
                     st.plotly_chart(fig2, use_container_width=True)
                     
                     # Identify non-influential variables
                     non_influential = identify_non_influential_variables(results, threshold)
                     
                     if non_influential:
-                        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                        st.markdown('<h3 class="sub-header">Non-influential Variables</h3>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="info-box status-box">The following variables have effects below {threshold}% of the maximum effect and can potentially be fixed:</div>', unsafe_allow_html=True)
+                        st.subheader("Non-influential Variables")
+                        st.write(f"The following variables have effects below {threshold}% of the maximum effect and can potentially be fixed:")
                         
                         # Create a DataFrame for display
                         non_infl_df = pd.DataFrame(non_influential, columns=['Variable', 'Index', 'Effect'])
@@ -564,7 +555,7 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                         st.dataframe(enhanced_df, use_container_width=True)
                         
                         # Create a visual representation of the effects
-                        st.markdown('<p style="font-weight: bold; margin-top: 20px;">Visual Comparison of Non-influential Variables</p>', unsafe_allow_html=True)
+                        st.write("Visual Comparison of Non-influential Variables")
                         
                         # Create a horizontal bar chart with Plotly for the non-influential variables
                         fig_non_infl = px.bar(
@@ -599,8 +590,8 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                         st.plotly_chart(fig_non_infl, use_container_width=True)
                         
                         # Add contextual information
-                        with st.expander("Understanding Morris Effects", expanded=False):
-                            st.markdown("""
+                        with st.expander("Understanding Morris Effects"):
+                            st.write("""
                             ### Interpreting Morris Effects
                             
                             **What are Morris Effects?**  
@@ -619,15 +610,13 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                         var_indices = [idx for _, idx, _ in non_influential]
                         recommendations = get_recommended_fixed_values(problem, var_indices)
                         
-                        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                        st.markdown('<h3 class="sub-header">Recommended Fixed Values</h3>', unsafe_allow_html=True)
-                        st.markdown('<div class="info-box status-box">You can fix these variables at the following values in your model:</div>', unsafe_allow_html=True)
+                        st.subheader("Recommended Fixed Values")
+                        st.write("You can fix these variables at the following values in your model:")
                         st.dataframe(recommendations)
                         
                         # Add explanation with LLM if available
                         if selected_language_model:
-                            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                            st.markdown('<h3 class="sub-header">Model Simplification Insights</h3>', unsafe_allow_html=True)
+                            st.subheader("Model Simplification Insights")
                             
                             # Create a placeholder for the insights
                             insights_placeholder = st.empty()
@@ -655,11 +644,11 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                                 response = call_groq_api(prompt, model_name=selected_language_model)
                                 
                                 # Display the response in the placeholder
-                                insights_placeholder.markdown('<div class="card" style="margin-top: 10px;">' + response + '</div>', unsafe_allow_html=True)
+                                insights_placeholder.write(response)
                     else:
-                        st.markdown('<div class="info-box status-box">No non-influential variables were identified. All variables appear to have significant effects on the output.</div>', unsafe_allow_html=True)
+                        st.write("No non-influential variables were identified. All variables appear to have significant effects on the output.")
                         
-                    st.markdown('<div class="success-box status-box">Morris analysis completed successfully!</div>', unsafe_allow_html=True)
+                    st.write("Morris analysis completed successfully!")
                 except Exception as e:
-                    st.markdown(f'<div class="error-box status-box">Error in Morris analysis: {str(e)}</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="warning-box status-box">Please try with different parameters or check your model implementation.</div>', unsafe_allow_html=True)
+                    st.error(f"Error in Morris analysis: {str(e)}")
+                    st.warning("Please try with different parameters or check your model implementation.")
