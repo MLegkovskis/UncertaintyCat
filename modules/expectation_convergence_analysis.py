@@ -97,326 +97,324 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
         })
     inputs_df = pd.DataFrame(input_parameters)
     
-    # RESULTS SECTION
-    st.header("Results")
-    
-    # Convergence Statistics
-    st.subheader("Convergence Statistics")
-    
-    # Create a summary table for quick reference
-    summary_df = pd.DataFrame({
-        'Metric': [
-            'Final Mean Estimate', 
-            'Standard Deviation', 
-            '95% Confidence Interval', 
-            'Required Sample Size',
-            'Relative Standard Error',
-            'Coefficient of Variation'
-        ],
-        'Value': [
-            f"{mean_estimates[-1]:.6f}",
-            f"{final_std_dev:.6f}",
-            f"[{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]",
-            f"{int(initial_sample_size)}",
-            f"{(final_std_dev / mean_estimates[-1]):.4%}",
-            f"{(final_std_dev / np.abs(mean_estimates[-1])):.4%}"
-        ]
-    })
-    st.dataframe(summary_df, use_container_width=True)
-    
-    # Convergence Visualization
-    st.subheader("Convergence Visualization")
-    
-    # Create Plotly figure with subplots for convergence analysis
-    fig_convergence = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=(
-            "Mean Convergence (Linear Scale)", 
-            "Mean Convergence (Log Scale)"
-        ),
-        horizontal_spacing=0.08
-    )
-    
-    # --- Mean Estimate Convergence Plot (Linear Scale) ---
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=mean_estimates,
-            mode='lines',
-            name='Mean Estimate',
-            line=dict(color='#1f77b4', width=2)
-        ),
-        row=1, col=1
-    )
-    
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=upper_bounds,
-            mode='lines',
-            name='95% CI Upper',
-            line=dict(width=0),
-            showlegend=False
-        ),
-        row=1, col=1
-    )
-    
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=lower_bounds,
-            mode='lines',
-            name='95% Confidence Interval',
-            line=dict(width=0),
-            fill='tonexty',
-            fillcolor='rgba(31, 119, 180, 0.2)'
-        ),
-        row=1, col=1
-    )
-    
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=[sample_sizes[-1]],
-            y=[mean_estimates[-1]],
-            mode='markers',
-            name='Final Estimate',
-            marker=dict(color='red', size=10)
-        ),
-        row=1, col=1
-    )
-    
-    # --- Mean Estimate Convergence Plot (Log Scale) ---
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=mean_estimates,
-            mode='lines',
-            name='Mean Estimate',
-            line=dict(color='#1f77b4', width=2),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=upper_bounds,
-            mode='lines',
-            name='95% CI Upper',
-            line=dict(width=0),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=lower_bounds,
-            mode='lines',
-            name='95% CI Lower',
-            line=dict(width=0),
-            fill='tonexty',
-            fillcolor='rgba(31, 119, 180, 0.2)',
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    fig_convergence.add_trace(
-        go.Scatter(
-            x=[sample_sizes[-1]],
-            y=[mean_estimates[-1]],
-            mode='markers',
-            name='Final Estimate',
-            marker=dict(color='red', size=10),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    # Update x-axis to log scale for the second plot
-    fig_convergence.update_xaxes(type='log', row=1, col=2)
-    
-    # Update layout
-    fig_convergence.update_layout(
-        height=500,
-        width=1000,
-        title_text="Monte Carlo Convergence Analysis",
-        title_font=dict(size=16),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        template="plotly_white"
-    )
-    
-    # Update axes labels
-    fig_convergence.update_xaxes(title_text="Sample Size", row=1, col=1)
-    fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=1)
-    
-    fig_convergence.update_xaxes(title_text="Sample Size (Log Scale)", row=1, col=2)
-    fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=2)
-    
-    st.plotly_chart(fig_convergence, use_container_width=True)
-    
-    # Add explanation of the plots
-    st.markdown("""
-    **Interpretation Guide:**
-    - **Linear Scale Plot**: Shows the raw convergence behavior of the mean estimate
-    - **Log Scale Plot**: Highlights early convergence behavior and is useful for identifying the minimum required sample size
-    """)
-    
-    # Output Distribution Analysis
-    st.subheader("Output Distribution Analysis")
-    
-    # Create a distribution statistics table
-    dist_stats_df = pd.DataFrame({
-        'Statistic': [
-            'Mean', 
-            'Standard Deviation', 
-            'Skewness', 
-            'Kurtosis',
-            'Interquartile Range',
-            '95% Prediction Interval'
-        ],
-        'Value': [
-            f"{mean_Y:.6f}",
-            f"{std_Y:.6f}",
-            f"{skewness:.4f}",
-            f"{kurtosis:.4f}",
-            f"{iqr:.4f}",
-            f"{conf_int[0]:.4f}, {conf_int[1]:.4f}"
-        ]
-    })
-    st.dataframe(dist_stats_df, use_container_width=True)
-    
-    # Add quantile information
-    st.markdown("#### Quantile Information")
-    quantiles = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
-    quantile_values = np.quantile(Y_values, quantiles)
-    
-    quantiles_df = pd.DataFrame({
-        'Quantile': [f"{q*100}%" for q in quantiles],
-        'Value': quantile_values
-    })
-    st.dataframe(quantiles_df, use_container_width=True)
-    
-    # Create enhanced distribution visualization
-    st.markdown("#### Distribution Visualization")
-    
-    # Create a figure with subplots for box plot and distribution
-    fig_dist = make_subplots(
-        rows=1, 
-        cols=2,
-        subplot_titles=["Box Plot of Output", "Distribution of Output"],
-        specs=[[{"type": "box"}, {"type": "histogram"}]],
-        horizontal_spacing=0.1
-    )
-    
-    # Add box plot
-    fig_dist.add_trace(
-        go.Box(
-            y=Y_values,
-            name="Output",
-            boxmean=True,
-            marker_color='royalblue',
-            boxpoints='outliers'
-        ),
-        row=1, col=1
-    )
-    
-    # Add histogram with KDE
-    fig_dist.add_trace(
-        go.Histogram(
-            x=Y_values,
-            histnorm='probability density',
-            name="Output",
-            marker=dict(color='royalblue', opacity=0.6)
-        ),
-        row=1, col=2
-    )
-    
-    # Add KDE
-    kde_x = np.linspace(min(Y_values), max(Y_values), 1000)
-    kde = stats.gaussian_kde(Y_values)
-    kde_y = kde(kde_x)
-    
-    fig_dist.add_trace(
-        go.Scatter(
-            x=kde_x,
-            y=kde_y,
-            mode='lines',
-            name='KDE',
-            line=dict(color='firebrick', width=2)
-        ),
-        row=1, col=2
-    )
-    
-    # Add reference lines for mean and median
-    mean_val = np.mean(Y_values)
-    median_val = np.median(Y_values)
-    
-    # Add mean line to histogram
-    fig_dist.add_vline(
-        x=mean_val,
-        line_dash="dash",
-        line_color="green",
-        annotation_text=f"Mean: {mean_val:.2f}",
-        annotation_position="top right",
-        row=1, col=2
-    )
-    
-    # Add median line to histogram
-    fig_dist.add_vline(
-        x=median_val,
-        line_dash="dash",
-        line_color="orange",
-        annotation_text=f"Median: {median_val:.2f}",
-        annotation_position="top left",
-        row=1, col=2
-    )
-    
-    # Update layout
-    fig_dist.update_layout(
-        height=500,
-        showlegend=False,
-        title_text="Output Distribution Analysis",
-        margin=dict(l=60, r=50, t=80, b=50)
-    )
-    
-    st.plotly_chart(fig_dist, use_container_width=True)
-    
-    # Add interpretation of skewness and kurtosis
-    st.markdown("#### Distribution Shape Interpretation")
-    
-    if abs(skewness) < 0.5:
-        skew_interpretation = "The distribution is approximately symmetric."
-    elif skewness < -0.5:
-        skew_interpretation = "The distribution is negatively skewed (left-tailed), with more extreme values on the left."
-    else:
-        skew_interpretation = "The distribution is positively skewed (right-tailed), with more extreme values on the right."
+    # RESULTS SECTION    
+    with st.expander("Results", expanded=True):
+        # Convergence Statistics
+        st.subheader("Convergence Statistics")
         
-    if abs(kurtosis) < 0.5:
-        kurt_interpretation = "The distribution has a similar tail weight to a normal distribution."
-    elif kurtosis < -0.5:
-        kurt_interpretation = "The distribution has lighter tails than a normal distribution (platykurtic)."
-    else:
-        kurt_interpretation = "The distribution has heavier tails than a normal distribution (leptokurtic), indicating more extreme values."
-    
-    st.markdown(f"**Skewness**: {skew_interpretation}")
-    st.markdown(f"**Kurtosis**: {kurt_interpretation}")
+        # Create a summary table for quick reference
+        summary_df = pd.DataFrame({
+            'Metric': [
+                'Final Mean Estimate', 
+                'Standard Deviation', 
+                '95% Confidence Interval', 
+                'Required Sample Size',
+                'Relative Standard Error',
+                'Coefficient of Variation'
+            ],
+            'Value': [
+                f"{mean_estimates[-1]:.6f}",
+                f"{final_std_dev:.6f}",
+                f"[{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]",
+                f"{int(initial_sample_size)}",
+                f"{(final_std_dev / mean_estimates[-1]):.4%}",
+                f"{(final_std_dev / np.abs(mean_estimates[-1])):.4%}"
+            ]
+        })
+        st.dataframe(summary_df, use_container_width=True)
+        
+        # Convergence Visualization
+        st.subheader("Convergence Visualization")
+        
+        # Create Plotly figure with subplots for convergence analysis
+        fig_convergence = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=(
+                "Mean Convergence (Linear Scale)", 
+                "Mean Convergence (Log Scale)"
+            ),
+            horizontal_spacing=0.08
+        )
+        
+        # --- Mean Estimate Convergence Plot (Linear Scale) ---
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=mean_estimates,
+                mode='lines',
+                name='Mean Estimate',
+                line=dict(color='#1f77b4', width=2)
+            ),
+            row=1, col=1
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=upper_bounds,
+                mode='lines',
+                name='95% CI Upper',
+                line=dict(width=0),
+                showlegend=False
+            ),
+            row=1, col=1
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=lower_bounds,
+                mode='lines',
+                name='95% Confidence Interval',
+                line=dict(width=0),
+                fill='tonexty',
+                fillcolor='rgba(31, 119, 180, 0.2)'
+            ),
+            row=1, col=1
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=[sample_sizes[-1]],
+                y=[mean_estimates[-1]],
+                mode='markers',
+                name='Final Estimate',
+                marker=dict(color='red', size=10)
+            ),
+            row=1, col=1
+        )
+        
+        # --- Mean Estimate Convergence Plot (Log Scale) ---
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=mean_estimates,
+                mode='lines',
+                name='Mean Estimate',
+                line=dict(color='#1f77b4', width=2),
+                showlegend=False
+            ),
+            row=1, col=2
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=upper_bounds,
+                mode='lines',
+                name='95% CI Upper',
+                line=dict(width=0),
+                showlegend=False
+            ),
+            row=1, col=2
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=lower_bounds,
+                mode='lines',
+                name='95% CI Lower',
+                line=dict(width=0),
+                fill='tonexty',
+                fillcolor='rgba(31, 119, 180, 0.2)',
+                showlegend=False
+            ),
+            row=1, col=2
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=[sample_sizes[-1]],
+                y=[mean_estimates[-1]],
+                mode='markers',
+                name='Final Estimate',
+                marker=dict(color='red', size=10),
+                showlegend=False
+            ),
+            row=1, col=2
+        )
+        
+        # Update x-axis to log scale for the second plot
+        fig_convergence.update_xaxes(type='log', row=1, col=2)
+        
+        # Update layout
+        fig_convergence.update_layout(
+            height=500,
+            width=1000,
+            title_text="Monte Carlo Convergence Analysis",
+            title_font=dict(size=16),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            template="plotly_white"
+        )
+        
+        # Update axes labels
+        fig_convergence.update_xaxes(title_text="Sample Size", row=1, col=1)
+        fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=1)
+        
+        fig_convergence.update_xaxes(title_text="Sample Size (Log Scale)", row=1, col=2)
+        fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=2)
+        
+        st.plotly_chart(fig_convergence, use_container_width=True)
+        
+        # Add explanation of the plots
+        st.markdown("""
+        **Interpretation Guide:**
+        - **Linear Scale Plot**: Shows the raw convergence behavior of the mean estimate
+        - **Log Scale Plot**: Highlights early convergence behavior and is useful for identifying the minimum required sample size
+        """)
+        
+        # Output Distribution Analysis
+        st.subheader("Output Distribution Analysis")
+        
+        # Create a distribution statistics table
+        dist_stats_df = pd.DataFrame({
+            'Statistic': [
+                'Mean', 
+                'Standard Deviation', 
+                'Skewness', 
+                'Kurtosis',
+                'Interquartile Range',
+                '95% Prediction Interval'
+            ],
+            'Value': [
+                f"{mean_Y:.6f}",
+                f"{std_Y:.6f}",
+                f"{skewness:.4f}",
+                f"{kurtosis:.4f}",
+                f"{iqr:.4f}",
+                f"{conf_int[0]:.4f}, {conf_int[1]:.4f}"
+            ]
+        })
+        st.dataframe(dist_stats_df, use_container_width=True)
+        
+        # Add quantile information
+        st.markdown("#### Quantile Information")
+        quantiles = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+        quantile_values = np.quantile(Y_values, quantiles)
+        
+        quantiles_df = pd.DataFrame({
+            'Quantile': [f"{q*100}%" for q in quantiles],
+            'Value': quantile_values
+        })
+        st.dataframe(quantiles_df, use_container_width=True)
+        
+        # Create enhanced distribution visualization
+        st.markdown("#### Distribution Visualization")
+        
+        # Create a figure with subplots for box plot and distribution
+        fig_dist = make_subplots(
+            rows=1, 
+            cols=2,
+            subplot_titles=["Box Plot of Output", "Distribution of Output"],
+            specs=[[{"type": "box"}, {"type": "histogram"}]],
+            horizontal_spacing=0.1
+        )
+        
+        # Add box plot
+        fig_dist.add_trace(
+            go.Box(
+                y=Y_values,
+                name="Output",
+                boxmean=True,
+                marker_color='royalblue',
+                boxpoints='outliers'
+            ),
+            row=1, col=1
+        )
+        
+        # Add histogram with KDE
+        fig_dist.add_trace(
+            go.Histogram(
+                x=Y_values,
+                histnorm='probability density',
+                name="Output",
+                marker=dict(color='royalblue', opacity=0.6)
+            ),
+            row=1, col=2
+        )
+        
+        # Add KDE
+        kde_x = np.linspace(min(Y_values), max(Y_values), 1000)
+        kde = stats.gaussian_kde(Y_values)
+        kde_y = kde(kde_x)
+        
+        fig_dist.add_trace(
+            go.Scatter(
+                x=kde_x,
+                y=kde_y,
+                mode='lines',
+                name='KDE',
+                line=dict(color='firebrick', width=2)
+            ),
+            row=1, col=2
+        )
+        
+        # Add reference lines for mean and median
+        mean_val = np.mean(Y_values)
+        median_val = np.median(Y_values)
+        
+        # Add mean line to histogram
+        fig_dist.add_vline(
+            x=mean_val,
+            line_dash="dash",
+            line_color="green",
+            annotation_text=f"Mean: {mean_val:.2f}",
+            annotation_position="top right",
+            row=1, col=2
+        )
+        
+        # Add median line to histogram
+        fig_dist.add_vline(
+            x=median_val,
+            line_dash="dash",
+            line_color="orange",
+            annotation_text=f"Median: {median_val:.2f}",
+            annotation_position="top left",
+            row=1, col=2
+        )
+        
+        # Update layout
+        fig_dist.update_layout(
+            height=500,
+            showlegend=False,
+            title_text="Output Distribution Analysis",
+            margin=dict(l=60, r=50, t=80, b=50)
+        )
+        
+        st.plotly_chart(fig_dist, use_container_width=True)
+        
+        # Add interpretation of skewness and kurtosis
+        st.markdown("#### Distribution Shape Interpretation")
+        
+        if abs(skewness) < 0.5:
+            skew_interpretation = "The distribution is approximately symmetric."
+        elif skewness < -0.5:
+            skew_interpretation = "The distribution is negatively skewed (left-tailed), with more extreme values on the left."
+        else:
+            skew_interpretation = "The distribution is positively skewed (right-tailed), with more extreme values on the right."
+            
+        if abs(kurtosis) < 0.5:
+            kurt_interpretation = "The distribution has a similar tail weight to a normal distribution."
+        elif kurtosis < -0.5:
+            kurt_interpretation = "The distribution has lighter tails than a normal distribution (platykurtic)."
+        else:
+            kurt_interpretation = "The distribution has heavier tails than a normal distribution (leptokurtic), indicating more extreme values."
+        
+        st.markdown(f"**Skewness**: {skew_interpretation}")
+        st.markdown(f"**Kurtosis**: {kurt_interpretation}")
     
     # AI INSIGHTS SECTION
-    if language_model:
-        st.header("AI Insights")
-        
-        # Prepare convergence summary for the prompt
-        convergence_summary = f"""
+    if language_model:        
+        with st.expander("AI Insights", expanded=True):
+            # Prepare convergence summary for the prompt
+            convergence_summary = f"""
 ### Convergence Analysis Results
 
 #### Basic Statistics
@@ -435,9 +433,9 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
 - Relative Standard Error: {(final_std_dev / mean_estimates[-1]):.4%}
 - Coefficient of Variation: {(final_std_dev / np.abs(mean_estimates[-1])):.4%}
 """
-        
-        # Prepare the prompt for AI insights
-        prompt = f"""
+            
+            # Prepare the prompt for AI insights
+            prompt = f"""
 {RETURN_INSTRUCTION}
 
 Given the following user-defined model defined in Python code:
@@ -483,10 +481,10 @@ Please provide a detailed enterprise-grade analysis that includes:
 
 Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations where possible.
 """
-        
-        with st.spinner("Generating expert analysis..."):
-            response_markdown = call_groq_api(prompt, model_name=language_model)
-            st.markdown(response_markdown)
+            
+            with st.spinner("Generating expert analysis..."):
+                response_markdown = call_groq_api(prompt, model_name=language_model)
+                st.markdown(response_markdown)
 
 def expectation_convergence_analysis_joint(model, problem, model_code_str, N_samples=8000, language_model='groq'):
     """Analyze convergence of Monte Carlo estimation with joint analysis."""
