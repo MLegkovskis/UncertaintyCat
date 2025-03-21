@@ -5,7 +5,9 @@ import otmorris
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import re
 from typing import Dict, List, Tuple, Any, Optional
+from utils.core_utils import check_code_safety
 
 def run_morris_analysis(model, problem, n_trajectories=10, n_levels=5):
     """
@@ -483,17 +485,23 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
     else:
         # If we have code but no model yet, try to execute it
         if current_code and model is None:
-            try:
-                # Execute the model code in a fresh namespace
-                local_namespace = {}
-                exec(current_code, local_namespace)
-                
-                # Check that both model and problem are defined
-                if 'model' in local_namespace and 'problem' in local_namespace:
-                    model = local_namespace['model']
-                    problem = local_namespace['problem']
-            except Exception as e:
-                st.error(f"Error executing model code: {str(e)}")
+            # First check if the code is safe to execute
+            is_safe, safety_message = check_code_safety(current_code)
+            
+            if not is_safe:
+                st.error(f"Security Error: {safety_message}")
+            else:
+                try:
+                    # Execute the model code in a fresh namespace
+                    local_namespace = {}
+                    exec(current_code, local_namespace)
+                    
+                    # Check that both model and problem are defined
+                    if 'model' in local_namespace and 'problem' in local_namespace:
+                        model = local_namespace['model']
+                        problem = local_namespace['problem']
+                except Exception as e:
+                    st.error(f"Error executing model code: {str(e)}")
         
         # Create a card for the configuration
         st.write("Morris Analysis Configuration")

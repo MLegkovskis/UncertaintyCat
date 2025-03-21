@@ -69,9 +69,11 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
     lower_bounds = mean_estimates - z_value * standard_errors
     upper_bounds = mean_estimates + z_value * standard_errors
     
+    # Use the required sample size from convergence analysis for distribution analysis
+    convergence_sample_size = int(initial_sample_size)
+    
     # Generate samples for distribution analysis
-    sample_size = 5000
-    input_sample = distribution.getSample(sample_size)
+    input_sample = distribution.getSample(convergence_sample_size)
     output_sample = ot_model(input_sample)
     Y_values = np.array(output_sample).flatten()
     
@@ -83,6 +85,20 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
     kurtosis = stats.kurtosis(Y_values)
     q1, q3 = np.percentile(Y_values, [25, 75])
     iqr = q3 - q1
+    
+    # Calculate standard deviation convergence
+    std_dev_estimates = []
+    
+    # Compute running standard deviation for each sample size
+    for i, size in enumerate(sample_sizes):
+        if i == 0:
+            # For the first point, use the standard deviation from the first sample
+            std_dev_estimates.append(np.std(Y_values[:int(size)]))
+        else:
+            # For subsequent points, compute standard deviation based on accumulated samples
+            std_dev_estimates.append(np.std(Y_values[:int(size)]))
+    
+    std_dev_estimates = np.array(std_dev_estimates)
     
     # Create inputs DataFrame for the prompt
     dimension = distribution.getDimension()
@@ -116,23 +132,27 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
                 f"{mean_estimates[-1]:.6f}",
                 f"{final_std_dev:.6f}",
                 f"[{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]",
-                f"{int(initial_sample_size)}",
+                f"{convergence_sample_size}",
                 f"{(final_std_dev / mean_estimates[-1]):.4%}",
                 f"{(final_std_dev / np.abs(mean_estimates[-1])):.4%}"
             ]
         })
         st.dataframe(summary_df, use_container_width=True)
         
-        # Convergence Visualization
+        # Combined Convergence Visualization
         st.subheader("Convergence Visualization")
         
-        # Create Plotly figure with subplots for convergence analysis
+        # Create Plotly figure with 2x2 subplots for combined convergence analysis
         fig_convergence = make_subplots(
-            rows=1, cols=2,
+            rows=2, cols=2,
             subplot_titles=(
                 "Mean Convergence (Linear Scale)", 
-                "Mean Convergence (Log Scale)"
+                "Mean Convergence (Log Scale)",
+                "Standard Deviation Convergence (Linear Scale)",
+                "Standard Deviation Convergence (Log Scale)"
             ),
+            shared_xaxes=True,
+            vertical_spacing=0.15,
             horizontal_spacing=0.08
         )
         
@@ -178,7 +198,7 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
                 x=[sample_sizes[-1]],
                 y=[mean_estimates[-1]],
                 mode='markers',
-                name='Final Estimate',
+                name='Final Mean',
                 marker=dict(color='red', size=10)
             ),
             row=1, col=1
@@ -228,19 +248,68 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
                 x=[sample_sizes[-1]],
                 y=[mean_estimates[-1]],
                 mode='markers',
-                name='Final Estimate',
+                name='Final Mean',
                 marker=dict(color='red', size=10),
                 showlegend=False
             ),
             row=1, col=2
         )
         
-        # Update x-axis to log scale for the second plot
+        # --- Standard Deviation Convergence Plot (Linear Scale) ---
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=std_dev_estimates,
+                mode='lines',
+                name='Std Dev Estimate',
+                line=dict(color='#ff7f0e', width=2)
+            ),
+            row=2, col=1
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=[sample_sizes[-1]],
+                y=[std_dev_estimates[-1]],
+                mode='markers',
+                name='Final Std Dev',
+                marker=dict(color='red', size=10)
+            ),
+            row=2, col=1
+        )
+        
+        # --- Standard Deviation Convergence Plot (Log Scale) ---
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=sample_sizes,
+                y=std_dev_estimates,
+                mode='lines',
+                name='Std Dev Estimate',
+                line=dict(color='#ff7f0e', width=2),
+                showlegend=False
+            ),
+            row=2, col=2
+        )
+        
+        fig_convergence.add_trace(
+            go.Scatter(
+                x=[sample_sizes[-1]],
+                y=[std_dev_estimates[-1]],
+                mode='markers',
+                name='Final Std Dev',
+                marker=dict(color='red', size=10),
+                showlegend=False
+            ),
+            row=2, col=2
+        )
+        
+        # Update x-axis to log scale for the second column
         fig_convergence.update_xaxes(type='log', row=1, col=2)
+        fig_convergence.update_xaxes(type='log', row=2, col=2)
         
         # Update layout
         fig_convergence.update_layout(
-            height=500,
+            height=800,  # Increased height for 2x2 layout
             width=1000,
             title_text="Monte Carlo Convergence Analysis",
             title_font=dict(size=16),
@@ -255,23 +324,34 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
         )
         
         # Update axes labels
-        fig_convergence.update_xaxes(title_text="Sample Size", row=1, col=1)
+        fig_convergence.update_xaxes(title_text="Sample Size", row=2, col=1)
         fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=1)
+        fig_convergence.update_yaxes(title_text="Std Dev Estimate", row=2, col=1)
         
-        fig_convergence.update_xaxes(title_text="Sample Size (Log Scale)", row=1, col=2)
+        fig_convergence.update_xaxes(title_text="Sample Size (Log Scale)", row=2, col=2)
         fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=2)
+        fig_convergence.update_yaxes(title_text="Std Dev Estimate", row=2, col=2)
         
         st.plotly_chart(fig_convergence, use_container_width=True)
         
         # Add explanation of the plots
         st.markdown("""
         **Interpretation Guide:**
-        - **Linear Scale Plot**: Shows the raw convergence behavior of the mean estimate
-        - **Log Scale Plot**: Highlights early convergence behavior and is useful for identifying the minimum required sample size
+        - **Linear Scale Plots**: Show the raw convergence behavior of the estimates
+        - **Log Scale Plots**: Highlight early convergence behavior and are useful for identifying the minimum required sample size
+        - The **95% confidence interval** for the mean represents the range where we are 95% confident the true mean lies
+        - Stable standard deviation estimates indicate reliable uncertainty quantification
         """)
         
         # Output Distribution Analysis
         st.subheader("Output Distribution Analysis")
+        
+        # Add note about convergence-based analysis
+        st.markdown(f"""
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+        <strong>Note:</strong> This distribution analysis is performed using {convergence_sample_size} samples, which corresponds to the converged sample size from the analysis above. This ensures that the distribution characteristics are representative of the true underlying distribution.
+        </div>
+        """, unsafe_allow_html=True)
         
         # Create a distribution statistics table
         dist_stats_df = pd.DataFrame({
@@ -421,7 +501,7 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
 - Final Mean Estimate: {mean_estimates[-1]:.6f}
 - Standard Deviation: {final_std_dev:.6f}
 - 95% Confidence Interval: [{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]
-- Required Sample Size: {int(initial_sample_size)}
+- Required Sample Size: {convergence_sample_size}
 
 #### Distribution Characteristics
 - Skewness: {skewness:.4f}
@@ -457,12 +537,13 @@ Please provide a detailed enterprise-grade analysis that includes:
 1. Statistical Significance
    - Evaluate the convergence behavior and its statistical significance
    - Assess the reliability of the Monte Carlo estimates
-   - Discuss the implications of the confidence intervals
+   - Discuss the implications of the 95% confidence interval for the mean ({lower_bounds[-1]:.6f} to {upper_bounds[-1]:.6f}), emphasizing that we are 95% confident that the true mean output lies within this range
 
 2. Distribution Analysis
    - Interpret the shape characteristics (skewness, kurtosis)
    - Analyze the spread and central tendency
    - Evaluate the normality assumption and its implications
+   - Note that this distribution analysis is performed at the sample size corresponding to convergence ({convergence_sample_size} samples)
 
 3. Risk Assessment
    - Identify key risk factors based on the distribution tails

@@ -4,6 +4,7 @@ import numpy as np
 import openturns as ot
 import pandas as pd
 import plotly.express as px
+import re
 
 # Import modules
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
@@ -21,7 +22,8 @@ from modules.fast_ancova_analysis import fast_analysis, ancova_analysis
 # Import utils
 from utils.core_utils import (
     get_model_options,
-    call_groq_api
+    call_groq_api,
+    check_code_safety
 )
 from utils.model_utils import (
     validate_problem_structure,
@@ -190,47 +192,53 @@ if "📊 Main Analysis" in selected_page:
         if not current_code:
             st.markdown('<div class="error-box status-box">Please provide a model first.</div>', unsafe_allow_html=True)
         else:
-            try:
-                # Execute the model code in a fresh namespace
-                local_namespace = {}
-                exec(current_code, local_namespace)
-                
-                if 'model' not in local_namespace or 'problem' not in local_namespace:
-                    st.markdown('<div class="error-box status-box">The model code must define both \'model\' and \'problem\'.</div>', unsafe_allow_html=True)
-                else:
-                    model = local_namespace['model']
-                    problem = local_namespace['problem']
+            # First check if the code is safe to execute
+            is_safe, safety_message = check_code_safety(current_code)
+            
+            if not is_safe:
+                st.markdown(f'<div class="error-box status-box">Security Error: {safety_message}</div>', unsafe_allow_html=True)
+            else:
+                try:
+                    # Execute the model code in a fresh namespace
+                    local_namespace = {}
+                    exec(current_code, local_namespace)
+                    
+                    if 'model' not in local_namespace or 'problem' not in local_namespace:
+                        st.markdown('<div class="error-box status-box">The model code must define both \'model\' and \'problem\'.</div>', unsafe_allow_html=True)
+                    else:
+                        model = local_namespace['model']
+                        problem = local_namespace['problem']
 
-                    # Validate the problem structure
-                    validate_problem_structure(problem)
-                    
-                    # Run Monte Carlo simulation (always needed)
-                    with st.spinner("Running Monte Carlo Simulation..."):
-                        st.markdown('<div class="info-box status-box">Running Monte Carlo simulation with 2000 samples...</div>', unsafe_allow_html=True)
-                        results = monte_carlo_simulation(model, problem, N=2000, seed=42)
-                        data = create_monte_carlo_dataframe(results)
-                        st.markdown('<div class="success-box status-box">Monte Carlo simulation completed successfully.</div>', unsafe_allow_html=True)
-                    
-                    # Store results for use in analyses
-                    st.session_state.simulation_data = {
-                        "data": data,
-                        "model": model,
-                        "problem": problem,
-                        "code": current_code,
-                        "selected_language_model": selected_language_model,
-                        "N": 2000
-                    }
-                    
-                    # Mark analyses as ready to run
-                    st.session_state.analyses_ran = True
-                    # Set active tab to the first one
-                    st.session_state.active_tab = "Model Understanding"
-                    
-                    # Force rerun to show tabs
-                    st.rerun()
-                    
-            except Exception as e:
-                st.markdown(f'<div class="error-box status-box">Error during simulation: {str(e)}</div>', unsafe_allow_html=True)
+                        # Validate the problem structure
+                        validate_problem_structure(problem)
+                        
+                        # Run Monte Carlo simulation (always needed)
+                        with st.spinner("Running Monte Carlo Simulation..."):
+                            st.markdown('<div class="info-box status-box">Running Monte Carlo simulation with 2000 samples...</div>', unsafe_allow_html=True)
+                            results = monte_carlo_simulation(model, problem, N=2000, seed=42)
+                            data = create_monte_carlo_dataframe(results)
+                            st.markdown('<div class="success-box status-box">Monte Carlo simulation completed successfully.</div>', unsafe_allow_html=True)
+                        
+                        # Store results for use in analyses
+                        st.session_state.simulation_data = {
+                            "data": data,
+                            "model": model,
+                            "problem": problem,
+                            "code": current_code,
+                            "selected_language_model": selected_language_model,
+                            "N": 2000
+                        }
+                        
+                        # Mark analyses as ready to run
+                        st.session_state.analyses_ran = True
+                        # Set active tab to the first one
+                        st.session_state.active_tab = "Model Understanding"
+                        
+                        # Force rerun to show tabs
+                        st.rerun()
+                        
+                except Exception as e:
+                    st.markdown(f'<div class="error-box status-box">Error during simulation: {str(e)}</div>', unsafe_allow_html=True)
     
     # Display tabs only if analyses have been run
     if st.session_state.analyses_ran and st.session_state.simulation_data is not None:
@@ -238,7 +246,7 @@ if "📊 Main Analysis" in selected_page:
         tabs = st.tabs([
             "Model Understanding", 
             "Exploratory Data Analysis", 
-            "Expectation Convergence", 
+            "Convergence and Output Analysis", 
             "Sobol Sensitivity", 
             "FAST Sensitivity", 
             "ANCOVA Sensitivity", 
@@ -316,10 +324,10 @@ if "📊 Main Analysis" in selected_page:
                         )
                     st.session_state.eda_ran = True
         
-        # Expectation Convergence Analysis Tab
+        # Convergence and Output Analysis Tab
         with tabs[2]:
-            if st.session_state.active_tab == "Expectation Convergence":
-                with st.spinner("Running Expectation Convergence Analysis..."):
+            if st.session_state.active_tab == "Convergence and Output Analysis":
+                with st.spinner("Running Convergence and Output Analysis..."):
                     expectation_convergence_analysis_joint(
                         model, problem, current_code,
                         language_model=selected_language_model
@@ -328,15 +336,15 @@ if "📊 Main Analysis" in selected_page:
                 st.session_state.expectation_convergence_ran = True
             elif st.session_state.expectation_convergence_ran:
                 # Re-display the previously run analysis
-                with st.spinner("Loading Expectation Convergence Analysis Results..."):
+                with st.spinner("Loading Convergence and Output Analysis Results..."):
                     expectation_convergence_analysis_joint(
                         model, problem, current_code,
                         language_model=selected_language_model
                     )
             else:
                 # Add a button to run this analysis
-                if st.button("Run Expectation Convergence Analysis", key="run_expectation"):
-                    with st.spinner("Running Expectation Convergence Analysis..."):
+                if st.button("Run Convergence and Output Analysis", key="run_expectation"):
+                    with st.spinner("Running Convergence and Output Analysis..."):
                         expectation_convergence_analysis_joint(
                             model, problem, current_code,
                             language_model=selected_language_model
