@@ -19,3 +19,4 @@ pytest
 tabulate
 IPython
 squarify
+otmorris
