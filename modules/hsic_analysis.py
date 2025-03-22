@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import traceback
-import scipy.stats as stats
 from utils.core_utils import call_groq_api
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
@@ -66,7 +65,7 @@ def hsic_analysis(model, problem, model_code_str=None, language_model='groq'):
             
             # Compute HSIC indices with progress indicator
             with st.spinner("Computing HSIC indices..."):
-                hsic_results = compute_hsic_indices(model, problem, N=1000, seed=42)
+                hsic_results = compute_hsic_indices(model, problem, N=200, seed=42)
             
             # Create DataFrame from the results
             hsic_df = create_hsic_dataframe(hsic_results)
@@ -205,22 +204,17 @@ def hsic_analysis(model, problem, model_code_str=None, language_model='groq'):
                 
                 # Display the response
                 st.markdown(response_markdown)
-        
-        # Return results dictionary
-        return {
-            "hsic_results": hsic_results,
-            "hsic_df": hsic_df
-        }
+                
+        return hsic_results
     
     except Exception as e:
         st.error(f"Error in HSIC analysis: {str(e)}")
-        import traceback
-        st.error(f"Traceback: {traceback.format_exc()}")
-        raise
+        st.code(traceback.format_exc())
+        return None
 
-def compute_hsic_indices(model, problem, N=1000, seed=42):
+def compute_hsic_indices(model, problem, N=200, seed=42):
     """
-    Compute HSIC-based sensitivity indices.
+    Compute HSIC-based sensitivity indices using OpenTURNS built-in tools.
     
     Parameters
     ----------
@@ -229,7 +223,7 @@ def compute_hsic_indices(model, problem, N=1000, seed=42):
     problem : ot.Distribution
         OpenTURNS distribution representing the input uncertainty
     N : int, optional
-        Number of samples, by default 1000
+        Number of samples, by default 200
     seed : int, optional
         Random seed for reproducibility, by default 42
         
@@ -250,91 +244,61 @@ def compute_hsic_indices(model, problem, N=1000, seed=42):
         input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
 
     # Set random seed
-    np.random.seed(seed)
     ot.RandomGenerator.SetSeed(seed)
 
     # Generate samples
-    sample_X = problem.getSample(N)
-    X = np.array(sample_X)
+    X = problem.getSample(N)
+    
+    # Convert model to OpenTURNS function if it's not already
+    if not isinstance(model, ot.Function):
+        ot_model = ot.PythonFunction(dimension, 1, model)
+    else:
+        ot_model = model
     
     # Evaluate model
-    Y_list = []
-    for i in range(N):
-        Y_list.append(model(sample_X[i]))
-    Y = np.array(Y_list)
+    Y = ot_model(X)
     
-    # Make sure Y is 1D
-    if len(Y.shape) > 1 and Y.shape[1] > 1:
-        Y = Y[:, 0]  # Take first output for multivariate outputs
-
-    # Compute kernel matrices
-    K = np.zeros((N, N))
-    L = np.zeros((N, N))
-    H = np.eye(N) - np.ones((N, N)) / N
-
-    # Compute output kernel matrix with median heuristic for bandwidth
-    median_dist_y = np.median(np.abs(Y[:, np.newaxis] - Y[np.newaxis, :]))
-    sigma_y = median_dist_y if median_dist_y > 0 else 1.0
+    # Create covariance model collection for HSIC
+    covarianceModelCollection = []
     
-    for i in range(N):
-        for j in range(N):
-            L[i, j] = np.exp(-0.5 * ((Y[i] - Y[j]) / sigma_y)**2)
-
-    # Center kernel matrix
-    L = H @ L @ H
-
-    # Compute HSIC indices and p-values
-    hsic_indices = np.zeros(dimension)
-    p_values_asymptotic = np.zeros(dimension)
-    p_values_permutation = np.zeros(dimension)
+    # Add covariance models for each input variable
+    for i in range(dimension):
+        Xi = X.getMarginal(i)
+        inputCovariance = ot.SquaredExponential(1)
+        inputCovariance.setScale(Xi.computeStandardDeviation())
+        covarianceModelCollection.append(inputCovariance)
     
-    for d in range(dimension):
-        # Compute input kernel matrix for variable d with median heuristic
-        X_d = X[:, d]
-        median_dist_x = np.median(np.abs(X_d[:, np.newaxis] - X_d[np.newaxis, :]))
-        sigma_x = median_dist_x if median_dist_x > 0 else 1.0
-        
-        for i in range(N):
-            for j in range(N):
-                K[i, j] = np.exp(-0.5 * ((X_d[i] - X_d[j]) / sigma_x)**2)
-        
-        # Center kernel matrix
-        K = H @ K @ H
-        
-        # Compute HSIC
-        hsic = np.trace(K @ L) / (N - 1)**2
-        hsic_indices[d] = hsic
-        
-        # Compute asymptotic p-value
-        # Based on the asymptotic distribution of HSIC under the null hypothesis
-        mean_H0 = 1.0 / N * (1 + np.trace(K @ K) * np.trace(L @ L) / (N - 1)**2)
-        var_H0 = 2.0 / (N * (N - 1)) * np.trace(K @ K @ L @ L)
-        z_score = (hsic - mean_H0) / np.sqrt(var_H0)
-        p_values_asymptotic[d] = 1 - stats.norm.cdf(z_score)
-        
-        # Compute permutation p-value
-        # Perform a limited number of permutations for computational efficiency
-        n_perm = 100
-        hsic_perm = np.zeros(n_perm)
-        
-        for p in range(n_perm):
-            perm = np.random.permutation(N)
-            K_perm = K[perm, :][:, perm]
-            hsic_perm[p] = np.trace(K_perm @ L) / (N - 1)**2
-        
-        p_values_permutation[d] = np.mean(hsic_perm >= hsic)
-
-    # Normalize indices
-    total_hsic = np.sum(hsic_indices)
-    normalized_indices = hsic_indices / total_hsic if total_hsic > 0 else np.zeros_like(hsic_indices)
-
+    # Add covariance model for output
+    outputCovariance = ot.SquaredExponential(1)
+    outputCovariance.setScale(Y.computeStandardDeviation())
+    covarianceModelCollection.append(outputCovariance)
+    
+    # Choose an estimator (HSICVStat is biased but asymptotically unbiased)
+    estimatorType = ot.HSICVStat()
+    
+    # Build the HSIC estimator
+    hsicEstimator = ot.HSICEstimatorGlobalSensitivity(
+        covarianceModelCollection, X, Y, estimatorType
+    )
+    
+    # Get the HSIC indices
+    hsic_indices = np.array(hsicEstimator.getHSICIndices())
+    
+    # Get the R2-HSIC indices (normalized)
+    normalized_indices = np.array(hsicEstimator.getR2HSICIndices())
+    
+    # Get p-values
+    p_values_asymptotic = np.array(hsicEstimator.getPValuesAsymptotic())
+    p_values_permutation = np.array(hsicEstimator.getPValuesPermutation())
+    
     # Create results dictionary
     results = {
         'hsic_indices': hsic_indices,
         'normalized_indices': normalized_indices,
         'p_values_asymptotic': p_values_asymptotic,
         'p_values_permutation': p_values_permutation,
-        'input_names': input_names
+        'input_names': input_names,
+        'hsic_estimator': hsicEstimator  # Store the estimator for potential future use
     }
 
     return results
@@ -399,67 +363,48 @@ def create_hsic_plots(results):
     fig = make_subplots(
         rows=2, 
         cols=2,
-        subplot_titles=[
+        subplot_titles=(
             "Normalized HSIC Indices", 
             "Raw HSIC Indices", 
-            "p-values (Asymptotic vs Permutation)",
-            "Significance Threshold"
-        ],
-        specs=[
-            [{"type": "bar"}, {"type": "bar"}],
-            [{"type": "bar"}, {"type": "scatter"}]
-        ],
-        vertical_spacing=0.3,  
+            "Asymptotic p-values", 
+            "Permutation p-values"
+        ),
+        vertical_spacing=0.15,
         horizontal_spacing=0.1
     )
     
-    # Add normalized HSIC indices bar chart
+    # Add normalized HSIC indices
     fig.add_trace(
         go.Bar(
             x=input_names,
             y=normalized_indices,
             name="Normalized HSIC",
             marker_color='rgb(55, 83, 109)',
-            text=[f"{v:.4f}" for v in normalized_indices],
-            textposition='auto'
+            hovertemplate="<b>%{x}</b><br>Normalized HSIC: %{y:.4f}<extra></extra>"
         ),
         row=1, col=1
     )
     
-    # Add raw HSIC indices bar chart
+    # Add raw HSIC indices
     fig.add_trace(
         go.Bar(
             x=input_names,
             y=hsic_indices,
             name="Raw HSIC",
             marker_color='rgb(26, 118, 255)',
-            text=[f"{v:.2e}" for v in hsic_indices],
-            textposition='auto'
+            hovertemplate="<b>%{x}</b><br>HSIC: %{y:.6e}<extra></extra>"
         ),
         row=1, col=2
     )
     
-    # Add p-values bar chart
+    # Add asymptotic p-values
     fig.add_trace(
         go.Bar(
             x=input_names,
             y=p_values_asymptotic,
-            name="p-value (Asymptotic)",
+            name="Asymptotic p-value",
             marker_color='rgb(219, 64, 82)',
-            text=[f"{v:.2e}" for v in p_values_asymptotic],
-            textposition='auto'
-        ),
-        row=2, col=1
-    )
-    
-    fig.add_trace(
-        go.Bar(
-            x=input_names,
-            y=p_values_permutation,
-            name="p-value (Permutation)",
-            marker_color='rgb(154, 18, 179)',
-            text=[f"{v:.2e}" for v in p_values_permutation],
-            textposition='auto'
+            hovertemplate="<b>%{x}</b><br>p-value: %{y:.4e}<extra></extra>"
         ),
         row=2, col=1
     )
@@ -470,63 +415,34 @@ def create_hsic_plots(results):
             x=input_names,
             y=[0.05] * len(input_names),
             mode='lines',
-            name='Significance (p=0.05)',
-            line=dict(color='red', width=2, dash='dash')
+            line=dict(color='black', width=2, dash='dash'),
+            name="Significance (α=0.05)",
+            hoverinfo='name'
         ),
         row=2, col=1
     )
     
-    # Add significance visualization
-    significant_asymp = p_values_asymptotic < 0.05
-    significant_perm = p_values_permutation < 0.05
-    
-    categories = []
-    for a, p in zip(significant_asymp, significant_perm):
-        if a and p:
-            categories.append("Both")
-        elif a:
-            categories.append("Asymptotic only")
-        elif p:
-            categories.append("Permutation only")
-        else:
-            categories.append("Not significant")
-    
-    # Create a categorical color map
-    color_map = {
-        "Both": "green",
-        "Asymptotic only": "orange",
-        "Permutation only": "blue",
-        "Not significant": "red"
-    }
-    
-    colors = [color_map[cat] for cat in categories]
-    
-    # Add significance scatter plot
+    # Add permutation p-values
     fig.add_trace(
-        go.Scatter(
+        go.Bar(
             x=input_names,
-            y=normalized_indices,
-            mode='markers',
-            marker=dict(
-                size=15,
-                color=colors,
-                symbol='circle',
-                line=dict(width=2, color='DarkSlateGrey')
-            ),
-            name='Significance',
-            text=[f"{input_names[i]}: {categories[i]}" for i in range(len(input_names))],
-            hoverinfo='text'
+            y=p_values_permutation,
+            name="Permutation p-value",
+            marker_color='rgb(214, 39, 40)',
+            hovertemplate="<b>%{x}</b><br>p-value: %{y:.4e}<extra></extra>"
         ),
         row=2, col=2
     )
     
-    # Add a horizontal line at y=0 for the significance plot
+    # Add significance threshold line
     fig.add_trace(
         go.Scatter(
-            x=[input_names[0], input_names[-1]],
-            y=[0, 0],
+            x=input_names,
+            y=[0.05] * len(input_names),
             mode='lines',
-            line=dict(color='black', width=1),
+            line=dict(color='black', width=2, dash='dash'),
+            name="Significance (α=0.05)",
+            hoverinfo='name',
             showlegend=False
         ),
         row=2, col=2
@@ -534,29 +450,29 @@ def create_hsic_plots(results):
     
     # Update layout
     fig.update_layout(
-        height=800,
+        height=700,
+        width=1000,
         title_text="HSIC Sensitivity Analysis",
-        template='plotly_white',
+        title_font_size=20,
         legend=dict(
             orientation="h",
             yanchor="bottom",
             y=1.02,
             xanchor="right",
             x=1
-        )
+        ),
+        template="plotly_white"
     )
     
-    # Update axes
-    fig.update_xaxes(title_text="Input Variables", row=1, col=1, tickangle=45)
-    fig.update_yaxes(title_text="Normalized HSIC Index", row=1, col=1)
+    # Update y-axes
+    fig.update_yaxes(title_text="Normalized HSIC", row=1, col=1)
+    fig.update_yaxes(title_text="Raw HSIC", row=1, col=2)
+    fig.update_yaxes(title_text="p-value", type="log", row=2, col=1)
+    fig.update_yaxes(title_text="p-value", type="log", row=2, col=2)
     
-    fig.update_xaxes(title_text="Input Variables", row=1, col=2, tickangle=45)
-    fig.update_yaxes(title_text="Raw HSIC Index", row=1, col=2)
-    
-    fig.update_xaxes(title_text="Input Variables", row=2, col=1, tickangle=45)
-    fig.update_yaxes(title_text="p-value", row=2, col=1, type="log")
-    
-    fig.update_xaxes(title_text="Input Variables", row=2, col=2, tickangle=45)
-    fig.update_yaxes(title_text="Normalized HSIC Index", row=2, col=2)
+    # Update x-axes
+    for i in range(1, 3):
+        for j in range(1, 3):
+            fig.update_xaxes(tickangle=45, row=i, col=j)
     
     return fig
