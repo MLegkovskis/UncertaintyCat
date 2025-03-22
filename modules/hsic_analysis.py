@@ -63,9 +63,12 @@ def hsic_analysis(model, problem, model_code_str=None, language_model='groq'):
             making it particularly valuable for complex models with unknown structures.
             """)
             
+            # Add a slider for sample size
+            hsic_size = st.slider("Number of HSIC Samples", min_value=100, max_value=1000, value=200, step=100)
+            
             # Compute HSIC indices with progress indicator
             with st.spinner("Computing HSIC indices..."):
-                hsic_results = compute_hsic_indices(model, problem, N=200, seed=42)
+                hsic_results = compute_hsic_indices(model, problem, N=hsic_size, seed=42)
             
             # Create DataFrame from the results
             hsic_df = create_hsic_dataframe(hsic_results)
