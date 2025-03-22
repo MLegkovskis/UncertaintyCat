@@ -57,7 +57,7 @@ def load_model_code(selected_model_name: str) -> str:
 
 # Page configuration
 st.set_page_config(
-    page_title="UncertaintyCat | Version 5.12",
+    page_title="UncertaintyCat | Version 5.13",
     page_icon="🐱",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -71,7 +71,7 @@ col1, col2 = st.columns([1, 5])
 with col1:
     st.image("logo.jpg", width=100)
 with col2:
-    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.12</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.13</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color: #7F8C8D;">Advanced Uncertainty Quantification and Sensitivity Analysis Platform</p>', unsafe_allow_html=True)
 
 # Sidebar styling and navigation
