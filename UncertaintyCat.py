@@ -5,6 +5,7 @@ import openturns as ot
 import pandas as pd
 import plotly.express as px
 import re
+import traceback
 
 # Import modules
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
@@ -34,6 +35,32 @@ from utils.model_utils import (
 from utils.constants import RETURN_INSTRUCTION
 from utils.css_styles import load_css
 
+# Initialize session state variables
+if 'analyses_ran' not in st.session_state:
+    st.session_state.analyses_ran = False
+if 'simulation_data' not in st.session_state:
+    st.session_state.simulation_data = None
+if 'model_understanding_ran' not in st.session_state:
+    st.session_state.model_understanding_ran = False
+if 'eda_ran' not in st.session_state:
+    st.session_state.eda_ran = False
+if 'expectation_convergence_ran' not in st.session_state:
+    st.session_state.expectation_convergence_ran = False
+if 'sobol_ran' not in st.session_state:
+    st.session_state.sobol_ran = False
+if 'fast_ran' not in st.session_state:
+    st.session_state.fast_ran = False
+if 'ancova_ran' not in st.session_state:
+    st.session_state.ancova_ran = False
+if 'taylor_ran' not in st.session_state:
+    st.session_state.taylor_ran = False
+if 'correlation_ran' not in st.session_state:
+    st.session_state.correlation_ran = False
+if 'hsic_ran' not in st.session_state:
+    st.session_state.hsic_ran = False
+if 'shap_ran' not in st.session_state:
+    st.session_state.shap_ran = False
+
 ###############################################################################
 # 2) LOAD MODEL CODE FROM EXAMPLES
 ###############################################################################
@@ -56,7 +83,7 @@ def load_model_code(selected_model_name: str) -> str:
 
 # Page configuration
 st.set_page_config(
-    page_title="UncertaintyCat | Version 5.14",
+    page_title="UncertaintyCat | UQ Made Easy",
     page_icon="🐱",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -70,8 +97,11 @@ col1, col2 = st.columns([1, 5])
 with col1:
     st.image("logo.jpg", width=100)
 with col2:
-    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.14</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.15</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color: #7F8C8D;">Advanced Uncertainty Quantification and Sensitivity Analysis Platform</p>', unsafe_allow_html=True)
+
+# Fullscreen recommendation
+st.info("📌 **Tip:** This application works best in fullscreen mode to view all analysis tabs properly.")
 
 # Sidebar styling and navigation
 st.sidebar.markdown('<div style="text-align: center; padding: 10px 0;"><h3>Navigation Panel</h3></div>', unsafe_allow_html=True)
@@ -146,6 +176,12 @@ with st.expander("Model Code Editor & Preview", expanded=True):
 
     with col_code:
         st.markdown('<p style="font-weight: bold; margin-bottom: 10px;">Model Code Editor</p>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="font-size: 0.8rem; margin-bottom: 10px; color: #666;">
+        Define your model using Python 3.12. You have access to numpy, scipy, and openturns libraries.
+        Your code must define 'model' (an OpenTURNS Function) and 'problem' (an OpenTURNS Distribution).
+        </div>
+        """, unsafe_allow_html=True)
         code_area_value = st.text_area(
             label="",
             value=current_code,
@@ -153,6 +189,48 @@ with st.expander("Model Code Editor & Preview", expanded=True):
         )
         # Update current code if changed in the editor
         current_code = code_area_value
+        
+        # Add a model validation button
+        if st.button("Validate Model Input"):
+            if not current_code:
+                st.error("Please provide a model first or select one of the example models to start with.")
+            else:
+                try:
+                    # First check if the code is safe to execute
+                    is_safe, safety_message = check_code_safety(current_code)
+                    
+                    if not is_safe:
+                        st.error(f"Security Error: {safety_message}")
+                    else:
+                        # Execute the code
+                        eval_globals = {}
+                        exec(current_code, eval_globals)
+                        
+                        # Get model and problem
+                        model = eval_globals.get('model')
+                        problem = eval_globals.get('problem')
+                        
+                        if not model or not problem:
+                            st.error("Model code must define 'model' and 'problem' variables.")
+                        else:
+                            # Run a small Monte Carlo simulation
+                            with st.spinner("Running 10 Monte Carlo samples..."):
+                                try:
+                                    results = monte_carlo_simulation(model, problem, N=10, seed=42)
+                                    # Check if mean is a numpy array or scalar
+                                    mean_value = results['mean']
+                                    std_value = results['std']
+                                    if isinstance(mean_value, np.ndarray):
+                                        mean_str = f"{mean_value[0]:.4f}"
+                                        std_str = f"{std_value[0]:.4f}"
+                                    else:
+                                        mean_str = f"{mean_value:.4f}"
+                                        std_str = f"{std_value:.4f}"
+                                    st.success(f"Model validated successfully! Sample mean: {mean_str}, std: {std_str}")
+                                except Exception as e:
+                                    st.error(f"Error running model: {e}")
+                except Exception as e:
+                    st.error(f"Error evaluating model code: {e}")
 
     with col_preview:
         st.markdown('<p style="font-weight: bold; margin-bottom: 10px;">Syntax-Highlighted Preview</p>', unsafe_allow_html=True)
@@ -167,381 +245,365 @@ with st.expander("Model Code Editor & Preview", expanded=True):
 if "📊 Main Analysis" in selected_page:
     st.subheader("Uncertainty Analysis Dashboard")
     
-    # Create a card for the run button
-    st.write("Run Comprehensive Analysis")
-    
-    # Add run button
-    run_button = st.button("Run Analysis", key="run_main_analysis")
-    
-    # Initialize session state for analyses
-    if 'analyses_ran' not in st.session_state:
-        st.session_state.analyses_ran = False
-        st.session_state.simulation_data = None
-        st.session_state.active_tab = None
-        st.session_state.model_understanding_ran = False
-        st.session_state.eda_ran = False
-        st.session_state.expectation_convergence_ran = False
-        st.session_state.sobol_ran = False
-        st.session_state.fast_ran = False
-        st.session_state.ancova_ran = False
-        st.session_state.taylor_ran = False
-        st.session_state.correlation_ran = False
-        st.session_state.hsic_ran = False
-        st.session_state.shap_ran = False
-    
-    if run_button:
-        if not current_code:
-            st.markdown('<div class="error-box status-box">Please provide a model first.</div>', unsafe_allow_html=True)
+    # Check if we have a model
+    if not current_code:
+        st.markdown('<div class="error-box status-box">Please provide a model first.</div>', unsafe_allow_html=True)
+    else:
+        # First check if the code is safe to execute
+        is_safe, safety_message = check_code_safety(current_code)
+        
+        if not is_safe:
+            st.markdown(f'<div class="error-box status-box">Security Error: {safety_message}</div>', unsafe_allow_html=True)
         else:
-            # First check if the code is safe to execute
-            is_safe, safety_message = check_code_safety(current_code)
-            
-            if not is_safe:
-                st.markdown(f'<div class="error-box status-box">Security Error: {safety_message}</div>', unsafe_allow_html=True)
-            else:
-                try:
-                    # Execute the model code in a fresh namespace
-                    local_namespace = {}
-                    exec(current_code, local_namespace)
-                    
-                    if 'model' not in local_namespace or 'problem' not in local_namespace:
-                        st.markdown('<div class="error-box status-box">The model code must define both \'model\' and \'problem\'.</div>', unsafe_allow_html=True)
-                    else:
-                        model = local_namespace['model']
-                        problem = local_namespace['problem']
-
-                        # Validate the problem structure
-                        validate_problem_structure(problem)
-                        
-                        # Run Monte Carlo simulation (always needed)
-                        with st.spinner("Running Monte Carlo Simulation..."):
-                            st.markdown('<div class="info-box status-box">Running Monte Carlo simulation with 2000 samples...</div>', unsafe_allow_html=True)
-                            results = monte_carlo_simulation(model, problem, N=2000, seed=42)
-                            data = create_monte_carlo_dataframe(results)
-                            st.markdown('<div class="success-box status-box">Monte Carlo simulation completed successfully.</div>', unsafe_allow_html=True)
-                        
-                        # Store results for use in analyses
-                        st.session_state.simulation_data = {
-                            "data": data,
-                            "model": model,
-                            "problem": problem,
-                            "code": current_code,
-                            "selected_language_model": selected_language_model,
-                            "N": 2000
-                        }
-                        
-                        # Mark analyses as ready to run
+            # Try to execute the code
+            try:
+                # Execute the code
+                eval_globals = {}
+                exec(current_code, eval_globals)
+                
+                # Get model and problem
+                model = eval_globals.get('model')
+                problem = eval_globals.get('problem')
+                
+                if not model or not problem:
+                    st.markdown('<div class="error-box status-box">Model code must define \'model\' and \'problem\' variables.</div>', unsafe_allow_html=True)
+                else:
+                    # Run Monte Carlo simulation
+                    with st.spinner("Running Monte Carlo Simulation..."):
+                        N = 1000
+                        data = monte_carlo_simulation(model, problem, N)
+                        st.session_state.simulation_data = data
                         st.session_state.analyses_ran = True
-                        # Set active tab to the first one
-                        st.session_state.active_tab = "Model Understanding"
-                        
-                        # Force rerun to show tabs
-                        st.rerun()
-                        
-                except Exception as e:
-                    st.markdown(f'<div class="error-box status-box">Error during simulation: {str(e)}</div>', unsafe_allow_html=True)
-    
-    # Display tabs only if analyses have been run
-    if st.session_state.analyses_ran and st.session_state.simulation_data is not None:
-        # Create analysis tabs
-        tabs = st.tabs([
-            "Model Understanding", 
-            "Exploratory Data Analysis", 
-            "Convergence and Output Analysis", 
-            "Sobol Sensitivity", 
-            "FAST Sensitivity", 
-            "ANCOVA Sensitivity", 
-            "Taylor Analysis", 
-            "Correlation Analysis", 
-            "HSIC Analysis", 
-            "SHAP Analysis"
-        ])
-        
-        # Get the data
-        data = st.session_state.simulation_data["data"]
-        model = st.session_state.simulation_data["model"]
-        problem = st.session_state.simulation_data["problem"]
-        current_code = st.session_state.simulation_data["code"]
-        selected_language_model = st.session_state.simulation_data["selected_language_model"]
-        N = st.session_state.simulation_data["N"]
-        
-        # Model Understanding Tab
-        with tabs[0]:
-            if st.session_state.active_tab == "Model Understanding":
-                with st.spinner("Running Model Understanding..."):
-                    model_understanding(
-                        model,
-                        problem,
-                        current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.model_understanding_ran = True
-            elif st.session_state.model_understanding_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading Model Understanding Results..."):
-                    model_understanding(
-                        model,
-                        problem,
-                        current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a button to run this analysis
-                if st.button("Run Model Understanding Analysis", key="run_model_understanding"):
-                    with st.spinner("Running Model Understanding..."):
-                        model_understanding(
-                            model,
-                            problem,
-                            current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.model_understanding_ran = True
-        
-        # Exploratory Data Analysis Tab
-        with tabs[1]:
-            if st.session_state.active_tab == "Exploratory Data Analysis":
-                with st.spinner("Running Exploratory Data Analysis..."):
-                    exploratory_data_analysis(
-                        data, N, model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.eda_ran = True
-            elif st.session_state.eda_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading Exploratory Data Analysis Results..."):
-                    exploratory_data_analysis(
-                        data, N, model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a button to run this analysis
-                if st.button("Run Exploratory Data Analysis", key="run_eda"):
-                    with st.spinner("Running Exploratory Data Analysis..."):
-                        exploratory_data_analysis(
-                            data, N, model, problem, current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.eda_ran = True
-        
-        # Convergence and Output Analysis Tab
-        with tabs[2]:
-            if st.session_state.active_tab == "Convergence and Output Analysis":
-                with st.spinner("Running Convergence and Output Analysis..."):
-                    expectation_convergence_analysis_joint(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.expectation_convergence_ran = True
-            elif st.session_state.expectation_convergence_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading Convergence and Output Analysis Results..."):
-                    expectation_convergence_analysis_joint(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a button to run this analysis
-                if st.button("Run Convergence and Output Analysis", key="run_expectation"):
-                    with st.spinner("Running Convergence and Output Analysis..."):
-                        expectation_convergence_analysis_joint(
-                            model, problem, current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.expectation_convergence_ran = True
-        
-        # Sobol Sensitivity Analysis Tab
-        with tabs[3]:
-            if st.session_state.active_tab == "Sobol Sensitivity":
-                with st.spinner("Running Sobol Sensitivity Analysis..."):
-                    sobol_sensitivity_analysis(
-                        1024, model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.sobol_ran = True
-            elif st.session_state.sobol_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading Sobol Sensitivity Analysis Results..."):
-                    sobol_sensitivity_analysis(
-                        1024, model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a slider for sample size
-                sobol_n = st.slider("Number of Sobol Samples", min_value=256, max_value=4096, value=1024, step=256)
-                # Add a button to run this analysis
-                if st.button("Run Sobol Sensitivity Analysis", key="run_sobol"):
-                    with st.spinner("Running Sobol Sensitivity Analysis..."):
-                        sobol_sensitivity_analysis(
-                            sobol_n, model, problem, current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.sobol_ran = True
-        
-        # FAST Sensitivity Analysis Tab
-        with tabs[4]:
-            if st.session_state.active_tab == "FAST Sensitivity":
-                fast_analysis(
-                    model, problem, size=400, model_code_str=current_code,
-                    language_model=selected_language_model
-                )
-                st.session_state.active_tab = None
-                st.session_state.fast_ran = True
-            elif st.session_state.fast_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading FAST Sensitivity Analysis Results..."):
-                    fast_analysis(
-                        model, problem, size=400, model_code_str=current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a slider for sample size
-                fast_size = st.slider("Number of FAST Samples", min_value=100, max_value=1000, value=400, step=100)
-                # Add a button to run this analysis
-                if st.button("Run FAST Sensitivity Analysis", key="run_fast"):
-                    fast_analysis(
-                        model, problem, size=fast_size, model_code_str=current_code,
-                        language_model=selected_language_model
-                    )
-                    st.session_state.fast_ran = True
-        
-        # ANCOVA Sensitivity Analysis Tab
-        with tabs[5]:
-            if st.session_state.active_tab == "ANCOVA Sensitivity":
-                ancova_analysis(
-                    model, problem, size=2000, model_code_str=current_code,
-                    language_model=selected_language_model
-                )
-                st.session_state.active_tab = None
-                st.session_state.ancova_ran = True
-            elif st.session_state.ancova_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading ANCOVA Sensitivity Analysis Results..."):
-                    ancova_analysis(
-                        model, problem, size=2000, model_code_str=current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a slider for sample size
-                ancova_size = st.slider("Number of ANCOVA Samples", min_value=500, max_value=5000, value=2000, step=500)
-                # Add a button to run this analysis
-                if st.button("Run ANCOVA Sensitivity Analysis", key="run_ancova"):
-                    ancova_analysis(
-                        model, problem, size=ancova_size, model_code_str=current_code,
-                        language_model=selected_language_model
-                    )
-                    st.session_state.ancova_ran = True
-        
-        # Taylor Analysis Tab
-        with tabs[6]:
-            if st.session_state.active_tab == "Taylor Analysis":
-                with st.spinner("Running Taylor Analysis..."):
-                    taylor_analysis(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.taylor_ran = True
-            elif st.session_state.taylor_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading Taylor Analysis Results..."):
-                    taylor_analysis(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a button to run this analysis
-                if st.button("Run Taylor Analysis", key="run_taylor"):
-                    with st.spinner("Running Taylor Analysis..."):
-                        taylor_analysis(
-                            model, problem, current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.taylor_ran = True
-        
-        # Correlation Analysis Tab
-        with tabs[7]:
-            if st.session_state.active_tab == "Correlation Analysis":
-                with st.spinner("Running Correlation Analysis..."):
-                    correlation_analysis(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.correlation_ran = True
-            elif st.session_state.correlation_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading Correlation Analysis Results..."):
-                    correlation_analysis(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a button to run this analysis
-                if st.button("Run Correlation Analysis", key="run_correlation"):
-                    with st.spinner("Running Correlation Analysis..."):
-                        correlation_analysis(
-                            model, problem, current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.correlation_ran = True
-        
-        # HSIC Analysis Tab
-        with tabs[8]:
-            if st.session_state.active_tab == "HSIC Analysis":
-                with st.spinner("Running HSIC Analysis..."):
-                    hsic_analysis(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.hsic_ran = True
-            elif st.session_state.hsic_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading HSIC Analysis Results..."):
-                    hsic_analysis(
-                        model, problem, current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a button to run this analysis
-                if st.button("Run HSIC Analysis", key="run_hsic"):
-                    with st.spinner("Running HSIC Analysis..."):
-                        hsic_analysis(
-                            model, problem, current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.hsic_ran = True
-        
-        # ML Analysis Tab
-        with tabs[9]:
-            if st.session_state.active_tab == "SHAP Analysis":
-                with st.spinner("Running SHAP Analysis..."):
-                    ml_analysis(
-                        data, problem, current_code,
-                        language_model=selected_language_model
-                    )
-                st.session_state.active_tab = None
-                st.session_state.shap_ran = True
-            elif st.session_state.shap_ran:
-                # Re-display the previously run analysis
-                with st.spinner("Loading SHAP Analysis Results..."):
-                    ml_analysis(
-                        data, problem, current_code,
-                        language_model=selected_language_model
-                    )
-            else:
-                # Add a button to run this analysis
-                if st.button("Run SHAP Analysis", key="run_ml"):
-                    with st.spinner("Running SHAP Analysis..."):
-                        ml_analysis(
-                            data, problem, current_code,
-                            language_model=selected_language_model
-                        )
-                    st.session_state.shap_ran = True
+                    
+                    # Create analysis tabs
+                    tabs = st.tabs([
+                        "Model Understanding", 
+                        "Convergence and Output Analysis",
+                        "Exploratory Data Analysis", 
+                        "Sobol Sensitivity", 
+                        "FAST Sensitivity", 
+                        "ANCOVA Sensitivity", 
+                        "Taylor Analysis", 
+                        "Correlation Analysis", 
+                        "HSIC Analysis", 
+                        "ML Analysis"
+                    ])
+                    
+                    # Model Understanding Tab
+                    with tabs[0]:
+                        # Add a button to run this analysis
+                        if st.button("Run Model Understanding", key="run_model_understanding"):
+                            # Create a placeholder for immediate feedback
+                            model_status = st.empty()
+                            model_status.info("Starting Model Understanding analysis...")
+                            
+                            with st.spinner("Running Model Understanding..."):
+                                try:
+                                    model_understanding(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.model_understanding_ran = True
+                                    model_status.empty()
+                                except Exception as e:
+                                    model_status.empty()
+                                    st.error(f"Error in Model Understanding: {str(e)}")
+                        elif st.session_state.model_understanding_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading Model Understanding Results..."):
+                                try:
+                                    model_understanding(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading Model Understanding results: {str(e)}")
+
+                    # Convergence and Output Analysis Tab (moved before EDA)
+                    with tabs[1]:
+                        if st.button("Run Convergence and Output Analysis", key="run_expectation"):
+                            # Create a placeholder for immediate feedback
+                            conv_status = st.empty()
+                            conv_status.info("Starting Convergence and Output Analysis...")
+                            
+                            with st.spinner("Running Convergence and Output Analysis..."):
+                                try:
+                                    expectation_convergence_analysis_joint(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.expectation_convergence_ran = True
+                                    conv_status.empty()
+                                except Exception as e:
+                                    conv_status.empty()
+                                    st.error(f"Error in Convergence Analysis: {str(e)}")
+                        elif st.session_state.expectation_convergence_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading Convergence and Output Analysis Results..."):
+                                try:
+                                    expectation_convergence_analysis_joint(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading Convergence Analysis results: {str(e)}")
+                    
+                    # Exploratory Data Analysis Tab (moved after Convergence)
+                    with tabs[2]:
+                        if st.button("Run Exploratory Data Analysis", key="run_eda"):
+                            # Create a placeholder for immediate feedback
+                            eda_status = st.empty()
+                            eda_status.info("Starting Exploratory Data Analysis...")
+                            
+                            with st.spinner("Running Exploratory Data Analysis..."):
+                                try:
+                                    # Convert Monte Carlo results to DataFrame if needed
+                                    if isinstance(data, dict):
+                                        df = create_monte_carlo_dataframe(data)
+                                    else:
+                                        df = data
+                                        
+                                    exploratory_data_analysis(
+                                        df, N, model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.eda_ran = True
+                                    eda_status.empty()
+                                except Exception as e:
+                                    eda_status.empty()
+                                    st.error(f"Error in Exploratory Data Analysis: {str(e)}")
+                        elif st.session_state.eda_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading Exploratory Data Analysis Results..."):
+                                try:
+                                    # Convert Monte Carlo results to DataFrame if needed
+                                    if isinstance(data, dict):
+                                        df = create_monte_carlo_dataframe(data)
+                                    else:
+                                        df = data
+                                        
+                                    exploratory_data_analysis(
+                                        df, N, model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading Exploratory Data Analysis results: {str(e)}")
+                    
+                    # Sobol Sensitivity Analysis Tab
+                    with tabs[3]:
+                        # Add a slider for sample size
+                        sobol_n = st.slider("Number of Sobol Samples", min_value=256, max_value=4096, value=1024, step=256)
+                        # Add a button to run this analysis
+                        if st.button("Run Sobol Sensitivity Analysis", key="run_sobol"):
+                            # Create a placeholder for immediate feedback
+                            sobol_status = st.empty()
+                            sobol_status.info("Starting Sobol Sensitivity Analysis...")
+                            
+                            with st.spinner("Running Sobol Sensitivity Analysis..."):
+                                try:
+                                    sobol_sensitivity_analysis(
+                                        sobol_n, model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.sobol_ran = True
+                                    sobol_status.empty()
+                                except Exception as e:
+                                    sobol_status.empty()
+                                    st.error(f"Error in Sobol Analysis: {str(e)}")
+                        elif st.session_state.sobol_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading Sobol Sensitivity Analysis Results..."):
+                                try:
+                                    sobol_sensitivity_analysis(
+                                        1024, model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading Sobol Analysis results: {str(e)}")
+                    
+                    # FAST Sensitivity Analysis Tab
+                    with tabs[4]:
+                        # Add a button to run this analysis
+                        if st.button("Run FAST Sensitivity Analysis", key="run_fast"):
+                            # Create a placeholder for immediate feedback
+                            fast_status = st.empty()
+                            fast_status.info("Starting FAST Sensitivity Analysis...")
+                            
+                            with st.spinner("Running FAST Sensitivity Analysis..."):
+                                try:
+                                    fast_analysis(
+                                        model, problem, model_code_str=current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.fast_ran = True
+                                    fast_status.empty()
+                                except Exception as e:
+                                    fast_status.empty()
+                                    st.error(f"Error in FAST Analysis: {str(e)}")
+                        elif st.session_state.fast_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading FAST Sensitivity Analysis Results..."):
+                                try:
+                                    fast_analysis(
+                                        model, problem, model_code_str=current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading FAST Analysis results: {str(e)}")
+                    
+                    # ANCOVA Sensitivity Analysis Tab
+                    with tabs[5]:
+                        # Add a button to run this analysis
+                        if st.button("Run ANCOVA Sensitivity Analysis", key="run_ancova"):
+                            # Create a placeholder for immediate feedback
+                            ancova_status = st.empty()
+                            ancova_status.info("Starting ANCOVA Sensitivity Analysis...")
+                            
+                            with st.spinner("Running ANCOVA Sensitivity Analysis..."):
+                                try:
+                                    ancova_analysis(
+                                        model, problem, model_code_str=current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.ancova_ran = True
+                                    ancova_status.empty()
+                                except Exception as e:
+                                    ancova_status.empty()
+                                    st.error(f"Error in ANCOVA Analysis: {str(e)}")
+                        elif st.session_state.ancova_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading ANCOVA Sensitivity Analysis Results..."):
+                                try:
+                                    ancova_analysis(
+                                        model, problem, model_code_str=current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading ANCOVA Analysis results: {str(e)}")
+                    
+                    # Taylor Analysis Tab
+                    with tabs[6]:
+                        # Add a button to run this analysis
+                        if st.button("Run Taylor Analysis", key="run_taylor"):
+                            # Create a placeholder for immediate feedback
+                            taylor_status = st.empty()
+                            taylor_status.info("Starting Taylor Analysis...")
+                            
+                            with st.spinner("Running Taylor Analysis..."):
+                                try:
+                                    taylor_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.taylor_ran = True
+                                    taylor_status.empty()
+                                except Exception as e:
+                                    taylor_status.empty()
+                                    st.error(f"Error in Taylor Analysis: {str(e)}")
+                        elif st.session_state.taylor_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading Taylor Analysis Results..."):
+                                try:
+                                    taylor_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading Taylor Analysis results: {str(e)}")
+                    
+                    # Correlation Analysis Tab
+                    with tabs[7]:
+                        # Add a button to run this analysis
+                        if st.button("Run Correlation Analysis", key="run_correlation"):
+                            # Create a placeholder for immediate feedback
+                            corr_status = st.empty()
+                            corr_status.info("Starting Correlation Analysis...")
+                            
+                            with st.spinner("Running Correlation Analysis..."):
+                                try:
+                                    correlation_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.correlation_ran = True
+                                    corr_status.empty()
+                                except Exception as e:
+                                    corr_status.empty()
+                                    st.error(f"Error in Correlation Analysis: {str(e)}")
+                        elif st.session_state.correlation_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading Correlation Analysis Results..."):
+                                try:
+                                    correlation_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading Correlation Analysis results: {str(e)}")
+                    
+                    # HSIC Analysis Tab
+                    with tabs[8]:
+                        # Add a button to run this analysis
+                        if st.button("Run HSIC Analysis", key="run_hsic"):
+                            # Create a placeholder for immediate feedback
+                            hsic_status = st.empty()
+                            hsic_status.info("Starting HSIC Analysis...")
+                            
+                            with st.spinner("Running HSIC Analysis..."):
+                                try:
+                                    hsic_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.hsic_ran = True
+                                    hsic_status.empty()
+                                except Exception as e:
+                                    hsic_status.empty()
+                                    st.error(f"Error in HSIC Analysis: {str(e)}")
+                        elif st.session_state.hsic_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading HSIC Analysis Results..."):
+                                try:
+                                    hsic_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading HSIC Analysis results: {str(e)}")
+                    
+                    # ML Analysis Tab
+                    with tabs[9]:
+                        # Add a button to run this analysis
+                        if st.button("Run ML Analysis", key="run_ml"):
+                            # Create a placeholder for immediate feedback
+                            ml_status = st.empty()
+                            ml_status.info("Starting ML Analysis...")
+                            
+                            with st.spinner("Running ML Analysis..."):
+                                try:
+                                    ml_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                    st.session_state.shap_ran = True
+                                    ml_status.empty()
+                                except Exception as e:
+                                    ml_status.empty()
+                                    st.error(f"Error in ML Analysis: {str(e)}")
+                                    st.error(traceback.format_exc())
+                        elif st.session_state.shap_ran:
+                            # Re-display the previously run analysis
+                            with st.spinner("Loading ML Analysis Results..."):
+                                try:
+                                    ml_analysis(
+                                        model, problem, current_code,
+                                        language_model=selected_language_model
+                                    )
+                                except Exception as e:
+                                    st.error(f"Error loading ML Analysis results: {str(e)}")
+                                    st.error(traceback.format_exc())
+            except Exception as e:
+                st.error(f"Error evaluating model code: {e}")
 
 elif "📉 Dimensionality Reduction" in selected_page:
     # Use the modular dimensionality reduction page function from morris_analysis module

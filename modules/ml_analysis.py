@@ -19,8 +19,9 @@ from scipy.stats import pearsonr
 from utils.core_utils import call_groq_api
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
+from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
 
-def ml_analysis(data, problem, model_code_str=None, language_model='groq'):
+def ml_analysis(model, problem, model_code_str=None, language_model='groq'):
     """
     Perform machine learning-based sensitivity analysis using SHAP values with enterprise-grade visualizations.
     
@@ -29,8 +30,8 @@ def ml_analysis(data, problem, model_code_str=None, language_model='groq'):
     
     Parameters
     ----------
-    data : pd.DataFrame
-        DataFrame containing input samples and model outputs
+    model : callable or pd.DataFrame
+        Either the model function or DataFrame containing input samples and model outputs
     problem : ot.Distribution
         OpenTURNS distribution representing the input uncertainty
     model_code_str : str, optional
@@ -54,6 +55,17 @@ def ml_analysis(data, problem, model_code_str=None, language_model='groq'):
         for i in range(dimension):
             marginal = problem.getMarginal(i)
             input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
+        
+        # If model is a function, generate data by running Monte Carlo simulation
+        if callable(model) and not isinstance(model, pd.DataFrame):
+            st.info("Generating data for ML analysis using Monte Carlo simulation (1000 samples)...")
+            # Generate Monte Carlo samples
+            results = monte_carlo_simulation(model, problem, N=1000, seed=42)
+            # Convert to DataFrame
+            data = create_monte_carlo_dataframe(results)
+        else:
+            # Assume model is already a DataFrame
+            data = model
         
         # Results section
         with st.expander("Results", expanded=True):
