@@ -92,12 +92,52 @@ st.set_page_config(
 # Load and apply custom CSS
 st.markdown(load_css(), unsafe_allow_html=True)
 
+# Add CSS for the custom status indicator
+st.markdown("""
+<style>
+.running-indicator {
+    background-color: #f0f2f6;
+    border-left: 5px solid #ff9800;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+}
+.running-indicator:before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #ff9800;
+    margin-right: 10px;
+    animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Function to show immediate visual feedback
+def show_running_indicator(container, analysis_name):
+    container.markdown(f'<div class="running-indicator">Running {analysis_name}...</div>', unsafe_allow_html=True)
+
 # Header with logo and title
 col1, col2 = st.columns([1, 5])
 with col1:
     st.image("logo.jpg", width=100)
 with col2:
-    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.15</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.16</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color: #7F8C8D;">Advanced Uncertainty Quantification and Sensitivity Analysis Platform</p>', unsafe_allow_html=True)
 
 # Fullscreen recommendation
@@ -295,7 +335,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run Model Understanding", key="run_model_understanding"):
                             # Create a placeholder for immediate feedback
                             model_status = st.empty()
-                            model_status.info("Starting Model Understanding analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(model_status, "Model Understanding")
                             
                             with st.spinner("Running Model Understanding..."):
                                 try:
@@ -324,7 +365,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run Convergence and Output Analysis", key="run_expectation"):
                             # Create a placeholder for immediate feedback
                             conv_status = st.empty()
-                            conv_status.info("Starting Convergence and Output Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(conv_status, "Convergence and Output Analysis")
                             
                             with st.spinner("Running Convergence and Output Analysis..."):
                                 try:
@@ -353,7 +395,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run Exploratory Data Analysis", key="run_eda"):
                             # Create a placeholder for immediate feedback
                             eda_status = st.empty()
-                            eda_status.info("Starting Exploratory Data Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(eda_status, "Exploratory Data Analysis")
                             
                             with st.spinner("Running Exploratory Data Analysis..."):
                                 try:
@@ -397,7 +440,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run Sobol Sensitivity Analysis", key="run_sobol"):
                             # Create a placeholder for immediate feedback
                             sobol_status = st.empty()
-                            sobol_status.info("Starting Sobol Sensitivity Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(sobol_status, "Sobol Sensitivity Analysis")
                             
                             with st.spinner("Running Sobol Sensitivity Analysis..."):
                                 try:
@@ -427,7 +471,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run FAST Sensitivity Analysis", key="run_fast"):
                             # Create a placeholder for immediate feedback
                             fast_status = st.empty()
-                            fast_status.info("Starting FAST Sensitivity Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(fast_status, "FAST Sensitivity Analysis")
                             
                             with st.spinner("Running FAST Sensitivity Analysis..."):
                                 try:
@@ -457,7 +502,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run ANCOVA Sensitivity Analysis", key="run_ancova"):
                             # Create a placeholder for immediate feedback
                             ancova_status = st.empty()
-                            ancova_status.info("Starting ANCOVA Sensitivity Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(ancova_status, "ANCOVA Sensitivity Analysis")
                             
                             with st.spinner("Running ANCOVA Sensitivity Analysis..."):
                                 try:
@@ -487,7 +533,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run Taylor Analysis", key="run_taylor"):
                             # Create a placeholder for immediate feedback
                             taylor_status = st.empty()
-                            taylor_status.info("Starting Taylor Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(taylor_status, "Taylor Analysis")
                             
                             with st.spinner("Running Taylor Analysis..."):
                                 try:
@@ -517,7 +564,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run Correlation Analysis", key="run_correlation"):
                             # Create a placeholder for immediate feedback
                             corr_status = st.empty()
-                            corr_status.info("Starting Correlation Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(corr_status, "Correlation Analysis")
                             
                             with st.spinner("Running Correlation Analysis..."):
                                 try:
@@ -547,7 +595,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run HSIC Analysis", key="run_hsic"):
                             # Create a placeholder for immediate feedback
                             hsic_status = st.empty()
-                            hsic_status.info("Starting HSIC Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(hsic_status, "HSIC Analysis")
                             
                             with st.spinner("Running HSIC Analysis..."):
                                 try:
@@ -577,7 +626,8 @@ if "📊 Main Analysis" in selected_page:
                         if st.button("Run ML Analysis", key="run_ml"):
                             # Create a placeholder for immediate feedback
                             ml_status = st.empty()
-                            ml_status.info("Starting ML Analysis...")
+                            # Show immediate visual indicator
+                            show_running_indicator(ml_status, "ML Analysis")
                             
                             with st.spinner("Running ML Analysis..."):
                                 try:

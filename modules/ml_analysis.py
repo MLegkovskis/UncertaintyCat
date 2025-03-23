@@ -66,6 +66,10 @@ def ml_analysis(model, problem, model_code_str=None, language_model='groq'):
         else:
             # Assume model is already a DataFrame
             data = model
+            
+        # Check if data is a DataFrame
+        if not isinstance(data, pd.DataFrame):
+            raise TypeError(f"Expected a DataFrame but got {type(data)}. The model must be either a callable function or a pandas DataFrame.")
         
         # Results section
         with st.expander("Results", expanded=True):
@@ -187,11 +191,13 @@ def train_surrogate_model(data, input_names):
     if ('rf_model' in st.session_state and 'X_test' in st.session_state and
         'y_test' in st.session_state and 'scaler' in st.session_state and
         'rf_performance' in st.session_state):
-        rf_model = st.session_state['rf_model']
-        X_test = st.session_state['X_test']
-        y_test = st.session_state['y_test']
-        scaler = st.session_state['scaler']
-        performance_metrics = st.session_state['rf_performance']
+        return (
+            st.session_state['rf_model'],
+            st.session_state['X_test'],
+            st.session_state['y_test'],
+            st.session_state['scaler'],
+            st.session_state['rf_performance']
+        )
     else:
         X = data[input_names]
         y = data['Y']
@@ -235,7 +241,7 @@ def train_surrogate_model(data, input_names):
         st.session_state['scaler'] = scaler
         st.session_state['rf_performance'] = performance_metrics
     
-    return rf_model, X_test, y_test, scaler, performance_metrics
+        return rf_model, X_test, y_test, scaler, performance_metrics
 
 def calculate_shap_values(model, X_test, feature_names):
     """
