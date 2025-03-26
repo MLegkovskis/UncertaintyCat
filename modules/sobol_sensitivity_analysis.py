@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import openturns as ot
 from SALib.analyze import sobol
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 import streamlit as st
 import plotly.graph_objects as go
@@ -501,8 +501,59 @@ Format your response with clear section headings and bullet points. Focus on act
 """
                 
                 with st.spinner("Generating expert analysis..."):
-                    response = call_groq_api(prompt, language_model)
+                    response_key = 'sobol_analysis_response_markdown'
+                    
+                    if response_key not in st.session_state:
+                        response = call_groq_api(prompt, language_model)
+                        st.session_state[response_key] = response
+                    else:
+                        response = st.session_state[response_key]
+                        
                     st.markdown(response)
+                
+                # Display a disclaimer about the prompt
+                disclaimer_text = """
+                **Note:** The AI assistant has been provided with the model code, input distributions, 
+                and the sensitivity analysis results above. You can ask questions to clarify any aspects of the analysis.
+                """
+                
+                # Define context generator function
+                def generate_context(prompt):
+                    return f"""
+                    You are an expert assistant helping users understand Sobol sensitivity analysis results. 
+                    
+                    Here is the model code:
+                    ```python
+                    {model_code_str}
+                    ```
+                    
+                    Here is information about the input distributions:
+                    {dist_info_text}
+                    
+                    Here is the sensitivity analysis summary:
+                    Sobol Indices:
+                    {indices_table}
+                    
+                    Sum of First-Order Indices: {sum_first_order:.4f}
+                    Sum of Total-Order Indices: {sum_total_order:.4f}
+                    Interaction Effect: {interaction_effect:.4f}
+                    
+                    Here is the explanation that was previously generated:
+                    {response}
+                    
+                    Answer the user's question based on this information. Be concise but thorough.
+                    If you're not sure about something, acknowledge the limitations of your knowledge.
+                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                    """
+                
+                # Create the chat interface
+                create_chat_interface(
+                    session_key="sobol_analysis",
+                    context_generator=generate_context,
+                    input_placeholder="Ask a question about the sensitivity analysis...",
+                    disclaimer_text=disclaimer_text,
+                    language_model=language_model
+                )
         
     except Exception as e:
         st.error(f"Error in Sobol sensitivity analysis: {str(e)}")

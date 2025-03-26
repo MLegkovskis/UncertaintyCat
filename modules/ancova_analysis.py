@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 import streamlit as st
 import plotly.graph_objects as go
@@ -332,7 +332,7 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
         st.error(f"Error in ANCOVA sensitivity analysis: {str(e)}")
         raise e
 
-def display_ancova_results(ancova_results, language_model=None):
+def display_ancova_results(ancova_results, language_model=None, model_code_str=None):
     """
     Display ANCOVA sensitivity analysis results in the Streamlit interface.
     
@@ -342,6 +342,8 @@ def display_ancova_results(ancova_results, language_model=None):
         Dictionary containing the results of the ANCOVA analysis
     language_model : str, optional
         Language model used for analysis, by default None
+    model_code_str : str, optional
+        String representation of the model code, by default None
     """
     # Results Section
     with st.expander("Results", expanded=True):
@@ -457,7 +459,57 @@ def display_ancova_results(ancova_results, language_model=None):
     # AI Insights Section
     if ancova_results['llm_insights'] and language_model:
         with st.expander("AI Insights", expanded=True):
+            # Store the insights in session state for reuse
+            if 'ancova_analysis_response_markdown' not in st.session_state:
+                st.session_state['ancova_analysis_response_markdown'] = ancova_results['llm_insights']
+            
             st.markdown(ancova_results['llm_insights'])
+            
+            # Display a disclaimer about the prompt
+            disclaimer_text = """
+            **Note:** The AI assistant has been provided with the model code, sensitivity indices, 
+            and the analysis results above. You can ask questions to clarify any aspects of the ANCOVA analysis.
+            """
+            
+            # Define context generator function
+            def generate_context(prompt):
+                # Get variable names and indices from the results
+                variable_names = ancova_results['indices_df']['Variable'].tolist()
+                uncorrelated = ancova_results['indices_df']['Uncorrelated Index'].tolist()
+                correlated = ancova_results['indices_df']['Correlated Index'].tolist()
+                total = ancova_results['indices_df']['ANCOVA Index'].tolist()
+                
+                indices_summary = ', '.join([f"{name}: Uncorrelated={unc:.4f}, Correlated={cor:.4f}, Total={tot:.4f}" 
+                                           for name, unc, cor, tot in zip(variable_names, uncorrelated, correlated, total)])
+                
+                return f"""
+                You are an expert assistant helping users understand ANCOVA sensitivity analysis results. 
+                
+                Here is the model code:
+                ```python
+                {model_code_str if model_code_str else "Model code not available"}
+                ```
+                
+                Here is the sensitivity analysis summary:
+                {indices_summary}
+                
+                Here is the explanation that was previously generated:
+                {ancova_results['llm_insights']}
+                
+                Answer the user's question based on this information. Be concise but thorough.
+                If you're not sure about something, acknowledge the limitations of your knowledge.
+                Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                Explain the difference between uncorrelated and correlated contributions if asked.
+                """
+            
+            # Create the chat interface
+            create_chat_interface(
+                session_key="ancova_analysis",
+                context_generator=generate_context,
+                input_placeholder="Ask a question about the ANCOVA sensitivity analysis...",
+                disclaimer_text=disclaimer_text,
+                language_model=language_model
+            )
 
 def ancova_analysis(model, problem, size=2000, model_code_str=None, language_model=None):
     """
@@ -485,4 +537,4 @@ def ancova_analysis(model, problem, size=2000, model_code_str=None, language_mod
             language_model=language_model
         )
         
-        display_ancova_results(ancova_results, language_model)
+        display_ancova_results(ancova_results, language_model, model_code_str)

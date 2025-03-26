@@ -16,7 +16,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import scipy.stats as stats
 from scipy.stats import pearsonr
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
@@ -622,6 +622,75 @@ def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_
             st.session_state['ml_interpretation'] = response_markdown
 
         st.markdown(st.session_state['ml_interpretation'])
+    
+    # Display a disclaimer about the prompt
+    disclaimer_text = """
+    **Note:** The AI assistant has been provided with the model code, input distributions, 
+    and the SHAP analysis results above. You can ask questions to clarify any aspects of the analysis.
+    """
+    
+    # Define context generator function
+    def generate_context(prompt):
+        # Format the model code for inclusion in the context
+        if model_code_str:
+            model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
+        else:
+            model_code_formatted = "Model code not available"
+        
+        # Recreate the inputs description
+        input_parameters = []
+        dimension = problem.getDimension()
+        for i in range(dimension):
+            marginal = problem.getMarginal(i)
+            name = marginal.getDescription()[0]
+            if name == "":
+                name = f"X{i+1}"
+            dist_type = marginal.__class__.__name__
+            params = marginal.getParameter()
+            input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
+        
+        inputs_description = '\n'.join(input_parameters)
+        
+        # Get the SHAP summary table
+        shap_table = shap_results["shap_summary_df"].to_markdown(index=False)
+            
+        return f"""
+        You are an expert assistant helping users understand SHAP-based machine learning analysis results. 
+        
+        Here is the model code:
+        ```python
+        {model_code_formatted}
+        ```
+        
+        Here is information about the input distributions:
+        {inputs_description}
+        
+        The performance metrics of the Random Forest surrogate model are as follows:
+        - R² Score: {performance_metrics['r2']:.4f}
+        - Mean Squared Error: {performance_metrics['mse']:.4f}
+        - RMSE: {performance_metrics['rmse']:.4f}
+        - Cross-Validation R² (mean ± std): {performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}
+        
+        Here is the SHAP analysis summary:
+        {shap_table}
+        
+        Here is the explanation that was previously generated:
+        {st.session_state['ml_interpretation']}
+        
+        Answer the user's question based on this information. Be concise but thorough.
+        If you're not sure about something, acknowledge the limitations of your knowledge.
+        Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+        Explain the mathematical basis of SHAP values and how they differ from other feature importance methods if asked.
+        """
+    
+    # Create the chat interface
+    create_chat_interface(
+        session_key="ml_analysis",
+        context_generator=generate_context,
+        input_placeholder="Ask a question about the SHAP analysis...",
+        disclaimer_text=disclaimer_text,
+        language_model=language_model
+    )
 
 def create_validation_plot(y_true, y_pred):
     """
