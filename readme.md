@@ -9,7 +9,7 @@
 
 Welcome to **UncertaintyCat**—an interactive application designed to make **Uncertainty Quantification (UQ)** and **Sensitivity Analysis** accessible to everyone! Whether you're an engineer, data scientist, or researcher, UncertaintyCat simplifies complex UQ techniques, providing AI-driven insights and a user-friendly interface.
 
-[**🌐 Try the App Now!**](https://uncertainty.streamlit.app/)
+[**🌐 Try the App Now!**](https://uncertaintycat.streamlit.app/)
 
 ---
 
