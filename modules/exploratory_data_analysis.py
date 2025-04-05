@@ -10,10 +10,14 @@ import plotly.graph_objects as go
 import plotly.figure_factory as ff
 import plotly.subplots as sp
 import scipy.stats as stats
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 import seaborn as sns
 from typing import Dict, List, Tuple, Any, Optional, Union
+import uuid
+import json
+import os
+from groq import Groq
 
 def exploratory_data_analysis(data, N, model, problem, model_code_str, language_model='groq'):
     """
@@ -232,8 +236,58 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
                 {RETURN_INSTRUCTION}
                 """
                 
-                # Call the AI API
-                response = call_groq_api(prompt)
+                # Cache the response in session state
+                response_key = 'exploratory_analysis_response_markdown'
+                
+                if response_key not in st.session_state:
+                    # Call the AI API
+                    response = call_groq_api(prompt, model_name=language_model)
+                    st.session_state[response_key] = response
+                else:
+                    response = st.session_state[response_key]
                 
                 # Display the AI insights
                 st.markdown(response)
+            
+            # Display a disclaimer about the prompt
+            disclaimer_text = """
+            **Note:** The AI assistant has been provided with the model code, simulation data, 
+            and the analysis results above. You can ask questions to clarify any aspects of the data analysis.
+            """
+            
+            # Define context generator function
+            def generate_context(prompt):
+                return f"""
+                You are an expert assistant helping users understand exploratory data analysis results. 
+                
+                Here is the model code:
+                ```python
+                {model_code_str}
+                ```
+                
+                Here is basic statistics information:
+                {data.describe().to_string()}
+                
+                Additional statistics:
+                Skewness: {data[output_columns].skew().to_string()}
+                Kurtosis: {data[output_columns].kurtosis().to_string()}
+                
+                Correlation matrix:
+                {data.corr().to_string()}
+                
+                Here is the explanation that was previously generated:
+                {response}
+                
+                Answer the user's question based on this information. Be concise but thorough.
+                If you're not sure about something, acknowledge the limitations of your knowledge.
+                Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                """
+            
+            # Create the chat interface
+            create_chat_interface(
+                session_key="exploratory_analysis",
+                context_generator=generate_context,
+                input_placeholder="Ask a question about the data analysis...",
+                disclaimer_text=disclaimer_text,
+                language_model=language_model
+            )

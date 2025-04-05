@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 import streamlit as st
 import plotly.graph_objects as go
@@ -206,7 +206,7 @@ def fast_sensitivity_analysis(model, problem, size=400, model_code_str=None, lan
         st.error(f"Error in FAST sensitivity analysis: {str(e)}")
         raise e
 
-def display_fast_results(fast_results, language_model=None):
+def display_fast_results(fast_results, language_model=None, model_code_str=None):
     """
     Display FAST sensitivity analysis results in the Streamlit interface.
     
@@ -216,6 +216,8 @@ def display_fast_results(fast_results, language_model=None):
         Dictionary containing the results of the FAST analysis
     language_model : str, optional
         Language model used for analysis, by default None
+    model_code_str : str, optional
+        String representation of the model code, by default None
     """
     # Results Section
     with st.expander("Results", expanded=True):
@@ -308,7 +310,58 @@ def display_fast_results(fast_results, language_model=None):
     # AI Insights Section
     if fast_results['llm_insights'] and language_model:
         with st.expander("AI Insights", expanded=True):
+            # Store the insights in session state for reuse
+            if 'fast_analysis_response_markdown' not in st.session_state:
+                st.session_state['fast_analysis_response_markdown'] = fast_results['llm_insights']
+            
             st.markdown(fast_results['llm_insights'])
+            
+            # Display a disclaimer about the prompt
+            disclaimer_text = """
+            **Note:** The AI assistant has been provided with the model code, sensitivity indices, 
+            and the analysis results above. You can ask questions to clarify any aspects of the FAST analysis.
+            """
+            
+            # Define context generator function
+            def generate_context(prompt):
+                # Get variable names and indices from the results
+                variable_names = fast_results['indices_df']['Variable'].tolist()
+                first_order = fast_results['indices_df']['First Order'].tolist()
+                total_order = fast_results['indices_df']['Total Order'].tolist()
+                
+                indices_summary = ', '.join([f"{name}: First Order={first:.4f}, Total Order={total:.4f}" 
+                                           for name, first, total in zip(variable_names, first_order, total_order)])
+                
+                return f"""
+                You are an expert assistant helping users understand FAST sensitivity analysis results. 
+                
+                Here is the model code:
+                ```python
+                {model_code_str if model_code_str else "Model code not available"}
+                ```
+                
+                Here is the sensitivity analysis summary:
+                {indices_summary}
+                
+                Sum of First Order Indices: {sum_first_order:.4f}
+                Sum of Total Order Indices: {sum_total_order:.4f}
+                
+                Here is the explanation that was previously generated:
+                {fast_results['llm_insights']}
+                
+                Answer the user's question based on this information. Be concise but thorough.
+                If you're not sure about something, acknowledge the limitations of your knowledge.
+                Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                """
+            
+            # Create the chat interface
+            create_chat_interface(
+                session_key="fast_analysis",
+                context_generator=generate_context,
+                input_placeholder="Ask a question about the FAST sensitivity analysis...",
+                disclaimer_text=disclaimer_text,
+                language_model=language_model
+            )
 
 def fast_analysis(model, problem, size=400, model_code_str=None, language_model=None):
     """
@@ -336,4 +389,4 @@ def fast_analysis(model, problem, size=400, model_code_str=None, language_model=
             language_model=language_model
         )
         
-        display_fast_results(fast_results, language_model)
+        display_fast_results(fast_results, language_model, model_code_str)

@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import traceback
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model
 
@@ -381,13 +381,13 @@ def taylor_analysis(model, problem, model_code_str=None, language_model='groq'):
             # Add warning if R² is low
             if r2_value < 0.7:
                 st.warning("""
-                ⚠️ **Warning**: The linear surrogate model does not adequately approximate the original model.
+                **Warning**: The linear surrogate model does not adequately approximate the original model.
                 Taylor importance factors may not provide reliable sensitivity information.
                 Consider using a more advanced sensitivity analysis method like Sobol indices.
                 """)
             elif r2_value < 0.9:
                 st.info("""
-                ℹ️ **Note**: The linear surrogate model provides a moderate approximation of the original model.
+                **Note**: The linear surrogate model provides a moderate approximation of the original model.
                 Taylor importance factors should be interpreted with caution.
                 """)
             
@@ -596,6 +596,53 @@ def taylor_analysis(model, problem, model_code_str=None, language_model='groq'):
                 
                 # Display the response
                 st.markdown(response_markdown)
+                
+                # Display a disclaimer about the prompt
+                disclaimer_text = """
+                **Note:** The AI assistant has been provided with the model code, input distributions, 
+                and the Taylor analysis results above. You can ask questions to clarify any aspects of the analysis.
+                """
+                
+                # Define context generator function
+                def generate_context(prompt):
+                    # Format the indices for the context
+                    indices_summary = ', '.join([f"{row['Variable']}: Gradient={row['Gradient']:.4f}, Sensitivity Index={row['Sensitivity_Index']:.4f}" 
+                                              for _, row in detailed_df.iterrows()])
+                    
+                    return f"""
+                    You are an expert assistant helping users understand Taylor sensitivity analysis results. 
+                    
+                    Here is the model code:
+                    ```python
+                    {model_code_formatted if model_code_formatted else "Model code not available"}
+                    ```
+                    
+                    Here is information about the input distributions:
+                    {inputs_description}
+                    
+                    Here is the Taylor analysis summary:
+                    {indices_summary}
+                    
+                    Nominal point: {taylor_results['nominal_point']}
+                    Nominal value: {taylor_results['nominal_value']:.6f}
+                    
+                    Here is the explanation that was previously generated:
+                    {response_markdown}
+                    
+                    Answer the user's question based on this information. Be concise but thorough.
+                    If you're not sure about something, acknowledge the limitations of your knowledge.
+                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                    Explain the difference between gradients and sensitivity indices if asked.
+                    """
+                
+                # Create the chat interface
+                create_chat_interface(
+                    session_key="taylor_analysis",
+                    context_generator=generate_context,
+                    input_placeholder="Ask a question about the Taylor analysis...",
+                    disclaimer_text=disclaimer_text,
+                    language_model=language_model
+                )
     
     except Exception as e:
         st.error(f"Error in Taylor analysis: {str(e)}")

@@ -3,12 +3,16 @@ import pandas as pd
 import openturns as ot
 import streamlit as st
 from utils.constants import RETURN_INSTRUCTION
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.model_utils import get_ot_model
 from scipy import stats
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
+import uuid
+import json
+import os
+from groq import Groq
 
 def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8000, language_model='groq'):
     """Perform enterprise-grade expectation convergence analysis.
@@ -564,8 +568,61 @@ Format your response with clear section headings and bullet points. Focus on act
 """
             
             with st.spinner("Generating expert analysis..."):
-                response_markdown = call_groq_api(prompt, model_name=language_model)
+                response_key = 'convergence_analysis_response_markdown'
+                
+                if response_key not in st.session_state:
+                    response_markdown = call_groq_api(prompt, model_name=language_model)
+                    st.session_state[response_key] = response_markdown
+                else:
+                    response_markdown = st.session_state[response_key]
+                
                 st.markdown(response_markdown)
+            
+            # Initialize session state for chat
+            if "convergence_analysis_chat_messages" not in st.session_state:
+                st.session_state.convergence_analysis_chat_messages = []
+            
+            # Add chat interface for convergence analysis
+            st.write("### Ask Questions About This Analysis")
+            
+            # Display a disclaimer about the prompt
+            disclaimer_text = """
+            **Note:** The AI assistant has been provided with the model code, input distributions, 
+            and the convergence analysis results above. You can ask questions to clarify any aspects of the analysis.
+            """
+            
+            # Define context generator function
+            def generate_context(prompt):
+                return f"""
+                You are an expert assistant helping users understand convergence analysis results. 
+                
+                Here is the model code:
+                ```python
+                {model_code_str}
+                ```
+                
+                Here is information about the input distributions:
+                {inputs_df.to_markdown(index=False)}
+                
+                Here is the convergence analysis summary:
+                {convergence_summary}
+                
+                Here is the explanation that was previously generated:
+                {response_markdown}
+                
+                Answer the user's question based on this information. Be concise but thorough.
+                If you're not sure about something, acknowledge the limitations of your knowledge.
+                Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                """
+            
+            # Create the chat interface
+            create_chat_interface(
+                session_key="convergence_analysis",
+                context_generator=generate_context,
+                input_placeholder="Ask a question about the convergence analysis...",
+                disclaimer_text=disclaimer_text,
+                language_model=language_model
+            )
 
 def expectation_convergence_analysis_joint(model, problem, model_code_str, N_samples=8000, language_model='groq'):
     """Analyze convergence of Monte Carlo estimation with joint analysis."""

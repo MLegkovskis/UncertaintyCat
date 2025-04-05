@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import traceback
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
 
@@ -207,6 +207,46 @@ def hsic_analysis(model, problem, model_code_str=None, language_model='groq'):
                 
                 # Display the response
                 st.markdown(response_markdown)
+                
+                # Display a disclaimer about the prompt
+                disclaimer_text = """
+                **Note:** The AI assistant has been provided with the model code, input distributions, 
+                and the HSIC analysis results above. You can ask questions to clarify any aspects of the analysis.
+                """
+                
+                # Define context generator function
+                def generate_context(prompt):
+                    return f"""
+                    You are an expert assistant helping users understand HSIC sensitivity analysis results. 
+                    
+                    Here is the model code:
+                    ```python
+                    {model_code_formatted}
+                    ```
+                    
+                    Here is information about the input distributions:
+                    {inputs_description}
+                    
+                    Here is the HSIC analysis summary:
+                    {hsic_md_table}
+                    
+                    Here is the explanation that was previously generated:
+                    {response_markdown}
+                    
+                    Answer the user's question based on this information. Be concise but thorough.
+                    If you're not sure about something, acknowledge the limitations of your knowledge.
+                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                    Explain the mathematical basis of HSIC and how it differs from other sensitivity analysis methods if asked.
+                    """
+                
+                # Create the chat interface
+                create_chat_interface(
+                    session_key="hsic_analysis",
+                    context_generator=generate_context,
+                    input_placeholder="Ask a question about the HSIC analysis...",
+                    disclaimer_text=disclaimer_text,
+                    language_model=language_model
+                )
                 
         return hsic_results
     
