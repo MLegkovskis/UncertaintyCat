@@ -20,6 +20,7 @@ from modules.ml_analysis import ml_analysis
 from modules.morris_analysis import morris_analysis, dimensionality_reduction_page
 from modules.fast_analysis import fast_analysis
 from modules.ancova_analysis import ancova_analysis
+from modules.distribution_fitting import distribution_fitting_page, run_distribution_fitting_analysis
 
 # Import utils
 from utils.core_utils import (
@@ -60,6 +61,14 @@ if 'hsic_ran' not in st.session_state:
     st.session_state.hsic_ran = False
 if 'shap_ran' not in st.session_state:
     st.session_state.shap_ran = False
+if 'uploaded_data' not in st.session_state:
+    st.session_state.uploaded_data = None
+if 'fitted_distributions' not in st.session_state:
+    st.session_state.fitted_distributions = {}
+if 'selected_distributions' not in st.session_state:
+    st.session_state.selected_distributions = {}
+if 'problem_distribution' not in st.session_state:
+    st.session_state.problem_distribution = None
 
 ###############################################################################
 # 2) LOAD MODEL CODE FROM EXAMPLES
@@ -149,7 +158,8 @@ st.sidebar.markdown('<div style="text-align: center; padding: 10px 0;"><h3>Navig
 # Create pages with icons
 pages = {
     "📊 Main Analysis": "Comprehensive uncertainty quantification and sensitivity analysis",
-    "📉 Dimensionality Reduction": "Reduce model complexity by identifying non-influential variables"
+    "📉 Dimensionality Reduction": "Reduce model complexity by identifying non-influential variables",
+    "📈 Distribution Fitting": "Fit probability distributions to your data for UQ analysis"
 }
 selected_page = st.sidebar.radio("", list(pages.keys()))
 st.sidebar.markdown(f'<div class="info-box status-box">{pages[selected_page.strip()]}</div>', unsafe_allow_html=True)
@@ -658,3 +668,7 @@ if "📊 Main Analysis" in selected_page:
 elif "📉 Dimensionality Reduction" in selected_page:
     # Use the modular dimensionality reduction page function from morris_analysis module
     dimensionality_reduction_page(current_code, model, problem, selected_language_model)
+
+elif "📈 Distribution Fitting" in selected_page:
+    # Use the distribution fitting page function
+    distribution_fitting_page()
