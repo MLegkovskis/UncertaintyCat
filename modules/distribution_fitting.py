@@ -286,6 +286,38 @@ def create_multivariate_distribution(distributions, variable_names=None):
     
     return joint_dist
 
+def get_distribution_code_string(dist):
+    """
+    Generate a string representing the distribution code.
+    
+    Parameters
+    ----------
+    dist : ot.Distribution
+        OpenTURNS distribution
+        
+    Returns
+    -------
+    str
+        Distribution code string
+    """
+    # Try to get the actual OpenTURNS class name
+    try:
+        ot_class_name = dist.getName()
+    except Exception:
+        try:
+            ot_class_name = dist.getClassName()
+            if ot_class_name.endswith("Implementation"):
+                ot_class_name = ot_class_name[:-14]  # Remove "Implementation"
+        except Exception:
+            ot_class_name = dist.getClassName().replace("Factory", "")
+    
+    # Format with full precision
+    params = dist.getParameter()
+    param_str = ", ".join([str(p) for p in params])
+    formula_str = f"ot.{ot_class_name}({param_str})"
+    
+    return formula_str
+
 def distribution_fitting_page():
     """
     Main function for the distribution fitting page.
@@ -659,12 +691,12 @@ def distribution_fitting_page():
                         
                         stat_df = pd.DataFrame([
                             {
-                                "Distribution": name,
+                                "Distribution": f"Distribution{i+1}",
                                 "BIC": round(stats.get("BIC", float('inf')), 3),
                                 "AIC": round(stats.get("AIC", float('inf')), 3),
                                 "KS p-value": round(stats.get("KS p-value", 0), 3)
                             }
-                            for name, stats in zip(fit_results["names"], fit_results["statistics"])
+                            for i, (name, stats) in enumerate(zip(fit_results["names"], fit_results["statistics"]))
                         ])
                         
                         # Color code the table
@@ -709,7 +741,7 @@ def distribution_fitting_page():
                         selected_idx = st.selectbox(
                             f"Select distribution for {var}",
                             range(len(fit_results["names"])),
-                            format_func=lambda i: f"{fit_results['names'][i]} (BIC: {round(fit_results['statistics'][i].get('BIC', float('inf')), 3)})",
+                            format_func=lambda i: f"Distribution{i+1}",
                             index=default_selection
                         )
                         
@@ -718,6 +750,12 @@ def distribution_fitting_page():
                             "distribution": fit_results["distributions"][selected_idx],
                             "name": fit_results["names"][selected_idx]
                         }
+                        
+                        # Display the selected distribution formula
+                        dist = fit_results["distributions"][selected_idx]
+                        formula_str = get_distribution_code_string(dist)
+                        
+                        st.info(f"**Selected distribution code:** {formula_str}", icon="ℹ️")
                         
                         # Plot all distributions with the selected one highlighted
                         fig = plot_distribution_fit(
@@ -749,8 +787,7 @@ def distribution_fitting_page():
                     selected_df = pd.DataFrame([
                         {
                             "Variable": var,
-                            "Selected Distribution": info["name"],
-                            "Parameters": ", ".join([f"{p:.3f}" for p in info["distribution"].getParameter()])
+                            "Distribution Formula": get_distribution_code_string(info["distribution"])
                         }
                         for var, info in st.session_state.selected_distributions.items()
                     ])
@@ -819,14 +856,12 @@ model = ot.PythonFunction({len([var for var in selected_variables if var in st.s
                                     try:
                                         dist_class = dist.getName()
                                     except Exception:
-                                        # If getName() doesn't work, fallback to factory type
-                                        if "factory_type" in dist_info:
-                                            dist_class = dist_info["factory_type"]
-                                        else:
-                                            # Last resort: use class name with Implementation removed
+                                        try:
                                             dist_class = dist.getClassName()
                                             if dist_class.endswith("Implementation"):
                                                 dist_class = dist_class[:-14]  # Remove "Implementation"
+                                        except Exception:
+                                            dist_class = dist_info["name"]
                                     
                                     # If we end up with "Distribution" as the class, default to "Normal"
                                     if dist_class == "Distribution":
