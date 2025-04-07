@@ -206,7 +206,7 @@ st.sidebar.markdown('<h3>AI Configuration</h3>', unsafe_allow_html=True)
 groq_model_options = [
     "gemma2-9b-it",
     "llama-3.3-70b-versatile",
-    "mixtral-8x7b-32768",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
     "qwen-2.5-32b",
     "deepseek-r1-distill-llama-70b"
 ]
