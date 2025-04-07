@@ -6,7 +6,6 @@ openturns
 SALib
 scikit-learn
 llvmlite
-numba
 shap
 scipy
 groq
