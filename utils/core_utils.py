@@ -15,7 +15,7 @@ from groq import Groq
 
 # ================ API Utilities ================
 
-def call_groq_api(prompt, model_name="gemma2-9b-it"):
+def call_groq_api(prompt, model_name="meta-llama/llama-4-scout-17b-16e-instruct"):
     """
     Call the Groq API with a provided prompt.
     
@@ -24,7 +24,7 @@ def call_groq_api(prompt, model_name="gemma2-9b-it"):
     prompt : str
         The prompt to send to the API
     model_name : str, optional
-        The model to use, by default "gemma2-9b-it"
+        The model to use, by default "meta-llama/llama-4-scout-17b-16e-instruct"
         
     Returns
     -------
@@ -51,7 +51,7 @@ def call_groq_api(prompt, model_name="gemma2-9b-it"):
 
 # ================ Chat Interface Utilities ================
 
-def create_chat_interface(session_key, context_generator, input_placeholder="Ask a question...", disclaimer_text=None, language_model="gemma2-9b-it"):
+def create_chat_interface(session_key, context_generator, input_placeholder="Ask a question...", disclaimer_text=None, language_model="meta-llama/llama-4-scout-17b-16e-instruct"):
     """
     Creates a standardized chat interface for UncertaintyCat modules.
     
