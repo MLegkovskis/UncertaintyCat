@@ -146,7 +146,7 @@ col1, col2 = st.columns([1, 5])
 with col1:
     st.image("logo.jpg", width=100)
 with col2:
-    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.18</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.19</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color: #7F8C8D;">Advanced Uncertainty Quantification and Sensitivity Analysis Platform</p>', unsafe_allow_html=True)
 
 # Fullscreen recommendation
@@ -204,9 +204,9 @@ st.sidebar.markdown('<div class="section-divider"></div>', unsafe_allow_html=Tru
 st.sidebar.markdown('<h3>AI Configuration</h3>', unsafe_allow_html=True)
 
 groq_model_options = [
-    "gemma2-9b-it",
-    "llama-3.3-70b-versatile",
     "meta-llama/llama-4-scout-17b-16e-instruct",
+    "llama-3.3-70b-versatile",
+    "gemma2-9b-it",
     "qwen-2.5-32b",
     "deepseek-r1-distill-llama-70b"
 ]
