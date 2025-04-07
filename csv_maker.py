@@ -27,7 +27,7 @@ copula = ot.NormalCopula(R)
 joint_distribution = ot.JointDistribution([E, F, L, I], copula)
 
 # Number of samples (adjust this variable as needed)
-num_samples = 1000
+num_samples = 10000
 
 # Generate sample input rows from the joint distribution
 sample_inputs = joint_distribution.getSample(num_samples)
