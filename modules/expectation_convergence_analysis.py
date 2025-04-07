@@ -581,10 +581,7 @@ Format your response with clear section headings and bullet points. Focus on act
             # Initialize session state for chat
             if "convergence_analysis_chat_messages" not in st.session_state:
                 st.session_state.convergence_analysis_chat_messages = []
-            
-            # Add chat interface for convergence analysis
-            st.write("### Ask Questions About This Analysis")
-            
+                        
             # Display a disclaimer about the prompt
             disclaimer_text = """
             **Note:** The AI assistant has been provided with the model code, input distributions, 
