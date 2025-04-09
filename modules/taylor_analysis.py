@@ -250,399 +250,475 @@ def taylor_analysis(model, problem, model_code_str=None, language_model='groq'):
         Language model to use for analysis
     """
     try:
-        # Ensure problem is an OpenTURNS distribution
-        if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
-            raise ValueError("Problem must be an OpenTURNS distribution")
+        # Create a two-column layout for the main content and chat interface
+        main_col, chat_col = st.columns([2, 1])
         
-        # Get input names
-        dimension = problem.getDimension()
-        input_names = []
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            name = marginal.getDescription()[0]
-            input_names.append(name if name != "" else f"X{i+1}")
-        
-        # Define the output as the result of the model applied to the input vector
-        input_vector = ot.RandomVector(problem)
-        output_vector = ot.CompositeRandomVector(model, input_vector)
-
-        # Perform Taylor expansion moments and importance factors analysis
-        taylor = ot.TaylorExpansionMoments(output_vector)
-        importance_factors = taylor.getImportanceFactors()
-
-        # Extract the importance factors and multiply by 100 for percentage representation
-        importance_values = [importance_factors[i] * 100 for i in range(len(input_names))]
-        variable_names = input_names
-
-        # Create a DataFrame for the importance factors
-        taylor_df = pd.DataFrame({
-            'Variable': variable_names,
-            'Importance Factor (%)': importance_values
-        })
-        
-        # Sort by importance factor in descending order
-        taylor_df = taylor_df.sort_values('Importance Factor (%)', ascending=False)
-        
-        # Validate the Taylor surrogate model
-        validation_results = validate_taylor_surrogate(model, problem, n_validation=100)
-        
-        # Compute additional Taylor analysis results
-        taylor_results = compute_taylor_indices(model, problem)
-        detailed_df = create_taylor_dataframe(taylor_results)
-        
-        # Results Section
-        with st.expander("Results", expanded=True):
-            st.subheader("Taylor Expansion Sensitivity Analysis")
-            st.markdown("""
-            Taylor expansion sensitivity analysis approximates the model using a first-order Taylor series
-            and estimates the contribution of each input variable to the output variance.
+        with main_col:
+            # Compute Taylor indices
+            with st.spinner("Computing Taylor indices..."):
+                taylor_results = compute_taylor_indices(model, problem)
             
-            This method is computationally efficient but relies on the assumption that the model
-            behaves linearly around the nominal point (usually the mean of the input distributions).
-            """)
+            # Validate the Taylor surrogate model
+            with st.spinner("Validating Taylor surrogate model..."):
+                validation_results = validate_taylor_surrogate(model, problem, n_validation=100)
             
-            # Surrogate Model Validation
-            st.subheader("Linear Surrogate Model Validation")
-            st.markdown("""
-            Taylor importance factors are only meaningful when the first-order Taylor expansion
-            is a good approximation of the original model. The metrics below assess how well
-            the linear surrogate model approximates the original model.
-            """)
+            # Create Taylor dataframe
+            taylor_df = create_taylor_dataframe(taylor_results)
             
-            # Create metrics in columns
-            col1, col2, col3 = st.columns(3)
+            # Create detailed dataframe
+            detailed_df = pd.DataFrame({
+                'Variable': taylor_results['input_names'],
+                'Nominal_Point': taylor_results['nominal_point'],
+                'Gradient': taylor_results['gradients'],
+                'Variance': taylor_results['variances'],
+                'Sensitivity_Index': taylor_results['sensitivity_indices'],
+                'Sensitivity_Index (%)': taylor_results['sensitivity_indices'] * 100
+            })
             
-            # Display R² with color coding
-            r2_value = validation_results['r_squared']
-            r2_color = 'normal'
-            if r2_value < 0.7:
-                r2_color = 'off'
-                r2_warning = "Poor linear approximation"
-            elif r2_value < 0.9:
-                r2_color = 'normal'  
-                r2_warning = "Moderate approximation"
-            else:
-                r2_warning = "Good approximation"
+            # Sort by importance
+            taylor_df = taylor_df.sort_values('Sensitivity_Index (%)', ascending=False).reset_index(drop=True)
+            detailed_df = detailed_df.sort_values('Sensitivity_Index', ascending=False).reset_index(drop=True)
+            
+            # Results Section
+            with st.expander("Results", expanded=True):
+                # Overview
+                st.subheader("Taylor Analysis Overview")
+                st.markdown(f"""
+                The Taylor expansion is performed around the nominal point (typically the mean of each input variable).
+                The nominal value of the output is **{taylor_results['nominal_value']:.6f}**.
                 
-            col1.metric("R² Score", f"{r2_value:.4f}", delta=r2_warning, delta_color=r2_color)
-            col2.metric("RMSE", f"{validation_results['rmse']:.4f}")
-            col3.metric("Normalized RMSE", f"{validation_results['nrmse']:.4f}")
-            
-            # Add interpretation guidance
-            st.markdown(f"""
-            **Interpretation Guide:**
-            - **R² Score**: Measures how well the linear model explains the variance in the original model
-                - R² > 0.9: Excellent linear approximation
-                - 0.7 < R² < 0.9: Good linear approximation
-                - R² < 0.7: Poor linear approximation, Taylor indices may be misleading
-            
-            - **RMSE**: Root Mean Square Error between the original model and the linear surrogate
-            
-            - **Normalized RMSE**: RMSE divided by the range of the output, provides a scale-independent error metric
-                - NRMSE < 0.1: Excellent approximation
-                - 0.1 < NRMSE < 0.2: Good approximation
-                - NRMSE > 0.2: Poor approximation
-            """)
-            
-            # Create scatter plot of original vs surrogate model predictions
-            validation_data = validation_results['validation_data']
-            
-            # Create the scatter plot
-            fig_validation = px.scatter(
-                x=validation_data['original'],
-                y=validation_data['surrogate'],
-                labels={'x': 'Original Model', 'y': 'Linear Surrogate Model'},
-                title='Original vs. Linear Surrogate Model Predictions'
-            )
-            
-            # Add the perfect prediction line
-            min_val = min(min(validation_data['original']), min(validation_data['surrogate']))
-            max_val = max(max(validation_data['original']), max(validation_data['surrogate']))
-            fig_validation.add_trace(
-                go.Scatter(
-                    x=[min_val, max_val],
-                    y=[min_val, max_val],
-                    mode='lines',
-                    name='Perfect Prediction',
-                    line=dict(color='red', dash='dash')
-                )
-            )
-            
-            # Update layout
-            fig_validation.update_layout(
-                template='plotly_white',
-                height=500,
-                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-            )
-            
-            # Display the plot
-            st.plotly_chart(fig_validation, use_container_width=True)
-            
-            # Add warning if R² is low
-            if r2_value < 0.7:
-                st.warning("""
-                **Warning**: The linear surrogate model does not adequately approximate the original model.
-                Taylor importance factors may not provide reliable sensitivity information.
-                Consider using a more advanced sensitivity analysis method like Sobol indices.
+                The Taylor importance factors are calculated as:
+                
+                $$S_i = \\frac{{(\\partial f / \\partial x_i)^2 \\cdot \\sigma_i^2}}{{\\sum_j (\\partial f / \\partial x_j)^2 \\cdot \\sigma_j^2}}$$
+                
+                where:
+                - $\\partial f / \\partial x_i$ is the partial derivative of the model with respect to variable $i$
+                - $\\sigma_i^2$ is the variance of variable $i$
+                
+                These factors represent the contribution of each variable to the output variance, assuming the model
+                behaves linearly around the nominal point (usually the mean of the input distributions).
                 """)
-            elif r2_value < 0.9:
-                st.info("""
-                **Note**: The linear surrogate model provides a moderate approximation of the original model.
-                Taylor importance factors should be interpreted with caution.
+                
+                # Surrogate Model Validation
+                st.subheader("Linear Surrogate Model Validation")
+                st.markdown("""
+                Taylor importance factors are only meaningful when the first-order Taylor expansion
+                is a good approximation of the original model. The metrics below assess how well
+                the linear surrogate model approximates the original model.
                 """)
-            
-            # Taylor Importance Factors
-            st.subheader("Taylor Importance Factors")
-            
-            # Get most influential variable
-            most_influential = taylor_df.iloc[0]['Variable']
-            most_influential_value = taylor_df.iloc[0]['Importance Factor (%)']
-            
-            # Calculate sum of importance factors
-            sum_importance = taylor_df['Importance Factor (%)'].sum()
-            
-            # Create summary metrics
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(
-                    "Most Influential Variable", 
-                    most_influential,
-                    f"Importance: {most_influential_value:.2f}%"
+                
+                # Create metrics in columns
+                col1, col2, col3 = st.columns(3)
+                
+                # Display R² with color coding
+                r2_value = validation_results['r_squared']
+                r2_color = 'normal'
+                if r2_value < 0.7:
+                    r2_color = 'off'
+                    r2_warning = "Poor linear approximation"
+                elif r2_value < 0.9:
+                    r2_color = 'normal'  
+                    r2_warning = "Moderate approximation"
+                else:
+                    r2_warning = "Good approximation"
+                    
+                col1.metric("R² Score", f"{r2_value:.4f}", delta=r2_warning, delta_color=r2_color)
+                col2.metric("RMSE", f"{validation_results['rmse']:.4f}")
+                col3.metric("Normalized RMSE", f"{validation_results['nrmse']:.4f}")
+                
+                # Add interpretation guidance
+                st.markdown(f"""
+                **Interpretation Guide:**
+                - **R² Score**: Measures how well the linear model explains the variance in the original model
+                    - R² > 0.9: Excellent linear approximation
+                    - 0.7 < R² < 0.9: Good linear approximation
+                    - R² < 0.7: Poor linear approximation, Taylor indices may be misleading
+                
+                - **RMSE**: Root Mean Square Error between the original model and the linear surrogate
+                
+                - **Normalized RMSE**: RMSE divided by the range of the output, provides a scale-independent error metric
+                    - NRMSE < 0.1: Excellent approximation
+                    - 0.1 < NRMSE < 0.2: Good approximation
+                    - NRMSE > 0.2: Poor approximation
+                """)
+                
+                # Create scatter plot of original vs surrogate model predictions
+                validation_data = validation_results['validation_data']
+                
+                # Create the scatter plot
+                fig_validation = px.scatter(
+                    x=validation_data['original'],
+                    y=validation_data['surrogate'],
+                    labels={'x': 'Original Model', 'y': 'Linear Surrogate Model'},
+                    title='Original vs. Linear Surrogate Model Predictions'
                 )
-            with col2:
-                st.metric("Sum of Importance Factors", f"{sum_importance:.2f}%")
-            
-            # Create tabs for different visualizations
-            tab1, tab2 = st.tabs(["Bar Chart", "Pie Chart"])
-            
-            with tab1:
-                # Create bar chart using Plotly
-                fig_bar = px.bar(
-                    taylor_df,
-                    x='Variable',
-                    y='Importance Factor (%)',
-                    color='Importance Factor (%)',
-                    color_continuous_scale='Viridis',
-                    title='Taylor Importance Factors'
+                
+                # Add the perfect prediction line
+                min_val = min(min(validation_data['original']), min(validation_data['surrogate']))
+                max_val = max(max(validation_data['original']), max(validation_data['surrogate']))
+                fig_validation.add_trace(
+                    go.Scatter(
+                        x=[min_val, max_val],
+                        y=[min_val, max_val],
+                        mode='lines',
+                        name='Perfect Prediction',
+                        line=dict(color='red', dash='dash')
+                    )
                 )
                 
                 # Update layout
-                fig_bar.update_layout(
-                    xaxis_title='Input Variable',
-                    yaxis_title='Importance Factor (%)',
-                    template='plotly_white',
-                    height=500
-                )
-                
-                # Display the bar chart
-                st.plotly_chart(fig_bar, use_container_width=True)
-            
-            with tab2:
-                # Create pie chart using Plotly
-                fig_pie = px.pie(
-                    taylor_df,
-                    values='Importance Factor (%)',
-                    names='Variable',
-                    title='Taylor Importance Factors',
-                    color_discrete_sequence=px.colors.qualitative.Plotly
-                )
-                
-                # Update layout
-                fig_pie.update_layout(
+                fig_validation.update_layout(
                     template='plotly_white',
                     height=500,
-                    legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5)
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
                 )
                 
-                # Display the pie chart
-                st.plotly_chart(fig_pie, use_container_width=True)
-            
-            # Display the importance factors table
-            st.subheader("Importance Factors Table")
-            st.dataframe(taylor_df, use_container_width=True)
-            
-            # Detailed Analysis
-            st.subheader("Detailed Taylor Analysis Results")
-            
-            # Display the detailed results table
-            st.dataframe(detailed_df[['Variable', 'Nominal_Point', 'Gradient', 'Variance', 'Sensitivity_Index (%)']], use_container_width=True)
-            
-            # Display explanation of the columns
-            st.markdown("""
-            **Table Explanation:**
-            - **Variable**: Input variable name
-            - **Nominal_Point**: Value at which the Taylor expansion is computed (typically the mean)
-            - **Gradient**: Partial derivative of the model with respect to the variable at the nominal point
-            - **Variance**: Variance of the input variable
-            - **Sensitivity_Index (%)**: Contribution of the variable to the output variance, calculated as (Gradient² × Variance) / Total Variance
-            """)
-            
-            # Create a heatmap of gradients
-            gradient_df = detailed_df.copy()
-            gradient_df['Abs_Gradient'] = np.abs(gradient_df['Gradient'])
-            gradient_df = gradient_df.sort_values('Abs_Gradient', ascending=False)
-            
-            # Create the heatmap
-            fig_heatmap = px.imshow(
-                np.array([gradient_df['Gradient']]),
-                x=gradient_df['Variable'],
-                color_continuous_scale='RdBu_r',
-                title='Model Gradients at Nominal Point',
-                labels=dict(color='Gradient Value')
-            )
-            
-            # Update layout
-            fig_heatmap.update_layout(
-                template='plotly_white',
-                height=300,
-                yaxis_visible=False
-            )
-            
-            # Display the heatmap
-            st.plotly_chart(fig_heatmap, use_container_width=True)
-            
-            # Add explanation of gradients
-            st.markdown("""
-            **Gradient Interpretation:**
-            - **Positive gradient**: Variable has a positive effect on the output (increasing the variable increases the output)
-            - **Negative gradient**: Variable has a negative effect on the output (increasing the variable decreases the output)
-            - **Larger magnitude**: Variable has a stronger local effect on the output
-            """)
-        
-        # Generate prompt for AI insights
-        # Prepare the data for the API call
-        taylor_md_table = taylor_df.to_markdown(index=False, floatfmt=".2f")
-        
-        # Format the model code for inclusion in the prompt
-        model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')]) if model_code_str else ""
-        
-        # Prepare the inputs description
-        input_parameters = []
-        dimension = problem.getDimension()
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            name = problem.getDescription()[i]
-            dist_type = marginal.__class__.__name__
-            params = marginal.getParameter()
-            input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
-        
-        inputs_description = '\n'.join(input_parameters)
-        
-        # Add validation results to the prompt
-        validation_info = f"""
-        The linear surrogate model validation results:
-        - R² Score: {validation_results['r_squared']:.4f}
-        - RMSE: {validation_results['rmse']:.4f}
-        - Normalized RMSE: {validation_results['nrmse']:.4f}
-        """
-        
-        # Prepare the prompt
-        prompt = f"""
-        {RETURN_INSTRUCTION}
-        
-        Given the following user-defined model defined in Python code:
-        
-        ```python
-        {model_code_formatted}
-        ```
-        
-        and the following uncertain input distributions:
-        
-        {inputs_description}
-        
-        The results of the Taylor expansion importance factors are given below:
-        
-        {taylor_md_table}
-        
-        {validation_info}
-        
-        Please provide an expert analysis of the Taylor expansion sensitivity results:
-        
-        1. **Methodology Overview**
-           - Explain the mathematical basis of the Taylor expansion method in sensitivity analysis
-           - Discuss how the importance factors are calculated using the derivatives of the model
-           - Explain the limitations of this approach and when it is most appropriate
-        
-        2. **Results Interpretation**
-           - Interpret the importance factors, focusing on which variables have the most significant impact on the output variance
-           - Discuss the physical or mathematical reasons behind the importance of these variables
-           - Explain what the gradient signs tell us about how each variable affects the output
-        
-        3. **Surrogate Model Validity**
-           - Assess whether the linear surrogate model is a good approximation based on the validation metrics
-           - Explain the implications if the R² score is low
-           - Recommend alternative approaches if the linear approximation is inadequate
-        
-        4. **Recommendations**
-           - Suggest which variables should be prioritized for uncertainty reduction
-           - Provide guidance on how these results can inform decision-making
-           - Identify any potential limitations or caveats in the analysis
-        
-        Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
-        """
-        
-        # Display AI insights
-        if language_model:
-            with st.expander("AI Insights", expanded=True):
-                # Check if the results are already in session state
-                if 'taylor_response_markdown' not in st.session_state:
-                    # Call the AI API
-                    with st.spinner("Generating expert analysis..."):
-                        response_markdown = call_groq_api(prompt, model_name=language_model)
-                    # Store the response in session state
-                    st.session_state.taylor_response_markdown = response_markdown
-                else:
-                    response_markdown = st.session_state.taylor_response_markdown
+                # Display the plot
+                st.plotly_chart(fig_validation, use_container_width=True)
                 
-                # Display the response
-                st.markdown(response_markdown)
+                # Add warning if R² is low
+                if r2_value < 0.7:
+                    st.warning("""
+                    **Warning**: The linear surrogate model does not adequately approximate the original model.
+                    Taylor importance factors may not provide reliable sensitivity information.
+                    Consider using a more advanced sensitivity analysis method like Sobol indices.
+                    """)
+                elif r2_value < 0.9:
+                    st.info("""
+                    **Note**: The linear surrogate model provides a moderate approximation of the original model.
+                    Taylor importance factors should be interpreted with caution.
+                    """)
+                
+                # Taylor Importance Factors
+                st.subheader("Taylor Importance Factors")
+                
+                # Get most influential variable
+                most_influential = taylor_df.iloc[0]['Variable']
+                most_influential_value = taylor_df.iloc[0]['Sensitivity_Index (%)']
+                
+                # Calculate sum of importance factors
+                sum_importance = taylor_df['Sensitivity_Index (%)'].sum()
+                
+                # Create summary metrics
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(
+                        "Most Influential Variable", 
+                        most_influential,
+                        f"Importance: {most_influential_value:.2f}%"
+                    )
+                with col2:
+                    st.metric("Sum of Importance Factors", f"{sum_importance:.2f}%")
+                
+                # Create tabs for different visualizations
+                tab1, tab2 = st.tabs(["Bar Chart", "Pie Chart"])
+                
+                with tab1:
+                    # Create bar chart using Plotly
+                    fig_bar = px.bar(
+                        taylor_df,
+                        x='Variable',
+                        y='Sensitivity_Index (%)',
+                        color='Sensitivity_Index (%)',
+                        color_continuous_scale='Viridis',
+                        title='Taylor Importance Factors'
+                    )
+                    
+                    # Update layout
+                    fig_bar.update_layout(
+                        xaxis_title='Input Variable',
+                        yaxis_title='Importance Factor (%)',
+                        template='plotly_white',
+                        height=500
+                    )
+                    
+                    # Display the bar chart
+                    st.plotly_chart(fig_bar, use_container_width=True)
+                
+                with tab2:
+                    # Create pie chart using Plotly
+                    fig_pie = px.pie(
+                        taylor_df,
+                        values='Sensitivity_Index (%)',
+                        names='Variable',
+                        title='Taylor Importance Factors',
+                        color_discrete_sequence=px.colors.qualitative.Plotly
+                    )
+                    
+                    # Update layout
+                    fig_pie.update_layout(
+                        template='plotly_white',
+                        height=500,
+                        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5)
+                    )
+                    
+                    # Display the pie chart
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                
+                # Display the importance factors table
+                st.subheader("Importance Factors Table")
+                st.dataframe(taylor_df, use_container_width=True)
+                
+                # Detailed Analysis
+                st.subheader("Detailed Taylor Analysis Results")
+                
+                # Display the detailed results table
+                st.dataframe(detailed_df[['Variable', 'Nominal_Point', 'Gradient', 'Variance', 'Sensitivity_Index (%)']], use_container_width=True)
+                
+                # Display explanation of the columns
+                st.markdown("""
+                **Table Explanation:**
+                - **Variable**: Input variable name
+                - **Nominal_Point**: Value at which the Taylor expansion is computed (typically the mean)
+                - **Gradient**: Partial derivative of the model with respect to the variable at the nominal point
+                - **Variance**: Variance of the input variable
+                - **Sensitivity_Index (%)**: Contribution of the variable to the output variance, calculated as (Gradient² × Variance) / Total Variance
+                """)
+                
+                # Create a heatmap of gradients
+                gradient_df = detailed_df.copy()
+                gradient_df['Abs_Gradient'] = np.abs(gradient_df['Gradient'])
+                gradient_df = gradient_df.sort_values('Abs_Gradient', ascending=False)
+                
+                # Create the heatmap
+                fig_heatmap = px.imshow(
+                    np.array([gradient_df['Gradient']]),
+                    x=gradient_df['Variable'],
+                    color_continuous_scale='RdBu_r',
+                    title='Model Gradients at Nominal Point',
+                    labels=dict(color='Gradient Value')
+                )
+                
+                # Update layout
+                fig_heatmap.update_layout(
+                    template='plotly_white',
+                    height=300,
+                    yaxis_visible=False
+                )
+                
+                # Display the heatmap
+                st.plotly_chart(fig_heatmap, use_container_width=True)
+                
+                # Explanation of gradients
+                st.markdown("""
+                **Gradient Interpretation:**
+                - **Positive Gradient**: An increase in the input variable leads to an increase in the output
+                - **Negative Gradient**: An increase in the input variable leads to a decrease in the output
+                - **Magnitude**: The absolute value indicates how sensitive the output is to small changes in the input
+                """)
+            
+            # Prepare data for AI analysis
+            # Format model code for display
+            model_code_formatted = model_code_str if model_code_str else "Model code not available"
+            
+            # Create a markdown table of the Taylor indices
+            taylor_md_table = "| Variable | Importance Factor (%) | Gradient | Variance |\n"
+            taylor_md_table += "|----------|----------------------|----------|----------|\n"
+            
+            for _, row in detailed_df.iterrows():
+                taylor_md_table += f"| {row['Variable']} | {row['Sensitivity_Index (%)']: .2f}% | {row['Gradient']: .6f} | {row['Variance']: .6f} |\n"
+            
+            # Create a description of the input distributions
+            inputs_description = "Input distributions:\n"
+            for i in range(problem.getDimension()):
+                marginal = problem.getMarginal(i)
+                name = taylor_results['input_names'][i]
+                mean = marginal.getMean()[0]
+                std = marginal.getStandardDeviation()[0]
+                dist_type = str(marginal).split('(')[0]
+                inputs_description += f"- {name}: {dist_type} distribution with mean={mean:.4f}, std={std:.4f}\n"
+            
+            # Add validation information
+            validation_info = f"""
+            Surrogate model validation:
+            - R² Score: {validation_results['r_squared']:.4f}
+            - RMSE: {validation_results['rmse']:.6f}
+            - Normalized RMSE: {validation_results['nrmse']:.4f}
+            """
+            
+            # Create the prompt for AI analysis
+            prompt = f"""
+            You are an expert in uncertainty quantification and sensitivity analysis.
+            
+            Analyze the following Taylor expansion sensitivity analysis results for a mathematical model.
+            
+            Model code:
+            ```python
+            {model_code_formatted}
+            ```
+            
+            {inputs_description}
+            
+            The results of the Taylor expansion importance factors are given below:
+            
+            {taylor_md_table}
+            
+            {validation_info}
+            
+            Please provide an expert analysis of the Taylor expansion sensitivity results:
+            
+            1. **Methodology Overview**
+               - Explain the mathematical basis of the Taylor expansion method in sensitivity analysis
+               - Discuss how the importance factors are calculated using the derivatives of the model
+               - Explain the limitations of this approach and when it is most appropriate
+            
+            2. **Results Interpretation**
+               - Interpret the importance factors, focusing on which variables have the most significant impact on the output variance
+               - Discuss the physical or mathematical reasons behind the importance of these variables
+               - Explain what the gradient signs tell us about how each variable affects the output
+            
+            3. **Surrogate Model Validity**
+               - Assess whether the linear surrogate model is a good approximation based on the validation metrics
+               - Explain the implications if the R² score is low
+               - Recommend alternative approaches if the linear approximation is inadequate
+            
+            4. **Recommendations**
+               - Suggest which variables should be prioritized for uncertainty reduction
+               - Provide guidance on how these results can inform decision-making
+               - Identify any potential limitations or caveats in the analysis
+            
+            Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
+            """
+            
+            # Display AI insights
+            if language_model:
+                with st.expander("AI Insights", expanded=True):
+                    # Check if the results are already in session state
+                    if 'taylor_response_markdown' not in st.session_state:
+                        # Call the AI API
+                        with st.spinner("Generating expert analysis..."):
+                            response_markdown = call_groq_api(prompt, model_name=language_model)
+                        # Store the response in session state
+                        st.session_state.taylor_response_markdown = response_markdown
+                    else:
+                        response_markdown = st.session_state.taylor_response_markdown
+                    
+                    # Display the response
+                    st.markdown(response_markdown)
+        
+        # CHAT INTERFACE in the right column
+        if language_model:
+            with chat_col:
+                st.markdown("### Ask Questions About This Analysis")
                 
                 # Display a disclaimer about the prompt
                 disclaimer_text = """
                 **Note:** The AI assistant has been provided with the model code, input distributions, 
                 and the Taylor analysis results above. You can ask questions to clarify any aspects of the analysis.
                 """
+                st.info(disclaimer_text)
                 
-                # Define context generator function
-                def generate_context(prompt):
-                    # Format the indices for the context
-                    indices_summary = ', '.join([f"{row['Variable']}: Gradient={row['Gradient']:.4f}, Sensitivity Index={row['Sensitivity_Index']:.4f}" 
-                                              for _, row in detailed_df.iterrows()])
+                # Initialize session state for chat messages if not already done
+                if "taylor_analysis_chat_messages" not in st.session_state:
+                    st.session_state.taylor_analysis_chat_messages = []
+                
+                # Create a container with fixed height for the chat messages
+                chat_container_height = 500  # Height in pixels
+                
+                # Apply CSS to create a scrollable container
+                st.markdown(f"""
+                <style>
+                .chat-container {{
+                    height: {chat_container_height}px;
+                    overflow-y: auto;
+                    border: 1px solid #e6e6e6;
+                    border-radius: 5px;
+                    padding: 10px;
+                    background-color: #f9f9f9;
+                    margin-bottom: 15px;
+                }}
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Create a container for the chat messages
+                with st.container():
+                    # Use HTML to create a scrollable container
+                    chat_messages_html = "<div class='chat-container'>"
                     
-                    return f"""
-                    You are an expert assistant helping users understand Taylor sensitivity analysis results. 
+                    # Display existing messages
+                    for message in st.session_state.taylor_analysis_chat_messages:
+                        role_style = "background-color: #e1f5fe; border-radius: 10px; padding: 8px; margin: 5px 0;" if message["role"] == "assistant" else "background-color: #f0f0f0; border-radius: 10px; padding: 8px; margin: 5px 0;"
+                        role_label = "Assistant:" if message["role"] == "assistant" else "You:"
+                        chat_messages_html += f"<div style='{role_style}'><strong>{role_label}</strong><br>{message['content']}</div>"
                     
-                    Here is the model code:
-                    ```python
-                    {model_code_formatted if model_code_formatted else "Model code not available"}
-                    ```
+                    chat_messages_html += "</div>"
+                    st.markdown(chat_messages_html, unsafe_allow_html=True)
+                
+                # Chat input below the scrollable container
+                prompt = st.chat_input("Ask a question about the Taylor analysis...", key="taylor_side_chat_input")
+                
+                # Process user input
+                if prompt:
+                    # Add user message to chat history
+                    st.session_state.taylor_analysis_chat_messages.append({"role": "user", "content": prompt})
                     
-                    Here is information about the input distributions:
-                    {inputs_description}
+                    # Define context generator function
+                    def generate_context(prompt):
+                        # Format the indices for the context
+                        indices_summary = ', '.join([f"{row['Variable']}: Gradient={row['Gradient']:.4f}, Sensitivity Index={row['Sensitivity_Index']:.4f}" 
+                                                  for _, row in detailed_df.iterrows()])
+                        
+                        return f"""
+                        You are an expert assistant helping users understand Taylor sensitivity analysis results. 
+                        
+                        Here is the model code:
+                        ```python
+                        {model_code_formatted if model_code_formatted else "Model code not available"}
+                        ```
+                        
+                        Here is information about the input distributions:
+                        {inputs_description}
+                        
+                        Here is the Taylor analysis summary:
+                        {indices_summary}
+                        
+                        Nominal point: {taylor_results['nominal_point']}
+                        Nominal value: {taylor_results['nominal_value']:.6f}
+                        
+                        Here is the explanation that was previously generated:
+                        {st.session_state.get('taylor_response_markdown', 'No analysis available yet.')}
+                        
+                        Answer the user's question based on this information. Be concise but thorough.
+                        If you're not sure about something, acknowledge the limitations of your knowledge.
+                        Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                        Explain the difference between gradients and sensitivity indices if asked.
+                        """
                     
-                    Here is the Taylor analysis summary:
-                    {indices_summary}
+                    # Generate context for the assistant
+                    context = generate_context(prompt)
                     
-                    Nominal point: {taylor_results['nominal_point']}
-                    Nominal value: {taylor_results['nominal_value']:.6f}
+                    # Include previous conversation history
+                    chat_history = ""
+                    if len(st.session_state.taylor_analysis_chat_messages) > 1:
+                        chat_history = "Previous conversation:\n"
+                        for i, msg in enumerate(st.session_state.taylor_analysis_chat_messages[:-1]):
+                            role = "User" if msg["role"] == "user" else "Assistant"
+                            chat_history += f"{role}: {msg['content']}\n\n"
                     
-                    Here is the explanation that was previously generated:
-                    {response_markdown}
+                    # Create the final prompt
+                    chat_prompt = f"""
+                    {context}
                     
-                    Answer the user's question based on this information. Be concise but thorough.
-                    If you're not sure about something, acknowledge the limitations of your knowledge.
-                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
-                    Explain the difference between gradients and sensitivity indices if asked.
+                    {chat_history}
+                    
+                    Current user question: {prompt}
+                    
+                    Please provide a helpful, accurate response to this question.
                     """
-                
-                # Create the chat interface
-                create_chat_interface(
-                    session_key="taylor_analysis",
-                    context_generator=generate_context,
-                    input_placeholder="Ask a question about the Taylor analysis...",
-                    disclaimer_text=disclaimer_text,
-                    language_model=language_model
-                )
+                    
+                    # Call API with chat history
+                    with st.spinner("Thinking..."):
+                        try:
+                            response_text = call_groq_api(chat_prompt, model_name=language_model)
+                        except Exception as e:
+                            st.error(f"Error calling API: {str(e)}")
+                            response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
+                    
+                    # Add assistant response to chat history
+                    st.session_state.taylor_analysis_chat_messages.append({"role": "assistant", "content": response_text})
+                    
+                    # Rerun to display the new message immediately
+                    st.rerun()
     
     except Exception as e:
         st.error(f"Error in Taylor analysis: {str(e)}")

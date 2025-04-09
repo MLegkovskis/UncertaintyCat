@@ -51,7 +51,9 @@ def call_groq_api(prompt, model_name="meta-llama/llama-4-scout-17b-16e-instruct"
 
 # ================ Chat Interface Utilities ================
 
-def create_chat_interface(session_key, context_generator, input_placeholder="Ask a question...", disclaimer_text=None, language_model="meta-llama/llama-4-scout-17b-16e-instruct"):
+def create_chat_interface(session_key, context_generator, input_placeholder="Ask a question...", 
+                         disclaimer_text=None, language_model="meta-llama/llama-4-scout-17b-16e-instruct",
+                         side_by_side=False):
     """
     Creates a standardized chat interface for UncertaintyCat modules.
     
@@ -67,47 +69,124 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
         Text to display as a disclaimer above the chat interface
     language_model : str, optional
         The language model to use for generating responses
+    side_by_side : bool, optional
+        If True, the function will not create any UI elements and will return the necessary
+        components for the caller to arrange in a side-by-side layout
         
     Returns
     -------
-    None
-        This function creates UI elements directly
+    dict or None
+        If side_by_side is True, returns a dictionary with chat components.
+        Otherwise, creates UI elements directly and returns None.
     """
     # Initialize session state for chat messages if not already done
     if f"{session_key}_chat_messages" not in st.session_state:
         st.session_state[f"{session_key}_chat_messages"] = []
     
-    # Add chat interface header
-    st.write("### Ask Questions About This Analysis")
+    if side_by_side:
+        # Return components for side-by-side layout
+        components = {
+            "title": "Ask Questions About This Analysis",
+            "disclaimer": disclaimer_text,
+            "session_key": session_key,
+            "messages": st.session_state[f"{session_key}_chat_messages"],
+            "placeholder": input_placeholder,
+            "context_generator": context_generator,
+            "language_model": language_model
+        }
+        return components
+    else:
+        # Traditional vertical layout
+        # Add chat interface header
+        st.write("### Ask Questions About This Analysis")
+        
+        # Display disclaimer if provided
+        if disclaimer_text:
+            st.info(disclaimer_text)
+        
+        # Create containers for chat interface
+        chat_container = st.container()
+        input_container = st.container()
+        
+        # Get user input (placing this at the bottom of the page)
+        with input_container:
+            prompt = st.chat_input(input_placeholder)
+        
+        # Display chat messages in the scrollable container
+        with chat_container:
+            message_area = st.container()
+            with message_area:
+                # Display existing messages
+                for message in st.session_state[f"{session_key}_chat_messages"]:
+                    with st.chat_message(message["role"]):
+                        st.write(message["content"])
+        
+        # Process user input
+        if prompt:
+            # Add user message to chat history
+            st.session_state[f"{session_key}_chat_messages"].append({"role": "user", "content": prompt})
+            
+            # Generate context for the assistant
+            context = context_generator(prompt)
+            
+            # Include previous conversation history
+            chat_history = ""
+            if len(st.session_state[f"{session_key}_chat_messages"]) > 1:
+                chat_history = "Previous conversation:\n"
+                for i, msg in enumerate(st.session_state[f"{session_key}_chat_messages"][:-1]):
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    chat_history += f"{role}: {msg['content']}\n\n"
+            
+            # Create the final prompt
+            chat_prompt = f"""
+            {context}
+            
+            {chat_history}
+            
+            Current user question: {prompt}
+            
+            Please provide a helpful, accurate response to this question.
+            """
+            
+            # Call API with chat history
+            with st.spinner("Thinking..."):
+                try:
+                    response_text = call_groq_api(chat_prompt, model_name=language_model)
+                except Exception as e:
+                    st.error(f"Error calling API: {str(e)}")
+                    response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
+            
+            # Add assistant response to chat history
+            st.session_state[f"{session_key}_chat_messages"].append({"role": "assistant", "content": response_text})
+            
+            # Rerun to display the new message immediately
+            st.rerun()
+        
+        return None
+
+def process_chat_input(components):
+    """
+    Process chat input for side-by-side layout.
     
-    # Display disclaimer if provided
-    if disclaimer_text:
-        st.info(disclaimer_text)
+    Parameters
+    ----------
+    components : dict
+        Dictionary containing chat components
+        
+    Returns
+    -------
+    bool
+        True if a rerun is needed, False otherwise
+    """
+    session_key = components["session_key"]
+    prompt = components.get("current_prompt")
     
-    # Create containers for chat interface
-    chat_container = st.container()
-    input_container = st.container()
-    
-    # Get user input (placing this at the bottom of the page)
-    with input_container:
-        prompt = st.chat_input(input_placeholder)
-    
-    # Display chat messages in the scrollable container
-    with chat_container:
-        message_area = st.container()
-        with message_area:
-            # Display existing messages
-            for message in st.session_state[f"{session_key}_chat_messages"]:
-                with st.chat_message(message["role"]):
-                    st.write(message["content"])
-    
-    # Process user input
     if prompt:
         # Add user message to chat history
         st.session_state[f"{session_key}_chat_messages"].append({"role": "user", "content": prompt})
         
         # Generate context for the assistant
-        context = context_generator(prompt)
+        context = components["context_generator"](prompt)
         
         # Include previous conversation history
         chat_history = ""
@@ -131,7 +210,7 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
         # Call API with chat history
         with st.spinner("Thinking..."):
             try:
-                response_text = call_groq_api(chat_prompt, model_name=language_model)
+                response_text = call_groq_api(chat_prompt, model_name=components["language_model"])
             except Exception as e:
                 st.error(f"Error calling API: {str(e)}")
                 response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
@@ -139,8 +218,9 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
         # Add assistant response to chat history
         st.session_state[f"{session_key}_chat_messages"].append({"role": "assistant", "content": response_text})
         
-        # Rerun to display the new message immediately
-        st.rerun()
+        return True
+    
+    return False
 
 # ================ Security Utilities ================
 

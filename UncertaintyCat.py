@@ -144,7 +144,7 @@ def show_running_indicator(container, analysis_name):
 # Header with logo and title
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("logo.jpg", width=100)
+    st.image("logo.jpg", width=300)
 with col2:
     st.markdown('<h1 class="main-header">UncertaintyCat | Version 5.20</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color: #7F8C8D;">Advanced Uncertainty Quantification and Sensitivity Analysis Platform</p>', unsafe_allow_html=True)

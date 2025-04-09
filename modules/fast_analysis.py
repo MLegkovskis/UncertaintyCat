@@ -219,149 +219,218 @@ def display_fast_results(fast_results, language_model=None, model_code_str=None)
     model_code_str : str, optional
         String representation of the model code, by default None
     """
-    # Results Section
-    with st.expander("Results", expanded=True):
-        # Overview
-        st.subheader("FAST Sensitivity Analysis Overview")
-        st.markdown(fast_results['explanation'])
-        
-        # Display the indices table
-        st.subheader("Sensitivity Indices")
-        
-        # Get most influential variable
-        most_influential = fast_results['indices_df'].iloc[0]['Variable']
-        most_influential_first = fast_results['indices_df'].iloc[0]['First Order']
-        most_influential_total = fast_results['indices_df'].iloc[0]['Total Order']
-        
-        # Calculate sums
-        sum_first_order = fast_results['indices_df']['First Order'].sum()
-        sum_total_order = fast_results['indices_df']['Total Order'].sum()
-        sum_interaction = fast_results['indices_df']['Interaction'].sum()
-        
-        # Create summary metrics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(
-                "Most Influential Variable", 
-                most_influential,
-                f"Total Order: {most_influential_total:.4f}"
-            )
-        with col2:
-            st.metric(
-                "Sum of First Order", 
-                f"{sum_first_order:.4f}",
-                f"Explained: {sum_first_order:.2%}" if sum_first_order <= 1 else f"Explained: 100%"
-            )
-        with col3:
-            st.metric(
-                "Interaction Effects", 
-                f"{sum_interaction:.4f}",
-                f"{sum_interaction / sum_total_order:.2%} of Total" if sum_total_order > 0 else "0%"
-            )
-        
-        # Display the indices table
-        st.subheader("Detailed Numerical Results")
-        display_df = fast_results['indices_df'][['Variable', 'First Order', 'Total Order', 'Interaction', 'Interaction %']]
-        display_df['Interaction %'] = display_df['Interaction %'].apply(lambda x: f"{x:.2f}%")
-        st.dataframe(display_df, use_container_width=True)
-        
-        # Visualizations
-        st.subheader("Sensitivity Visualizations")
-        
-        # Display the bar chart
-        st.markdown("#### FAST Sensitivity Indices")
-        st.markdown("""
-        This bar chart compares first order and total order sensitivity indices for each variable.
-        The difference between total and first order indices indicates interaction effects.
-        """)
-        st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
-        
-        # Display pie charts in two columns
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### First Order Indices Distribution")
-            st.markdown("""
-            This pie chart shows the relative contribution of each variable to the output variance,
-            considering only their direct effects (first order).
-            """)
-            st.plotly_chart(fast_results['fig_pie_first'], use_container_width=True)
-        with col2:
-            st.markdown("#### Total Order Indices Distribution")
-            st.markdown("""
-            This pie chart shows the relative contribution of each variable to the output variance,
-            including both direct effects and interactions with other variables (total order).
-            """)
-            st.plotly_chart(fast_results['fig_pie_total'], use_container_width=True)
-        
-        # Add interpretation based on results
-        if sum_first_order < 0.6:
-            st.warning("""
-            **High interaction effects detected.** The sum of first order indices is significantly less than 1, 
-            indicating that interactions between variables play a major role in determining the output.
-            This suggests that the model behavior cannot be understood by studying each variable separately.
-            """)
-        elif sum_first_order > 0.9:
-            st.success("""
-            **Low interaction effects detected.** The sum of first order indices is close to 1, 
-            indicating that the model output is primarily determined by the direct effects of individual variables,
-            with minimal interaction effects.
-            """)
+    # Create a two-column layout for the main content and chat interface
+    main_col, chat_col = st.columns([2, 1])
     
-    # AI Insights Section
-    if fast_results['llm_insights'] and language_model:
-        with st.expander("AI Insights", expanded=True):
-            # Store the insights in session state for reuse
-            if 'fast_analysis_response_markdown' not in st.session_state:
-                st.session_state['fast_analysis_response_markdown'] = fast_results['llm_insights']
+    with main_col:
+        # Results Section
+        with st.expander("Results", expanded=True):
+            # Display the explanation
+            st.markdown(fast_results['explanation'])
             
-            st.markdown(fast_results['llm_insights'])
+            # Display the indices table
+            st.subheader("Sensitivity Indices")
+            
+            # Get most influential variable
+            most_influential = fast_results['indices_df'].iloc[0]['Variable']
+            most_influential_index = fast_results['indices_df'].iloc[0]['Total Order']
+            
+            # Calculate sums
+            sum_first_order = fast_results['indices_df']['First Order'].sum()
+            sum_total_order = fast_results['indices_df']['Total Order'].sum()
+            
+            # Create summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    "Most Influential Variable", 
+                    most_influential,
+                    f"Total Order: {most_influential_index:.4f}"
+                )
+            with col2:
+                st.metric("Sum of First Order Indices", f"{sum_first_order:.4f}")
+            with col3:
+                st.metric("Sum of Total Order Indices", f"{sum_total_order:.4f}")
+            
+            # Display the indices table
+            st.subheader("Detailed Numerical Results")
+            display_df = fast_results['indices_df'][['Variable', 'First Order', 'Total Order', 'Interaction', 'Interaction %']]
+            display_df['Interaction %'] = display_df['Interaction %'].apply(lambda x: f"{x:.2f}%")
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Visualizations
+            st.subheader("Sensitivity Visualizations")
+            
+            # Display the bar chart
+            st.markdown("#### FAST Sensitivity Indices")
+            st.markdown("""
+            This bar chart compares the First Order and Total Order sensitivity indices for each variable:
+            - **First Order Indices**: Measure the direct contribution of each variable to the output variance
+            - **Total Order Indices**: Measure the total contribution including interactions with other variables
+            """)
+            st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
+            
+            # Display pie charts in two columns
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("#### First Order Indices Distribution")
+                st.markdown("""
+                This pie chart shows the relative direct contribution of each variable to the output variance.
+                """)
+                st.plotly_chart(fast_results['fig_pie_first'], use_container_width=True)
+            with col2:
+                st.markdown("#### Total Order Indices Distribution")
+                st.markdown("""
+                This pie chart shows the relative total contribution (including interactions) of each variable.
+                """)
+                st.plotly_chart(fast_results['fig_pie_total'], use_container_width=True)
+            
+            # Add interpretation based on results
+            if sum_first_order < 0.7:
+                st.info("""
+                **High interaction effects detected.** The sum of first order indices is significantly less than 1, 
+                indicating that a substantial portion of the output variance is explained by interactions between variables.
+                This suggests that the model behavior cannot be understood by studying each variable separately.
+                """)
+            elif sum_first_order > 0.9:
+                st.success("""
+                **Low interaction effects detected.** The sum of first order indices is close to 1, 
+                indicating that the model output is primarily determined by the direct effects of individual variables,
+                with minimal interaction effects.
+                """)
+        
+        # AI Insights Section
+        if fast_results['llm_insights'] and language_model:
+            with st.expander("AI Insights", expanded=True):
+                # Store the insights in session state for reuse
+                if 'fast_analysis_response_markdown' not in st.session_state:
+                    st.session_state['fast_analysis_response_markdown'] = fast_results['llm_insights']
+                
+                st.markdown(fast_results['llm_insights'])
+    
+    # CHAT INTERFACE in the right column
+    if language_model and fast_results['llm_insights']:
+        with chat_col:
+            st.markdown("### Ask Questions About This Analysis")
             
             # Display a disclaimer about the prompt
             disclaimer_text = """
             **Note:** The AI assistant has been provided with the model code, sensitivity indices, 
             and the analysis results above. You can ask questions to clarify any aspects of the FAST analysis.
             """
+            st.info(disclaimer_text)
             
-            # Define context generator function
-            def generate_context(prompt):
-                # Get variable names and indices from the results
-                variable_names = fast_results['indices_df']['Variable'].tolist()
-                first_order = fast_results['indices_df']['First Order'].tolist()
-                total_order = fast_results['indices_df']['Total Order'].tolist()
+            # Initialize session state for chat messages if not already done
+            if "fast_analysis_chat_messages" not in st.session_state:
+                st.session_state.fast_analysis_chat_messages = []
+            
+            # Create a container with fixed height for the chat messages
+            chat_container_height = 500  # Height in pixels
+            
+            # Apply CSS to create a scrollable container
+            st.markdown(f"""
+            <style>
+            .chat-container {{
+                height: {chat_container_height}px;
+                overflow-y: auto;
+                border: 1px solid #e6e6e6;
+                border-radius: 5px;
+                padding: 10px;
+                background-color: #f9f9f9;
+                margin-bottom: 15px;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Create a container for the chat messages
+            with st.container():
+                # Use HTML to create a scrollable container
+                chat_messages_html = "<div class='chat-container'>"
                 
-                indices_summary = ', '.join([f"{name}: First Order={first:.4f}, Total Order={total:.4f}" 
-                                           for name, first, total in zip(variable_names, first_order, total_order)])
+                # Display existing messages
+                for message in st.session_state.fast_analysis_chat_messages:
+                    role_style = "background-color: #e1f5fe; border-radius: 10px; padding: 8px; margin: 5px 0;" if message["role"] == "assistant" else "background-color: #f0f0f0; border-radius: 10px; padding: 8px; margin: 5px 0;"
+                    role_label = "Assistant:" if message["role"] == "assistant" else "You:"
+                    chat_messages_html += f"<div style='{role_style}'><strong>{role_label}</strong><br>{message['content']}</div>"
                 
-                return f"""
-                You are an expert assistant helping users understand FAST sensitivity analysis results. 
+                chat_messages_html += "</div>"
+                st.markdown(chat_messages_html, unsafe_allow_html=True)
+            
+            # Chat input below the scrollable container
+            prompt = st.chat_input("Ask a question about the FAST sensitivity analysis...", key="fast_side_chat_input")
+            
+            # Process user input
+            if prompt:
+                # Add user message to chat history
+                st.session_state.fast_analysis_chat_messages.append({"role": "user", "content": prompt})
                 
-                Here is the model code:
-                ```python
-                {model_code_str if model_code_str else "Model code not available"}
-                ```
+                # Define context generator function
+                def generate_context(prompt):
+                    # Get variable names and indices from the results
+                    variable_names = fast_results['indices_df']['Variable'].tolist()
+                    first_order = fast_results['indices_df']['First Order'].tolist()
+                    total_order = fast_results['indices_df']['Total Order'].tolist()
+                    
+                    indices_summary = ', '.join([f"{name}: First Order={first:.4f}, Total Order={total:.4f}" 
+                                               for name, first, total in zip(variable_names, first_order, total_order)])
+                    
+                    return f"""
+                    You are an expert assistant helping users understand FAST sensitivity analysis results. 
+                    
+                    Here is the model code:
+                    ```python
+                    {model_code_str if model_code_str else "Model code not available"}
+                    ```
+                    
+                    Here is the sensitivity analysis summary:
+                    {indices_summary}
+                    
+                    Sum of First Order Indices: {sum_first_order:.4f}
+                    Sum of Total Order Indices: {sum_total_order:.4f}
+                    
+                    Here is the explanation that was previously generated:
+                    {st.session_state.get('fast_analysis_response_markdown', 'No analysis available yet.')}
+                    
+                    Answer the user's question based on this information. Be concise but thorough.
+                    If you're not sure about something, acknowledge the limitations of your knowledge.
+                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                    """
                 
-                Here is the sensitivity analysis summary:
-                {indices_summary}
+                # Generate context for the assistant
+                context = generate_context(prompt)
                 
-                Sum of First Order Indices: {sum_first_order:.4f}
-                Sum of Total Order Indices: {sum_total_order:.4f}
+                # Include previous conversation history
+                chat_history = ""
+                if len(st.session_state.fast_analysis_chat_messages) > 1:
+                    chat_history = "Previous conversation:\n"
+                    for i, msg in enumerate(st.session_state.fast_analysis_chat_messages[:-1]):
+                        role = "User" if msg["role"] == "user" else "Assistant"
+                        chat_history += f"{role}: {msg['content']}\n\n"
                 
-                Here is the explanation that was previously generated:
-                {fast_results['llm_insights']}
+                # Create the final prompt
+                chat_prompt = f"""
+                {context}
                 
-                Answer the user's question based on this information. Be concise but thorough.
-                If you're not sure about something, acknowledge the limitations of your knowledge.
-                Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                {chat_history}
+                
+                Current user question: {prompt}
+                
+                Please provide a helpful, accurate response to this question.
                 """
-            
-            # Create the chat interface
-            create_chat_interface(
-                session_key="fast_analysis",
-                context_generator=generate_context,
-                input_placeholder="Ask a question about the FAST sensitivity analysis...",
-                disclaimer_text=disclaimer_text,
-                language_model=language_model
-            )
+                
+                # Call API with chat history
+                with st.spinner("Thinking..."):
+                    try:
+                        response_text = call_groq_api(chat_prompt, model_name=language_model)
+                    except Exception as e:
+                        st.error(f"Error calling API: {str(e)}")
+                        response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
+                
+                # Add assistant response to chat history
+                st.session_state.fast_analysis_chat_messages.append({"role": "assistant", "content": response_text})
+                
+                # Rerun to display the new message immediately
+                st.rerun()
 
 def fast_analysis(model, problem, size=400, model_code_str=None, language_model=None):
     """

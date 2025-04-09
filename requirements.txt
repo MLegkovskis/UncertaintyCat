@@ -19,3 +19,4 @@ tabulate
 IPython
 squarify
 otmorris
+chaospy
