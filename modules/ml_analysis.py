@@ -21,9 +21,9 @@ from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
 
-def ml_analysis(model, problem, model_code_str=None, language_model='groq'):
+def compute_ml_analysis(model, problem, model_code_str=None, language_model='groq'):
     """
-    Perform machine learning-based sensitivity analysis using SHAP values with enterprise-grade visualizations.
+    Compute machine learning-based sensitivity analysis using SHAP values without UI components.
     
     This function builds a surrogate machine learning model (Random Forest) and uses SHAP (SHapley Additive exPlanations)
     to analyze the importance and impact of each input variable on the model output.
@@ -44,287 +44,223 @@ def ml_analysis(model, problem, model_code_str=None, language_model='groq'):
     dict
         Dictionary containing ML analysis results
     """
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+    
+    # Get input names from distribution
+    dimension = problem.getDimension()
+    input_names = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
+    
+    # If model is a function, generate data by running Monte Carlo simulation
+    if callable(model) and not isinstance(model, pd.DataFrame):
+        # Generate Monte Carlo samples
+        results = monte_carlo_simulation(model, problem, N=1000, seed=42)
+        # Convert to DataFrame
+        data = create_monte_carlo_dataframe(results)
+    else:
+        # Assume model is already a DataFrame
+        data = model
+        
+    # Check if data is a DataFrame
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError(f"Expected a DataFrame but got {type(data)}. The model must be either a callable function or a pandas DataFrame.")
+    
+    # Train the surrogate model
+    rf_model, X_test, y_test, scaler, performance_metrics = train_surrogate_model(data, input_names)
+    
+    # Calculate SHAP values
+    shap_results = calculate_shap_values(rf_model, X_test, input_names)
+    
+    # Generate expert analysis if a language model is provided
+    ml_interpretation = None
+    if language_model and model_code_str:
+        ml_interpretation = generate_expert_analysis(
+            data, problem, rf_model, input_names, model_code_str, 
+            shap_results, performance_metrics, language_model
+        )
+    
+    # Return all results in a dictionary
+    return {
+        "data": data,
+        "input_names": input_names,
+        "surrogate_model": rf_model,
+        "X_test": X_test,
+        "y_test": y_test,
+        "scaler": scaler,
+        "performance_metrics": performance_metrics,
+        "shap_results": shap_results,
+        "ml_interpretation": ml_interpretation
+    }
+
+def display_ml_results(analysis_results, model_code_str=None, language_model='groq'):
+    """
+    Display machine learning analysis results in the Streamlit interface.
+    
+    Parameters
+    ----------
+    analysis_results : dict
+        Dictionary containing ML analysis results
+    model_code_str : str, optional
+        String representation of the model code for documentation, by default None
+    language_model : str, optional
+        Language model to use for analysis, by default "groq"
+    """
+    # Extract results from the analysis_results dictionary
+    data = analysis_results["data"]
+    input_names = analysis_results["input_names"]
+    rf_model = analysis_results["surrogate_model"]
+    X_test = analysis_results["X_test"]
+    y_test = analysis_results["y_test"]
+    performance_metrics = analysis_results["performance_metrics"]
+    shap_results = analysis_results["shap_results"]
+    ml_interpretation = analysis_results.get("ml_interpretation")
+    
+    # Results section
+    with st.expander("Results", expanded=True):
+        st.subheader("SHAP Analysis Results")
+        st.markdown("""
+        ### SHAP Analysis Results
+        
+        This analysis uses machine learning techniques to understand the relationship between input variables and model outputs.
+        By training a surrogate model (Random Forest) and applying SHAP (SHapley Additive exPlanations), we can identify
+        which variables have the most influence on the model output and how they affect predictions.
+        
+        **Key Concepts:**
+        - **SHAP (SHapley Additive exPlanations)**: A unified approach to explain the output of any machine learning model
+        - **Feature Importance**: Ranking of variables by their overall impact on predictions
+        - **Dependence Plots**: Show how the effect of a variable changes across its range
+        """)
+        
+        # Display key metrics
+        top_feature = shap_results["shap_summary_df"]['Feature'].iloc[0]
+        significant_features_count = sum(shap_results["importance_df"]['Importance'] > 0.05)
+        
+        # Create metrics in columns
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Most Influential Variable", top_feature)
+        with col2:
+            st.metric("Significant Variables", f"{significant_features_count}")
+        with col3:
+            st.metric("Model Accuracy", f"{performance_metrics['r2']:.4f} R²")
+        
+        # Display model performance
+        st.subheader("Surrogate Model Performance")
+        
+        # Create metrics in columns
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("R² Score", f"{performance_metrics['r2']:.4f}")
+        with col2:
+            st.metric("RMSE", f"{performance_metrics['rmse']:.4f}")
+        with col3:
+            st.metric("Cross-Val R²", f"{performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}")
+        
+        # Add validation plot
+        create_validation_plot(performance_metrics['y_test'], performance_metrics['y_pred'])
+        
+        # Create interactive visualizations
+        create_interactive_visualizations(shap_results, X_test, input_names, performance_metrics)
+        
+        # Add model performance metrics explanation as a regular section instead of an expander
+        st.subheader("Understanding Model Performance Metrics")
+        st.markdown("""
+        - **R² Score**: Coefficient of determination (0-1)
+          - Measures the proportion of variance in the output that is predictable from the inputs
+          - Higher values indicate better fit (1.0 is perfect prediction)
+          - Values below 0.5 suggest poor model performance
+        
+        - **RMSE (Root Mean Square Error)**:
+          - Measures the average magnitude of prediction errors
+          - Lower values indicate better fit
+          - In the same units as the output variable
+        
+        - **Cross-Validation R²**:
+          - Average R² score across 5 different data splits
+          - Measures how well the model generalizes to unseen data
+          - The ± value shows the standard deviation across folds
+        
+        - **Validation Plot**:
+          - Shows actual vs. predicted values
+          - Points should fall close to the diagonal line (perfect prediction)
+          - Scatter indicates prediction uncertainty
+          - Systematic deviations suggest model bias
+        """)
+    
+    # AI Insights section (only if ml_interpretation is available)
+    if ml_interpretation:
+        with st.expander("AI Insights", expanded=True):
+            st.markdown("### AI-Generated Expert Analysis")
+            st.markdown(ml_interpretation)
+
+def ml_analysis(model, problem, model_code_str=None, language_model='groq', display_results=True):
+    """
+    Perform machine learning-based sensitivity analysis using SHAP values with enterprise-grade visualizations.
+    
+    This function builds a surrogate machine learning model (Random Forest) and uses SHAP (SHapley Additive exPlanations)
+    to analyze the importance and impact of each input variable on the model output.
+    
+    Parameters
+    ----------
+    model : callable or pd.DataFrame
+        Either the model function or DataFrame containing input samples and model outputs
+    problem : ot.Distribution
+        OpenTURNS distribution representing the input uncertainty
+    model_code_str : str, optional
+        String representation of the model code for documentation, by default None
+    language_model : str, optional
+        Language model to use for analysis, by default "groq"
+    display_results : bool, optional
+        Whether to display results in the UI (default is True)
+        
+    Returns
+    -------
+    dict
+        Dictionary containing ML analysis results
+    """
     try:
-        # Create a two-column layout: main content (2/3) and chat interface (1/3)
-        main_col, chat_col = st.columns([2, 1])
+        # Compute ML analysis
+        with st.spinner("Running ML Analysis...") if display_results else nullcontext():
+            analysis_results = compute_ml_analysis(
+                model, problem, model_code_str=model_code_str, language_model=language_model
+            )
         
-        with main_col:
-            # Ensure problem is an OpenTURNS distribution
-            if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
-                raise ValueError("Problem must be an OpenTURNS distribution")
-            
-            # Get input names from distribution
-            dimension = problem.getDimension()
-            input_names = []
-            for i in range(dimension):
-                marginal = problem.getMarginal(i)
-                input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
-            
-            # If model is a function, generate data by running Monte Carlo simulation
-            if callable(model) and not isinstance(model, pd.DataFrame):
-                st.info("Generating data for ML analysis using Monte Carlo simulation (1000 samples)...")
-                # Generate Monte Carlo samples
-                results = monte_carlo_simulation(model, problem, N=1000, seed=42)
-                # Convert to DataFrame
-                data = create_monte_carlo_dataframe(results)
-            else:
-                # Assume model is already a DataFrame
-                data = model
-                
-            # Check if data is a DataFrame
-            if not isinstance(data, pd.DataFrame):
-                raise TypeError(f"Expected a DataFrame but got {type(data)}. The model must be either a callable function or a pandas DataFrame.")
-            
-            # Results section
-            with st.expander("Results", expanded=True):
-                st.subheader("SHAP Analysis Results")
-                st.markdown("""
-                ### SHAP Analysis Results
-                
-                This analysis uses machine learning techniques to understand the relationship between input variables and model outputs.
-                By training a surrogate model (Random Forest) and applying SHAP (SHapley Additive exPlanations), we can identify
-                which variables have the most influence on the model output and how they affect predictions.
-                
-                **Key Concepts:**
-                - **SHAP (SHapley Additive exPlanations)**: A unified approach to explain the output of any machine learning model
-                - **Feature Importance**: Ranking of variables by their overall impact on predictions
-                - **Dependence Plots**: Show how the effect of a variable changes across its range
-                """)
-                
-                # Train the surrogate model
-                with st.spinner("Training surrogate model..."):
-                    rf_model, X_test, y_test, scaler, performance_metrics = train_surrogate_model(data, input_names)
-                
-                # Calculate SHAP values
-                with st.spinner("Calculating SHAP values..."):
-                    shap_results = calculate_shap_values(rf_model, X_test, input_names)
-                
-                # Display key metrics
-                top_feature = shap_results["shap_summary_df"]['Feature'].iloc[0]
-                significant_features_count = sum(shap_results["importance_df"]['Importance'] > 0.05)
-                
-                # Create metrics in columns
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Most Influential Variable", top_feature)
-                with col2:
-                    st.metric("Significant Variables", f"{significant_features_count}")
-                with col3:
-                    st.metric("Model Accuracy", f"{performance_metrics['r2']:.4f} R²")
-                
-                # Display model performance
-                st.subheader("Surrogate Model Performance")
-                
-                # Create metrics in columns
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("R² Score", f"{performance_metrics['r2']:.4f}")
-                with col2:
-                    st.metric("RMSE", f"{performance_metrics['rmse']:.4f}")
-                with col3:
-                    st.metric("Cross-Val R²", f"{performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}")
-                
-                # Add validation plot
-                create_validation_plot(performance_metrics['y_test'], performance_metrics['y_pred'])
-                
-                # Create interactive visualizations
-                with st.spinner("Creating visualizations..."):
-                    create_interactive_visualizations(shap_results, X_test, input_names, performance_metrics)
-                
-                # Add model performance metrics explanation as a regular section instead of an expander
-                st.subheader("Understanding Model Performance Metrics")
-                st.markdown("""
-                - **R² Score**: Coefficient of determination (0-1)
-                  - Measures the proportion of variance in the output that is predictable from the inputs
-                  - Higher values indicate better fit (1.0 is perfect prediction)
-                  - Values below 0.5 suggest poor model performance
-                
-                - **RMSE (Root Mean Square Error)**:
-                  - Measures the average magnitude of prediction errors
-                  - Lower values indicate better fit
-                  - In the same units as the output variable
-                
-                - **Cross-Validation R²**:
-                  - Average R² score across 5 different data splits
-                  - Measures how well the model generalizes to unseen data
-                  - The ± value shows the standard deviation across folds
-                
-                - **Validation Plot**:
-                  - Shows actual vs. predicted values
-                  - Points should fall close to the diagonal line (perfect prediction)
-                  - Scatter indicates prediction uncertainty
-                  - Systematic deviations suggest model bias
-                """)
-            
-            # AI Insights section (only if language_model is provided)
-            if language_model:
-                with st.expander("AI Insights", expanded=True):
-                    st.markdown("### AI-Generated Expert Analysis")
-                    generate_expert_analysis(data, problem, rf_model, input_names, model_code_str, 
-                                            shap_results, performance_metrics, language_model)
+        # Store results in session state for later access
+        if 'ml_analysis_results' not in st.session_state:
+            st.session_state.ml_analysis_results = {}
         
-        # CHAT INTERFACE in the right column
-        with chat_col:
-            st.markdown("### Ask Questions About This Analysis")
-            
-            # Display a disclaimer about the prompt
-            disclaimer_text = """
-            **Note:** The AI assistant has been provided with the model code, input distributions, 
-            and the SHAP analysis results. You can ask questions to clarify any aspects of the analysis.
-            """
-            st.info(disclaimer_text)
-            
-            # Initialize session state for chat messages if not already done
-            if "ml_analysis_chat_messages" not in st.session_state:
-                st.session_state.ml_analysis_chat_messages = []
-            
-            # Create a container with fixed height for the chat messages
-            chat_container_height = 500  # Height in pixels
-            
-            # Apply CSS to create a scrollable container
-            st.markdown(f"""
-            <style>
-            .chat-container {{
-                height: {chat_container_height}px;
-                overflow-y: auto;
-                border: 1px solid #e6e6e6;
-                border-radius: 5px;
-                padding: 10px;
-                background-color: #f9f9f9;
-                margin-bottom: 15px;
-            }}
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Create a container for the chat messages
-            with st.container():
-                # Use HTML to create a scrollable container
-                chat_messages_html = "<div class='chat-container'>"
-                
-                # Display existing messages
-                for message in st.session_state.ml_analysis_chat_messages:
-                    role_style = "background-color: #e1f5fe; border-radius: 10px; padding: 8px; margin: 5px 0;" if message["role"] == "assistant" else "background-color: #f0f0f0; border-radius: 10px; padding: 8px; margin: 5px 0;"
-                    role_label = "Assistant:" if message["role"] == "assistant" else "You:"
-                    chat_messages_html += f"<div style='{role_style}'><strong>{role_label}</strong><br>{message['content']}</div>"
-                
-                chat_messages_html += "</div>"
-                st.markdown(chat_messages_html, unsafe_allow_html=True)
-            
-            # Chat input below the scrollable container
-            prompt = st.chat_input("Ask a question about the SHAP analysis...", key="ml_side_chat_input")
-            
-            # Process user input
-            if prompt:
-                # Add user message to chat history
-                st.session_state.ml_analysis_chat_messages.append({"role": "user", "content": prompt})
-                
-                # Define context generator function
-                def generate_context(prompt):
-                    # Format the model code for inclusion in the context
-                    if model_code_str:
-                        model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
-                    else:
-                        model_code_formatted = "Model code not available"
-                    
-                    # Recreate the inputs description
-                    input_parameters = []
-                    dimension = problem.getDimension()
-                    for i in range(dimension):
-                        marginal = problem.getMarginal(i)
-                        name = marginal.getDescription()[0]
-                        if name == "":
-                            name = f"X{i+1}"
-                        dist_type = marginal.__class__.__name__
-                        params = marginal.getParameter()
-                        input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
-                    
-                    inputs_description = '\n'.join(input_parameters)
-                    
-                    # Get the SHAP summary table
-                    shap_table = shap_results["shap_summary_df"].to_markdown(index=False)
-                    
-                    # Get top features by importance
-                    top_features = shap_results["importance_df"].head(3).to_markdown(index=False)
-                    
-                    return f"""
-                    You are an expert assistant helping users understand SHAP-based machine learning analysis results. 
-                    
-                    Here is the model code:
-                    ```python
-                    {model_code_formatted}
-                    ```
-                    
-                    Here is information about the input distributions:
-                    {inputs_description}
-                    
-                    The performance metrics of the Random Forest surrogate model are as follows:
-                    - R² Score: {performance_metrics['r2']:.4f}
-                    - Mean Squared Error: {performance_metrics['mse']:.4f}
-                    - RMSE: {performance_metrics['rmse']:.4f}
-                    - Cross-Validation R² (mean ± std): {performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}
-                    
-                    Top 3 most influential features:
-                    {top_features}
-                    
-                    Here is the SHAP analysis summary:
-                    {shap_table}
-                    
-                    Here is the explanation that was previously generated:
-                    {st.session_state.get('ml_interpretation', 'No interpretation available yet.')}
-                    
-                    Answer the user's question based on this information. Be concise but thorough.
-                    If you're not sure about something, acknowledge the limitations of your knowledge.
-                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
-                    Explain the mathematical basis of SHAP values and how they differ from other feature importance methods if asked.
-                    """
-                
-                # Generate context for the assistant
-                context = generate_context(prompt)
-                
-                # Include previous conversation history
-                chat_history = ""
-                if len(st.session_state.ml_analysis_chat_messages) > 1:
-                    chat_history = "Previous conversation:\n"
-                    for i, msg in enumerate(st.session_state.ml_analysis_chat_messages[:-1]):
-                        role = "User" if msg["role"] == "user" else "Assistant"
-                        chat_history += f"{role}: {msg['content']}\n\n"
-                
-                # Create the final prompt
-                chat_prompt = f"""
-                {context}
-                
-                {chat_history}
-                
-                Current user question: {prompt}
-                
-                Please provide a helpful, accurate response to this question.
-                """
-                
-                # Call API with chat history
-                with st.spinner("Thinking..."):
-                    try:
-                        response_text = call_groq_api(chat_prompt, model_name=language_model)
-                    except Exception as e:
-                        st.error(f"Error calling API: {str(e)}")
-                        response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
-                
-                # Add assistant response to chat history
-                st.session_state.ml_analysis_chat_messages.append({"role": "assistant", "content": response_text})
-                
-                # Rerun to display the new message immediately
-                st.rerun()
+        # Use model's description as a key if available, otherwise use a default key
+        if hasattr(model, 'getDescription') and model.getDescription()[0] != "":
+            model_key = model.getDescription()[0]
+        else:
+            model_key = "default_model"
         
-        return {
-            "surrogate_model": rf_model,
-            "shap_values": shap_results["shap_values"],
-            "feature_importance": shap_results["importance_df"],
-            "performance_metrics": performance_metrics
-        }
+        st.session_state.ml_analysis_results[model_key] = analysis_results
+        
+        # Display results if requested
+        if display_results:
+            display_ml_results(analysis_results, model_code_str, language_model)
+        
+        return analysis_results
     
     except Exception as e:
-        st.error(f"Error in ML analysis: {str(e)}")
-        st.code(traceback.format_exc(), language="python")
-        return None
+        if display_results:
+            st.error(f"Error in ML analysis: {str(e)}")
+            st.code(traceback.format_exc(), language="python")
+        raise e
+
+# Define a nullcontext class to use when display_results is False
+class nullcontext:
+    def __init__(self, enter_result=None):
+        self.enter_result = enter_result
+    def __enter__(self):
+        return self.enter_result
+    def __exit__(self, *excinfo):
+        pass
 
 def train_surrogate_model(data, input_names):
     """
@@ -560,12 +496,8 @@ def create_interactive_visualizations(shap_results, X_test, feature_names, perfo
                 size=8,
                 color=X_test_df[top_feature],
                 colorscale='Viridis',
-                colorbar=dict(
-                    title=top_feature,
-                    thickness=15,
-                    len=0.5,
-                    y=0.25
-                )
+                colorbar=dict(title=top_feature),
+                showscale=True
             ),
             name=f'SHAP for {top_feature}'
         ),
@@ -597,8 +529,9 @@ def create_interactive_visualizations(shap_results, X_test, feature_names, perfo
     # Create dependence plots for top features
     st.subheader("SHAP Dependence Plots for Top Features")
     st.markdown("""
-    These plots show how the SHAP value (impact on model output) changes with the feature value.
-    A positive SHAP value means the feature increases the prediction, while a negative value decreases it.
+    These plots show how the SHAP value (impact on model output) changes
+    with the feature value. This helps understand the relationship between
+    each input variable and the model output.
     """)
     
     # Get top 3 features
@@ -685,10 +618,15 @@ def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_
         Dictionary containing model performance metrics
     language_model : str, optional
         Language model to use for analysis, by default "groq"
+        
+    Returns
+    -------
+    str
+        The generated AI analysis text
     """
     # Check if the interpretation is already in session_state
     if 'ml_interpretation' in st.session_state:
-        st.markdown(st.session_state['ml_interpretation'])
+        return st.session_state['ml_interpretation']
     else:
         # Format the model code for inclusion in the prompt
         if model_code_str:
@@ -776,7 +714,7 @@ def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_
             response_markdown = call_groq_api(prompt, model_name=language_model)
             st.session_state['ml_interpretation'] = response_markdown
 
-        st.markdown(st.session_state['ml_interpretation'])
+        return response_markdown
 
 def create_validation_plot(y_true, y_pred):
     """

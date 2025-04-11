@@ -11,12 +11,12 @@ from groq import Groq
 from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 
-def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
+def compute_model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
     """
-    Generate a comprehensive description of the model and its uncertain inputs.
+    Compute model understanding analysis without UI components.
     
-    This module introduces the model to users in a clear, engaging way with visual aids
-    and explanations that contextualize the model's purpose, inputs, and significance.
+    This function generates a comprehensive description of the model and its uncertain inputs
+    without displaying any UI elements.
     
     Parameters
     ----------
@@ -34,10 +34,12 @@ def model_understanding(model, problem, model_code_str, is_pce_used=False, origi
         String representation of the metamodel, by default None
     language_model : str, optional
         Language model to use for AI insights, by default 'groq'
+        
+    Returns
+    -------
+    dict
+        Dictionary containing model understanding analysis results
     """
-    # Create a two-column layout: main content (2/3) and chat interface (1/3)
-    main_col, chat_col = st.columns([2, 1])
-    
     # Ensure problem is an OpenTURNS distribution
     if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
         raise ValueError("Problem must be an OpenTURNS distribution")
@@ -66,15 +68,13 @@ def model_understanding(model, problem, model_code_str, is_pce_used=False, origi
             "Parameters": [dist_params]
         })], ignore_index=True)
     
-    
     # Format the model code for inclusion in the prompt
     model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
     
     # Convert inputs_df to markdown table for the prompt
     inputs_md_table = inputs_df.to_markdown(index=False)
 
-    max_attempts = 5
-
+    # Generate prompt for the language model
     def generate_prompt(additional_instructions=""):
         # Enhanced prompt for better model explanation
         return f"""
@@ -131,207 +131,149 @@ Input Parameters:
 {additional_instructions}
 """.strip()
 
-    # Initialize session state for chat
-    if "model_understanding_chat_messages" not in st.session_state:
-        st.session_state.model_understanding_chat_messages = []
+    # Generate the prompt for the language model
+    prompt = generate_prompt()
     
-    with main_col:
-        # Generate AI explanation
-        with st.spinner("Generating model explanation..."):
-            try:
-                # Generate the prompt for the language model
-                prompt = generate_prompt()
-                
-                # Add metamodel comparison instructions if PCE is used
-                if is_pce_used and original_model_code_str and metamodel_str:
-                    additional_instructions = """
-                    Additionally, compare the original model with the polynomial chaos expansion metamodel.
-                    Explain how the PCE approximates the original model and what advantages this brings.
-                    """
-                    prompt = generate_prompt(additional_instructions)
-                
-                # Get response from language model
-                response_key = 'model_understanding_response_markdown'
-
-                if response_key not in st.session_state:
-                    best_response_text = ""
-                    attempts = 0
-
-                    while attempts < max_attempts:
-                        print(f"\n=== Attempt {attempts + 1} ===")
-                        print("Using prompt:")
-                        print(prompt)
-
-                        response_text = call_groq_api(prompt, model_name=language_model)
-                        print("Raw Response from API:")
-                        print(response_text)
-
-                        st.session_state[response_key] = response_text
-                        break
-
-                    if response_key not in st.session_state:
-                        # If we have no valid response after max_attempts, return best effort
-                        st.session_state[response_key] = best_response_text
-
-                response_markdown = st.session_state[response_key]
-                
-                # Display the AI-generated explanation
-                with st.expander("Model Explanation", expanded=True):
-                    st.markdown(response_markdown)
-                    
-                    # Display input distributions using OpenTURNS' __repr_markdown__ method
-                    st.write("### Input Distributions")
-                    try:
-                        if hasattr(problem, '__repr_markdown__'):
-                            markdown_repr = problem.__repr_markdown__()
-                            st.markdown(markdown_repr, unsafe_allow_html=True)
-                        else:
-                            # Fallback to dataframe display if __repr_markdown__ is not available
-                            st.dataframe(
-                                inputs_df,
-                                column_config={
-                                    "Variable": st.column_config.TextColumn("Variable Name"),
-                                    "Distribution": st.column_config.TextColumn("Distribution Type"),
-                                    "Parameters": st.column_config.TextColumn("Distribution Parameters")
-                                },
-                                use_container_width=True
-                            )
-                    except Exception as e:
-                        st.warning(f"Could not display input distributions: {str(e)}")
-                        # Fallback to dataframe display
-                        st.dataframe(
-                            inputs_df,
-                            column_config={
-                                "Variable": st.column_config.TextColumn("Variable Name"),
-                                "Distribution": st.column_config.TextColumn("Distribution Type"),
-                                "Parameters": st.column_config.TextColumn("Distribution Parameters")
-                            },
-                            use_container_width=True
-                        )
-                    
-                    # If PCE is used, display metamodel comparison
-                    if is_pce_used and original_model_code_str and metamodel_str:
-                        st.write("### Original Model vs. Metamodel")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.write("#### Original Model")
-                            st.code(original_model_code_str, language="python")
-                        with col2:
-                            st.write("#### PCE Metamodel")
-                            st.code(metamodel_str, language="python")
-            
-            except Exception as e:
-                st.error(f"Error generating model explanation: {str(e)}")
-                st.write("Please try again or contact support if the issue persists.")
-    
-    # CHAT INTERFACE in the right column
-    with chat_col:
-        st.markdown("### Ask Questions About This Model")
-        
-        # Display a disclaimer about the prompt
-        disclaimer_text = """
-        **Note:** The AI assistant has been provided with the model code, input distributions, 
-        and the explanation above. You can ask questions to clarify any aspects of the model.
+    # Add metamodel comparison instructions if PCE is used
+    if is_pce_used and original_model_code_str and metamodel_str:
+        additional_instructions = """
+        Additionally, compare the original model with the polynomial chaos expansion metamodel.
+        Explain how the PCE approximates the original model and what advantages this brings.
         """
-        st.info(disclaimer_text)
+        prompt = generate_prompt(additional_instructions)
+    
+    # Get response from language model
+    try:
+        response_text = call_groq_api(prompt, model_name=language_model)
+    except Exception as e:
+        response_text = f"Error generating model explanation: {str(e)}"
+    
+    # Return results dictionary
+    return {
+        'model_code_str': model_code_str,
+        'inputs_df': inputs_df,
+        'inputs_md_table': inputs_md_table,
+        'explanation': response_text,
+        'is_pce_used': is_pce_used,
+        'original_model_code_str': original_model_code_str,
+        'metamodel_str': metamodel_str
+    }
+
+def display_model_understanding(analysis_results, language_model='groq'):
+    """
+    Display model understanding analysis results in the Streamlit interface.
+    
+    Parameters
+    ----------
+    analysis_results : dict
+        Dictionary containing model understanding analysis results
+    language_model : str, optional
+        Language model to use for AI insights, by default 'groq'
+    """
+    # Extract results from the analysis_results dictionary
+    model_code_str = analysis_results['model_code_str']
+    inputs_df = analysis_results['inputs_df']
+    inputs_md_table = analysis_results['inputs_md_table']
+    explanation = analysis_results['explanation']
+    is_pce_used = analysis_results['is_pce_used']
+    original_model_code_str = analysis_results['original_model_code_str']
+    metamodel_str = analysis_results['metamodel_str']
+    
+    # Store the explanation in session state for reuse
+    if 'model_understanding_response_markdown' not in st.session_state:
+        st.session_state['model_understanding_response_markdown'] = explanation
+    
+    # Display the AI-generated explanation
+    with st.expander("Model Explanation", expanded=True):
+        st.markdown(explanation)
         
-        # Define context generator function
-        def generate_context(prompt):
-            return f"""
-            You are an expert assistant helping users understand a computational model. 
-            
-            Here is the model code:
-            ```python
-            {model_code_str}
-            ```
-            
-            Here is information about the input distributions:
-            {inputs_md_table}
-            
-            Here is the explanation that was previously generated:
-            {st.session_state.get('model_understanding_response_markdown', 'No explanation available yet.')}
-            
-            Answer the user's question based on this information. Be concise but thorough.
-            If you're not sure about something, acknowledge the limitations of your knowledge.
-            Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
-            """
+        # Display input distributions
+        st.write("### Input Distributions")
+        try:
+            # Display the dataframe
+            st.dataframe(
+                inputs_df,
+                column_config={
+                    "Variable": st.column_config.TextColumn("Variable Name"),
+                    "Distribution": st.column_config.TextColumn("Distribution Type"),
+                    "Parameters": st.column_config.TextColumn("Parameters"),
+                    "Bounds": st.column_config.TextColumn("Bounds"),
+                    "Mean": st.column_config.NumberColumn("Mean", format="%.4f"),
+                    "Std": st.column_config.NumberColumn("Std. Dev.", format="%.4f")
+                },
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Error displaying input distributions: {e}")
         
-        # Initialize session state for chat messages if not already done
-        if "model_understanding_chat_messages" not in st.session_state:
-            st.session_state.model_understanding_chat_messages = []
+        # Display model code
+        st.write("### Model Code")
+        st.code(model_code_str, language="python")
         
-        # Create a container with fixed height for the chat messages
-        chat_container_height = 500  # Height in pixels
+        # If a metamodel is used, display it
+        if is_pce_used and metamodel_str:
+            st.write("### Polynomial Chaos Expansion Metamodel")
+            st.info("This analysis uses a polynomial chaos expansion (PCE) metamodel instead of the original model.")
+            
+            # Display the original model
+            st.write("#### Original Model")
+            st.code(original_model_code_str, language="python")
+            
+            # Display the metamodel
+            st.write("#### PCE Metamodel")
+            st.code(metamodel_str, language="python")
+
+def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq', display_results=True):
+    """
+    Generate a comprehensive description of the model and its uncertain inputs.
+    
+    This module introduces the model to users in a clear, engaging way with visual aids
+    and explanations that contextualize the model's purpose, inputs, and significance.
+    
+    Parameters
+    ----------
+    model : callable
+        The model function
+    problem : ot.Distribution
+        OpenTURNS distribution object defining the problem
+    model_code_str : str
+        String representation of the model code
+    is_pce_used : bool, optional
+        Whether a polynomial chaos expansion metamodel is used, by default False
+    original_model_code_str : str, optional
+        Original model code if using a metamodel, by default None
+    metamodel_str : str, optional
+        String representation of the metamodel, by default None
+    language_model : str, optional
+        Language model to use for AI insights, by default 'groq'
+    display_results : bool, optional
+        Whether to display results in the UI, by default True
+    
+    Returns
+    -------
+    dict
+        Dictionary containing model understanding analysis results
+    """
+    try:
+        # Compute model understanding analysis
+        analysis_results = compute_model_understanding(
+            model, 
+            problem, 
+            model_code_str, 
+            is_pce_used, 
+            original_model_code_str, 
+            metamodel_str, 
+            language_model
+        )
         
-        # Apply CSS to create a scrollable container
-        st.markdown(f"""
-        <style>
-        .chat-container {{
-            height: {chat_container_height}px;
-            overflow-y: auto;
-            border: 1px solid #e6e6e6;
-            border-radius: 5px;
-            padding: 10px;
-            background-color: #f9f9f9;
-            margin-bottom: 15px;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
+        # Display results if requested
+        if display_results:
+            display_model_understanding(analysis_results, language_model)
         
-        # Create a container for the chat messages
-        with st.container():
-            # Use HTML to create a scrollable container
-            chat_messages_html = "<div class='chat-container'>"
-            
-            # Display existing messages
-            for message in st.session_state.model_understanding_chat_messages:
-                role_style = "background-color: #e1f5fe; border-radius: 10px; padding: 8px; margin: 5px 0;" if message["role"] == "assistant" else "background-color: #f0f0f0; border-radius: 10px; padding: 8px; margin: 5px 0;"
-                role_label = "Assistant:" if message["role"] == "assistant" else "You:"
-                chat_messages_html += f"<div style='{role_style}'><strong>{role_label}</strong><br>{message['content']}</div>"
-            
-            chat_messages_html += "</div>"
-            st.markdown(chat_messages_html, unsafe_allow_html=True)
-        
-        # Chat input below the scrollable container
-        prompt = st.chat_input("Ask a question about the model...", key="model_understanding_side_chat_input")
-        
-        # Process user input
-        if prompt:
-            # Add user message to chat history
-            st.session_state.model_understanding_chat_messages.append({"role": "user", "content": prompt})
-            
-            # Generate context for the assistant
-            context = generate_context(prompt)
-            
-            # Include previous conversation history
-            chat_history = ""
-            if len(st.session_state.model_understanding_chat_messages) > 1:
-                chat_history = "Previous conversation:\n"
-                for i, msg in enumerate(st.session_state.model_understanding_chat_messages[:-1]):
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    chat_history += f"{role}: {msg['content']}\n\n"
-            
-            # Create the final prompt
-            chat_prompt = f"""
-            {context}
-            
-            {chat_history}
-            
-            Current user question: {prompt}
-            
-            Please provide a helpful, accurate response to this question.
-            """
-            
-            # Call API with chat history
-            with st.spinner("Thinking..."):
-                try:
-                    response_text = call_groq_api(chat_prompt, model_name=language_model)
-                except Exception as e:
-                    st.error(f"Error calling API: {str(e)}")
-                    response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
-            
-            # Add assistant response to chat history
-            st.session_state.model_understanding_chat_messages.append({"role": "assistant", "content": response_text})
-            
-            # Rerun to display the new message immediately
-            st.rerun()
+        # Return analysis results
+        return analysis_results
+    
+    except Exception as e:
+        if display_results:
+            st.error(f"Error in model understanding: {str(e)}")
+        raise

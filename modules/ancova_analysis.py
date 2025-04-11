@@ -345,254 +345,127 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
     model_code_str : str, optional
         String representation of the model code, by default None
     """
-    # Create a two-column layout for the main content and chat interface
-    main_col, chat_col = st.columns([2, 1])
-    
-    with main_col:
-        # Results Section
-        with st.expander("Results", expanded=True):
-            # Overview
-            st.subheader("ANCOVA Sensitivity Analysis Overview")
-            st.markdown("""
-            ANCOVA (Analysis of Covariance) sensitivity analysis is particularly useful for models with correlated inputs. 
-            It separates the variance explained by individual variables from that explained by correlations with other inputs.
-            
-            #### Interpreting the Results:
-            
-            - **ANCOVA Index**: Total sensitivity of the output to each input variable
-            - **Uncorrelated Index**: Portion of sensitivity due to the variable's independent effect
-            - **Correlated Index**: Portion of sensitivity due to correlations with other variables
-            - **Correlation %**: Percentage of the total sensitivity that comes from correlations
-            
-            Unlike FAST analysis, ANCOVA specifically accounts for input correlations, making it more appropriate 
-            for models with dependent inputs.
-            """)
-            
-            # Display the indices table
-            st.subheader("Sensitivity Indices")
-            
-            # Get most influential variable
-            most_influential = ancova_results['indices_df'].iloc[0]['Variable']
-            most_influential_index = ancova_results['indices_df'].iloc[0]['ANCOVA Index']
-            
-            # Calculate sums
-            sum_ancova = ancova_results['indices_df']['ANCOVA Index'].sum()
-            sum_uncorrelated = ancova_results['indices_df']['Uncorrelated Index'].sum()
-            sum_correlated = ancova_results['indices_df']['Correlated Index'].sum()
-            correlation_effect = sum_correlated / sum_ancova if sum_ancova > 0 else 0.0
-            
-            # Create summary metrics
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric(
-                    "Most Influential Variable", 
-                    most_influential,
-                    f"ANCOVA Index: {most_influential_index:.4f}"
-                )
-            with col2:
-                st.metric("Sum of ANCOVA Indices", f"{sum_ancova:.4f}")
-            with col3:
-                st.metric(
-                    "Correlation Effect", 
-                    f"{correlation_effect:.2%}",
-                    f"Sum of Correlated: {sum_correlated:.4f}"
-                )
-            
-            # Display the indices table
-            st.subheader("Detailed Numerical Results")
-            display_df = ancova_results['indices_df'][['Variable', 'ANCOVA Index', 'Uncorrelated Index', 'Correlated Index', 'Correlation %']]
-            display_df['Correlation %'] = display_df['Correlation %'].apply(lambda x: f"{x:.2f}%")
-            st.dataframe(display_df, use_container_width=True)
-            
-            # Visualizations
-            st.subheader("Sensitivity Visualizations")
-            
-            # Display the bar chart
-            st.markdown("#### ANCOVA Sensitivity Indices")
-            st.markdown("""
-            This bar chart shows the total ANCOVA sensitivity index for each variable, 
-            indicating their overall importance to the model output.
-            """)
-            st.plotly_chart(ancova_results['fig_bar'], use_container_width=True)
-            
-            # Display stacked bar chart
-            st.markdown("#### Correlation Decomposition")
-            st.markdown("""
-            This stacked bar chart breaks down each variable's sensitivity into:
-            - **Uncorrelated Effect**: The variable's direct influence on the output (blue)
-            - **Correlated Effect**: The influence due to correlations with other variables (red)
-            
-            Variables with large red portions are strongly affected by correlations in the model.
-            """)
-            st.plotly_chart(ancova_results['fig_stacked'], use_container_width=True)
-            
-            # Display pie chart and heatmap in two columns
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("#### ANCOVA Indices Distribution")
-                st.markdown("""
-                This pie chart shows the relative contribution of each variable to the total output variance.
-                Larger slices indicate variables with stronger influence on the model output.
-                """)
-                st.plotly_chart(ancova_results['fig_pie'], use_container_width=True)
-            with col2:
-                st.markdown("#### Input Correlation Structure")
-                st.markdown("""
-                This heatmap visualizes the correlation structure between input variables:
-                - Red cells indicate positive correlations
-                - Blue cells indicate negative correlations
-                - Darker colors represent stronger correlations
-                
-                Strong correlations explain why some variables have high correlated effects.
-                """)
-                st.plotly_chart(ancova_results['fig_heatmap'], use_container_width=True)
-            
-            # Add interpretation based on results
-            if correlation_effect > 0.3:
-                st.info("""
-                **Significant correlation effects detected.** A substantial portion of the output variance 
-                is explained by correlations between input variables. This means the model behavior is strongly 
-                influenced by the joint distribution of inputs, not just their individual distributions.
-                """)
-            elif correlation_effect < 0.1:
-                st.success("""
-                **Minimal correlation effects detected.** The input correlations have little impact on the output variance.
-                The model behavior can be understood primarily by studying the effect of each variable separately.
-                """)
+    # Results Section
+    with st.expander("Results", expanded=True):
+        # Overview
+        st.subheader("ANCOVA Sensitivity Analysis Overview")
+        st.markdown("""
+        ANCOVA (Analysis of Covariance) sensitivity analysis is particularly useful for models with correlated inputs. 
+        It separates the variance explained by individual variables from that explained by correlations with other inputs.
         
-        # AI Insights Section
-        if ancova_results['llm_insights'] and language_model:
-            with st.expander("AI Insights", expanded=True):
-                # Store the insights in session state for reuse
-                if 'ancova_analysis_response_markdown' not in st.session_state:
-                    st.session_state['ancova_analysis_response_markdown'] = ancova_results['llm_insights']
-                
-                st.markdown(ancova_results['llm_insights'])
+        #### Interpreting the Results:
+        
+        - **ANCOVA Index**: Total sensitivity of the output to each input variable
+        - **Uncorrelated Index**: Portion of sensitivity due to the variable's independent effect
+        - **Correlated Index**: Portion of sensitivity due to correlations with other variables
+        - **Correlation %**: Percentage of the total sensitivity that comes from correlations
+        
+        Unlike FAST analysis, ANCOVA specifically accounts for input correlations, making it more appropriate 
+        for models with dependent inputs.
+        """)
+        
+        # Display the indices table
+        st.subheader("Sensitivity Indices")
+        
+        # Get most influential variable
+        most_influential = ancova_results['indices_df'].iloc[0]['Variable']
+        most_influential_index = ancova_results['indices_df'].iloc[0]['ANCOVA Index']
+        
+        # Calculate sums
+        sum_ancova = ancova_results['indices_df']['ANCOVA Index'].sum()
+        sum_uncorrelated = ancova_results['indices_df']['Uncorrelated Index'].sum()
+        sum_correlated = ancova_results['indices_df']['Correlated Index'].sum()
+        correlation_effect = sum_correlated / sum_ancova if sum_ancova > 0 else 0.0
+        
+        # Create summary metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Most Influential Variable", 
+                most_influential,
+                f"ANCOVA Index: {most_influential_index:.4f}"
+            )
+        with col2:
+            st.metric("Sum of ANCOVA Indices", f"{sum_ancova:.4f}")
+        with col3:
+            st.metric(
+                "Correlation Effect", 
+                f"{correlation_effect:.2%}",
+                f"Sum of Correlated: {sum_correlated:.4f}"
+            )
+        
+        # Display the indices table
+        st.subheader("Detailed Numerical Results")
+        display_df = ancova_results['indices_df'][['Variable', 'ANCOVA Index', 'Uncorrelated Index', 'Correlated Index', 'Correlation %']]
+        display_df['Correlation %'] = display_df['Correlation %'].apply(lambda x: f"{x:.2f}%")
+        st.dataframe(display_df, use_container_width=True)
+        
+        # Visualizations
+        st.subheader("Sensitivity Visualizations")
+        
+        # Display the bar chart
+        st.markdown("#### ANCOVA Sensitivity Indices")
+        st.markdown("""
+        This bar chart shows the total ANCOVA sensitivity index for each variable, 
+        indicating their overall importance to the model output.
+        """)
+        st.plotly_chart(ancova_results['fig_bar'], use_container_width=True)
+        
+        # Display stacked bar chart
+        st.markdown("#### Correlation Decomposition")
+        st.markdown("""
+        This stacked bar chart breaks down each variable's sensitivity into:
+        - **Uncorrelated Effect**: The variable's direct influence on the output (blue)
+        - **Correlated Effect**: The influence due to correlations with other variables (red)
+        
+        Variables with large red portions are strongly affected by correlations in the model.
+        """)
+        st.plotly_chart(ancova_results['fig_stacked'], use_container_width=True)
+        
+        # Display pie chart and heatmap in two columns
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### ANCOVA Indices Distribution")
+            st.markdown("""
+            This pie chart shows the relative contribution of each variable to the total output variance.
+            Larger slices indicate variables with stronger influence on the model output.
+            """)
+            st.plotly_chart(ancova_results['fig_pie'], use_container_width=True)
+        with col2:
+            st.markdown("#### Input Correlation Structure")
+            st.markdown("""
+            This heatmap visualizes the correlation structure between input variables:
+            - Red cells indicate positive correlations
+            - Blue cells indicate negative correlations
+            - Darker colors represent stronger correlations
+            
+            Strong correlations explain why some variables have high correlated effects.
+            """)
+            st.plotly_chart(ancova_results['fig_heatmap'], use_container_width=True)
+        
+        # Add interpretation based on results
+        if correlation_effect > 0.3:
+            st.info("""
+            **Significant correlation effects detected.** A substantial portion of the output variance 
+            is explained by correlations between input variables. This means the model behavior is strongly 
+            influenced by the joint distribution of inputs, not just their individual distributions.
+            """)
+        elif correlation_effect < 0.1:
+            st.success("""
+            **Minimal correlation effects detected.** The input correlations have little impact on the output variance.
+            The model behavior can be understood primarily by studying the effect of each variable separately.
+            """)
     
-    # CHAT INTERFACE in the right column
-    if language_model and ancova_results['llm_insights']:
-        with chat_col:
-            st.markdown("### Ask Questions About This Analysis")
+    # AI Insights Section
+    if ancova_results['llm_insights'] and language_model:
+        with st.expander("AI Insights", expanded=True):
+            # Store the insights in session state for reuse
+            if 'ancova_analysis_response_markdown' not in st.session_state:
+                st.session_state['ancova_analysis_response_markdown'] = ancova_results['llm_insights']
             
-            # Display a disclaimer about the prompt
-            disclaimer_text = """
-            **Note:** The AI assistant has been provided with the model code, sensitivity indices, 
-            and the analysis results above. You can ask questions to clarify any aspects of the ANCOVA analysis.
-            """
-            st.info(disclaimer_text)
-            
-            # Initialize session state for chat messages if not already done
-            if "ancova_analysis_chat_messages" not in st.session_state:
-                st.session_state.ancova_analysis_chat_messages = []
-            
-            # Create a container with fixed height for the chat messages
-            chat_container_height = 500  # Height in pixels
-            
-            # Apply CSS to create a scrollable container
-            st.markdown(f"""
-            <style>
-            .chat-container {{
-                height: {chat_container_height}px;
-                overflow-y: auto;
-                border: 1px solid #e6e6e6;
-                border-radius: 5px;
-                padding: 10px;
-                background-color: #f9f9f9;
-                margin-bottom: 15px;
-            }}
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Create a container for the chat messages
-            with st.container():
-                # Use HTML to create a scrollable container
-                chat_messages_html = "<div class='chat-container'>"
-                
-                # Display existing messages
-                for message in st.session_state.ancova_analysis_chat_messages:
-                    role_style = "background-color: #e1f5fe; border-radius: 10px; padding: 8px; margin: 5px 0;" if message["role"] == "assistant" else "background-color: #f0f0f0; border-radius: 10px; padding: 8px; margin: 5px 0;"
-                    role_label = "Assistant:" if message["role"] == "assistant" else "You:"
-                    chat_messages_html += f"<div style='{role_style}'><strong>{role_label}</strong><br>{message['content']}</div>"
-                
-                chat_messages_html += "</div>"
-                st.markdown(chat_messages_html, unsafe_allow_html=True)
-            
-            # Chat input below the scrollable container
-            prompt = st.chat_input("Ask a question about the ANCOVA sensitivity analysis...", key="ancova_side_chat_input")
-            
-            # Process user input
-            if prompt:
-                # Add user message to chat history
-                st.session_state.ancova_analysis_chat_messages.append({"role": "user", "content": prompt})
-                
-                # Define context generator function
-                def generate_context(prompt):
-                    # Get variable names and indices from the results
-                    variable_names = ancova_results['indices_df']['Variable'].tolist()
-                    uncorrelated = ancova_results['indices_df']['Uncorrelated Index'].tolist()
-                    correlated = ancova_results['indices_df']['Correlated Index'].tolist()
-                    total = ancova_results['indices_df']['ANCOVA Index'].tolist()
-                    
-                    indices_summary = ', '.join([f"{name}: Uncorrelated={unc:.4f}, Correlated={cor:.4f}, Total={tot:.4f}" 
-                                               for name, unc, cor, tot in zip(variable_names, uncorrelated, correlated, total)])
-                    
-                    return f"""
-                    You are an expert assistant helping users understand ANCOVA sensitivity analysis results. 
-                    
-                    Here is the model code:
-                    ```python
-                    {model_code_str if model_code_str else "Model code not available"}
-                    ```
-                    
-                    Here is the sensitivity analysis summary:
-                    {indices_summary}
-                    
-                    Here is the explanation that was previously generated:
-                    {st.session_state.get('ancova_analysis_response_markdown', 'No analysis available yet.')}
-                    
-                    Answer the user's question based on this information. Be concise but thorough.
-                    If you're not sure about something, acknowledge the limitations of your knowledge.
-                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
-                    Explain the difference between uncorrelated and correlated contributions if asked.
-                    """
-                
-                # Generate context for the assistant
-                context = generate_context(prompt)
-                
-                # Include previous conversation history
-                chat_history = ""
-                if len(st.session_state.ancova_analysis_chat_messages) > 1:
-                    chat_history = "Previous conversation:\n"
-                    for i, msg in enumerate(st.session_state.ancova_analysis_chat_messages[:-1]):
-                        role = "User" if msg["role"] == "user" else "Assistant"
-                        chat_history += f"{role}: {msg['content']}\n\n"
-                
-                # Create the final prompt
-                chat_prompt = f"""
-                {context}
-                
-                {chat_history}
-                
-                Current user question: {prompt}
-                
-                Please provide a helpful, accurate response to this question.
-                """
-                
-                # Call API with chat history
-                with st.spinner("Thinking..."):
-                    try:
-                        response_text = call_groq_api(chat_prompt, model_name=language_model)
-                    except Exception as e:
-                        st.error(f"Error calling API: {str(e)}")
-                        response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
-                
-                # Add assistant response to chat history
-                st.session_state.ancova_analysis_chat_messages.append({"role": "assistant", "content": response_text})
-                
-                # Rerun to display the new message immediately
-                st.rerun()
+            st.markdown(ancova_results['llm_insights'])
 
-def ancova_analysis(model, problem, size=2000, model_code_str=None, language_model=None):
+def ancova_analysis(model, problem, size=2000, model_code_str=None, language_model=None, display_results=True):
     """
     Perform and display ANCOVA sensitivity analysis.
     
@@ -611,11 +484,32 @@ def ancova_analysis(model, problem, size=2000, model_code_str=None, language_mod
         String representation of the model code for documentation
     language_model : str, optional
         Language model to use for analysis
+    display_results : bool, optional
+        Whether to display results using Streamlit UI (default: True)
+        Set to False when running in batch mode or "Run All Analyses"
+    
+    Returns
+    -------
+    dict
+        Dictionary containing the results of the ANCOVA analysis
     """
-    with st.spinner("Running ANCOVA Sensitivity Analysis..."):
-        ancova_results = ancova_sensitivity_analysis(
-            model, problem, size=size, model_code_str=model_code_str,
-            language_model=language_model
-        )
-        
-        display_ancova_results(ancova_results, language_model, model_code_str)
+    try:
+        with st.spinner("Running ANCOVA Sensitivity Analysis..."):
+            ancova_results = ancova_sensitivity_analysis(
+                model, problem, size=size, model_code_str=model_code_str,
+                language_model=language_model
+            )
+            
+            # Save results to session state for later access
+            if 'ancova_results' not in st.session_state:
+                st.session_state.ancova_results = ancova_results
+            
+            # Display results if requested
+            if display_results:
+                display_ancova_results(ancova_results, language_model, model_code_str)
+            
+            return ancova_results
+    except Exception as e:
+        if display_results:
+            st.error(f"Error in ANCOVA analysis: {str(e)}")
+        raise
