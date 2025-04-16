@@ -1,157 +1,596 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-import matplotlib.pyplot as plt
 import streamlit as st
-from modules.api_utils import call_groq_api
-from modules.common_prompt import RETURN_INSTRUCTION
-from modules.openturns_utils import get_ot_distribution, get_ot_model
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import traceback
+from utils.core_utils import call_groq_api, create_chat_interface
+from utils.constants import RETURN_INSTRUCTION
+from utils.model_utils import get_ot_model, sample_inputs
 
-
-def hsic_analysis(model, problem, model_code_str, language_model='groq'):
-    # Create distributions
-    distribution = get_ot_distribution(problem)
-
-    # Create the OpenTURNS model
-    ot_model = get_ot_model(model, problem)
-
-    # Define sample size for HSIC analysis
-    sample_size = 250
-    input_design = distribution.getSample(sample_size)
-    output_design = ot_model(input_design)
-
-    # Define covariance models for HSIC analysis
-    covariance_model_collection = []
-    for i in range(problem['num_vars']):
-        Xi = input_design.getMarginal(i)
-        input_covariance = ot.SquaredExponential()
-        sigma = Xi.computeStandardDeviation()[0]
-        input_covariance.setScale([sigma])  # Wrap sigma in a list to create a Point
-        covariance_model_collection.append(input_covariance)
-
-    # Add output covariance model
-    output_covariance = ot.SquaredExponential()
-    sigma_Y = output_design.computeStandardDeviation()[0]
-    output_covariance.setScale([sigma_Y])  # Wrap sigma_Y in a list to create a Point
-    covariance_model_collection.append(output_covariance)
-
-    # HSIC global sensitivity analysis
-    estimator_type = ot.HSICUStat()
-    hsic_algo = ot.HSICEstimatorGlobalSensitivity(covariance_model_collection, input_design, output_design, estimator_type)
-
-    # Get HSIC results
-    R2HSICIndices = hsic_algo.getR2HSICIndices()
-    HSICIndices = hsic_algo.getHSICIndices()
-    pvperm = hsic_algo.getPValuesPermutation()
-    pvas = hsic_algo.getPValuesAsymptotic()
-
-    hsic_results_list = []
-    for i in range(len(problem['names'])):
-        hsic_results_list.append({
-            "Variable": problem['names'][i],
-            "R2-HSIC Index": R2HSICIndices[i],
-            "HSIC Index": HSICIndices[i],
-            "p-value (permutation)": pvperm[i],
-            "p-value (asymptotic)": pvas[i]
-        })
-
-    # Create DataFrame from the list of dictionaries
-    hsic_results = pd.DataFrame(hsic_results_list)
-
-    # Plot HSIC results
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12,6), dpi=100)
-
-    x = np.arange(len(problem['names']))
-    ax1.bar(x, hsic_results['R2-HSIC Index'], color='orange', edgecolor='black')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(problem['names'], rotation=45, ha='right', fontsize=8)
-    ax1.set_title('R2-HSIC Indices', fontsize=14)
-    ax1.set_ylabel('R2-HSIC', fontsize=12)
-
-    ax2.bar(x, hsic_results['HSIC Index'], color='blue', edgecolor='black')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(problem['names'], rotation=45, ha='right', fontsize=8)
-    ax2.set_title('HSIC Indices', fontsize=14)
-    ax2.set_ylabel('HSIC', fontsize=12)
-
-    width = 0.35
-    ax3.bar(x - width/2, hsic_results['p-value (permutation)'], width, label='p-value (permutation)', color='red', edgecolor='black')
-    ax3.bar(x + width/2, hsic_results['p-value (asymptotic)'], width, label='p-value (asymptotic)', color='green', edgecolor='black')
-    ax3.set_xticks(x)
-    ax3.set_xticklabels(problem['names'], rotation=45, ha='right', fontsize=8)
-    ax3.set_title('HSIC p-values', fontsize=14)
-    ax3.set_ylabel('p-value', fontsize=12)
-    ax3.legend()
-
-    plt.tight_layout()
+def hsic_analysis(model, problem, model_code_str=None, language_model='groq'):
+    """
+    Perform HSIC (Hilbert-Schmidt Independence Criterion) analysis with enterprise-grade visualizations.
     
+    This function calculates HSIC-based sensitivity indices to measure the dependence between
+    input variables and model outputs, including both raw and normalized indices.
+    
+    Parameters
+    ----------
+    model : callable
+        The model function to analyze
+    problem : ot.Distribution
+        OpenTURNS distribution representing the input uncertainty
+    model_code_str : str, optional
+        String representation of the model code for documentation
+    language_model : str, optional
+        Language model to use for analysis, by default "groq"
+        
+    Returns
+    -------
+    dict
+        Dictionary containing HSIC analysis results
+    """
+    try:
+        # Create a two-column layout for the main content and chat interface
+        main_col, chat_col = st.columns([2, 1])
+        
+        with main_col:
+            # Ensure problem is an OpenTURNS distribution
+            if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+                raise ValueError("Problem must be an OpenTURNS distribution")
+            
+            # Get input names from distribution
+            dimension = problem.getDimension()
+            input_names = []
+            for i in range(dimension):
+                marginal = problem.getMarginal(i)
+                input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
+            
+            # Results Section
+            with st.expander("Results", expanded=True):
+                st.subheader("HSIC Analysis")
+                st.markdown("""
+                HSIC (Hilbert-Schmidt Independence Criterion) analysis is a powerful method for detecting non-linear dependencies 
+                between input variables and model outputs. Unlike correlation-based methods, HSIC can capture complex, non-linear 
+                relationships without making assumptions about the underlying model structure.
+                
+                The HSIC method provides several key metrics:
+                
+                - **Raw HSIC Indices**: Measure the absolute strength of dependence between each input and the output
+                - **Normalized HSIC Indices**: Represent the relative importance of each input (values sum to 1)
+                - **p-values**: Determine the statistical significance of the dependencies
+                
+                HSIC can detect both linear and non-linear dependencies and makes no assumptions about the distribution of variables,
+                making it particularly valuable for complex models with unknown structures.
+                """)
+                
+                # Add a slider for sample size
+                hsic_size = st.slider("Number of HSIC Samples", min_value=100, max_value=1000, value=200, step=100)
+                
+                # Compute HSIC indices with progress indicator
+                with st.spinner("Computing HSIC indices..."):
+                    hsic_results = compute_hsic_indices(model, problem, N=hsic_size, seed=42)
+                
+                # Create DataFrame from the results
+                hsic_df = create_hsic_dataframe(hsic_results)
+                
+                # Find most influential variables
+                top_var = hsic_df.sort_values('Normalized_Index', ascending=False).iloc[0]
+                significant_vars = hsic_df[hsic_df['p_value_asymptotic'] < 0.05]
+                
+                # Display summary metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric(
+                        "Most Influential Variable", 
+                        top_var['Variable'],
+                        f"HSIC: {top_var['Normalized_Index']:.4f}"
+                    )
+                with col2:
+                    st.metric(
+                        "Significant Variables", 
+                        f"{len(significant_vars)} of {len(hsic_df)}",
+                        f"{len(significant_vars)/len(hsic_df)*100:.1f}%"
+                    )
+                with col3:
+                    # Find variable with lowest p-value
+                    min_p_var = hsic_df.sort_values('p_value_asymptotic').iloc[0]
+                    st.metric(
+                        "Most Significant Variable", 
+                        min_p_var['Variable'],
+                        f"p-value: {min_p_var['p_value_asymptotic']:.2e}"
+                    )
+                
+                # Create visualizations using Plotly
+                fig = create_hsic_plots(hsic_results)
+                
+                # Display the interactive plot
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Display the results table
+                st.subheader("HSIC Indices")
+                st.dataframe(hsic_df.style.format({
+                    'HSIC_Index': '{:.6e}',
+                    'Normalized_Index': '{:.4f}',
+                    'p_value_asymptotic': '{:.4e}',
+                    'p_value_permutation': '{:.4e}'
+                }), use_container_width=True)
+                
+                # Display interpretation
+                st.subheader("Interpretation")
+                
+                st.markdown(f"""
+                **Key Insights:**
+                
+                - **Most influential variable**: {top_var['Variable']} (Normalized HSIC: {top_var['Normalized_Index']:.4f})
+                - **Statistically significant variables**: {len(significant_vars)} out of {len(hsic_df)} variables
+                - **Total captured dependence**: The HSIC analysis captures both linear and non-linear dependencies
+                
+                **Significance Analysis:**
+                
+                - Variables with p-values < 0.05 have statistically significant relationships with the output
+                - Lower p-values indicate stronger evidence against the null hypothesis of independence
+                """)
+            
+            # Generate AI insights
+            if language_model:
+                with st.expander("AI Insights", expanded=True):
+                    # Prepare the data for the API call
+                    hsic_md_table = hsic_df.to_markdown(index=False, floatfmt=".4e")
+                    
+                    # Format the model code for inclusion in the prompt
+                    model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')]) if model_code_str else ""
+                    
+                    # Prepare the inputs description
+                    input_parameters = []
+                    for i in range(dimension):
+                        marginal = problem.getMarginal(i)
+                        name = input_names[i]
+                        dist_type = marginal.__class__.__name__
+                        params = marginal.getParameter()
+                        input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
+                    
+                    inputs_description = '\n'.join(input_parameters)
+                    
+                    # Prepare the prompt
+                    prompt = f"""
+                    {RETURN_INSTRUCTION}
+                    
+                    Given the following user-defined model defined in Python code:
+                    
+                    ```python
+                    {model_code_formatted}
+                    ```
+                    
+                    and the following uncertain input distributions:
+                    
+                    {inputs_description}
+                    
+                    The results of the HSIC analysis are given in the table below:
+                    
+                    {hsic_md_table}
+                    
+                    Please provide an expert analysis of the HSIC results:
+                    
+                    1. **Methodology Overview**
+                       - Explain the mathematical basis of the HSIC method in sensitivity analysis
+                       - Discuss the advantages of HSIC over traditional correlation-based methods
+                       - Explain how HSIC captures both linear and non-linear dependencies
+                    
+                    2. **Results Interpretation**
+                       - Identify which variables have the strongest dependencies with the output based on HSIC indices
+                       - Discuss the statistical significance of these dependencies based on p-values
+                       - Explain what these patterns suggest about the model behavior and input-output relationships
+                    
+                    3. **Comparison with Other Methods**
+                       - Discuss how HSIC results might differ from variance-based or correlation-based methods
+                       - Explain when HSIC is particularly valuable (e.g., for highly non-linear models)
+                       - Identify potential limitations of the HSIC approach
+                    
+                    4. **Recommendations**
+                       - Suggest which variables should be prioritized for uncertainty reduction based on HSIC indices
+                       - Recommend additional analyses that might be valuable given these HSIC patterns
+                       - Provide guidance on how these results can inform decision-making or model refinement
+                    
+                    Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
+                    """
+                    
+                    # Check if the results are already in session state
+                    response_key = 'hsic_response_markdown'
+                    if response_key not in st.session_state:
+                        # Call the AI API
+                        with st.spinner("Generating expert analysis..."):
+                            response_markdown = call_groq_api(prompt, model_name=language_model)
+                        # Store the response in session state
+                        st.session_state[response_key] = response_markdown
+                    else:
+                        response_markdown = st.session_state[response_key]
+                    
+                    # Display the response
+                    st.markdown(response_markdown)
+        
+        # CHAT INTERFACE in the right column
+        if language_model:
+            with chat_col:
+                st.markdown("### Ask Questions About This Analysis")
+                
+                # Initialize session state for chat messages if not already done
+                if "hsic_analysis_chat_messages" not in st.session_state:
+                    st.session_state.hsic_analysis_chat_messages = []
+                
+                # Create a container with fixed height for the chat messages
+                chat_container_height = 500  # Height in pixels
+                
+                # Apply CSS to create a scrollable container
+                st.markdown(f"""
+                <style>
+                .chat-container {{
+                    height: {chat_container_height}px;
+                    overflow-y: auto;
+                    border: 1px solid #e6e6e6;
+                    border-radius: 5px;
+                    padding: 10px;
+                    background-color: #f9f9f9;
+                    margin-bottom: 15px;
+                }}
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Create a container for the chat messages
+                with st.container():
+                    # Use HTML to create a scrollable container
+                    chat_messages_html = "<div class='chat-container'>"
+                    
+                    # Display existing messages
+                    for message in st.session_state.hsic_analysis_chat_messages:
+                        role_style = "background-color: #e1f5fe; border-radius: 10px; padding: 8px; margin: 5px 0;" if message["role"] == "assistant" else "background-color: #f0f0f0; border-radius: 10px; padding: 8px; margin: 5px 0;"
+                        role_label = "Assistant:" if message["role"] == "assistant" else "You:"
+                        chat_messages_html += f"<div style='{role_style}'><strong>{role_label}</strong><br>{message['content']}</div>"
+                    
+                    chat_messages_html += "</div>"
+                    st.markdown(chat_messages_html, unsafe_allow_html=True)
+                
+                # Chat input below the scrollable container
+                prompt = st.chat_input("Ask a question about the HSIC analysis...", key="hsic_side_chat_input")
+                
+                # Process user input
+                if prompt:
+                    # Add user message to chat history
+                    st.session_state.hsic_analysis_chat_messages.append({"role": "user", "content": prompt})
+                    
+                    # Generate context for the assistant
+                    context = f"""
+                    You are an expert assistant helping users understand HSIC sensitivity analysis results. 
+                    
+                    Here is the model code:
+                    ```python
+                    {model_code_formatted}
+                    ```
+                    
+                    Here is information about the input distributions:
+                    {inputs_description}
+                    
+                    Here is the HSIC analysis summary:
+                    {hsic_md_table}
+                    
+                    Additional HSIC information:
+                    Top 3 most influential variables by normalized HSIC: {', '.join([f"{row['Variable']}: {row['Normalized_Index']:.4f}" for _, row in hsic_df.sort_values('Normalized_Index', ascending=False).head(3).iterrows()])}
+                    Statistically significant variables (p < 0.05): {', '.join(hsic_df[hsic_df['p_value_asymptotic'] < 0.05]['Variable'].tolist()) if len(hsic_df[hsic_df['p_value_asymptotic'] < 0.05]) > 0 else "None"}
+                    Sample size used for HSIC calculation: {hsic_size}
+                    
+                    Here is the explanation that was previously generated:
+                    {st.session_state.get('hsic_response_markdown', 'No analysis available yet.')}
+                    
+                    Answer the user's question based on this information. Be concise but thorough.
+                    If you're not sure about something, acknowledge the limitations of your knowledge.
+                    Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+                    Explain the mathematical basis of HSIC and how it differs from other sensitivity analysis methods if asked.
+                    """
+                    
+                    # Include previous conversation history
+                    chat_history = ""
+                    if len(st.session_state.hsic_analysis_chat_messages) > 1:
+                        chat_history = "Previous conversation:\n"
+                        for i, msg in enumerate(st.session_state.hsic_analysis_chat_messages[:-1]):
+                            role = "User" if msg["role"] == "user" else "Assistant"
+                            chat_history += f"{role}: {msg['content']}\n\n"
+                    
+                    # Create the final prompt
+                    chat_prompt = f"""
+                    {context}
+                    
+                    {chat_history}
+                    
+                    Current user question: {prompt}
+                    
+                    Please provide a helpful, accurate response to this question.
+                    """
+                    
+                    # Call API with chat history
+                    with st.spinner("Thinking..."):
+                        try:
+                            response_text = call_groq_api(chat_prompt, model_name=language_model)
+                        except Exception as e:
+                            st.error(f"Error calling API: {str(e)}")
+                            response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
+                    
+                    # Add assistant response to chat history
+                    st.session_state.hsic_analysis_chat_messages.append({"role": "assistant", "content": response_text})
+                    
+                    # Rerun to display the new message immediately
+                    st.rerun()
+                
+        return hsic_results
+    
+    except Exception as e:
+        st.error(f"Error in HSIC analysis: {str(e)}")
+        st.code(traceback.format_exc())
+        return None
 
-    # Prepare data for the API call
-    hsic_md_table = hsic_results.to_markdown(index=False, floatfmt=".4e")
+def compute_hsic_indices(model, problem, N=200, seed=42):
+    """
+    Compute HSIC-based sensitivity indices using OpenTURNS built-in tools.
+    
+    Parameters
+    ----------
+    model : callable
+        The model function to analyze
+    problem : ot.Distribution
+        OpenTURNS distribution representing the input uncertainty
+    N : int, optional
+        Number of samples, by default 200
+    seed : int, optional
+        Random seed for reproducibility, by default 42
+        
+    Returns
+    -------
+    dict
+        Dictionary containing HSIC results
+    """
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
 
-    # Use the provided model_code_str directly
-    model_code = model_code_str
+    # Get input names from distribution
+    dimension = problem.getDimension()
+    input_names = []
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        input_names.append(marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}")
 
-    # Format the model code for inclusion in the prompt
-    model_code_formatted = '\n'.join(['    ' + line for line in model_code.strip().split('\n')])
+    # Set random seed
+    ot.RandomGenerator.SetSeed(seed)
 
-    # Prepare the input parameters and their uncertainties
-    input_parameters = []
-    for name, dist_info in zip(problem['names'], problem['distributions']):
-        input_parameters.append({
-            'Variable': name,
-            'Distribution': dist_info['type'],
-            'Parameters': dist_info['params']
-        })
-
-    inputs_df = pd.DataFrame(input_parameters)
-    inputs_md_table = inputs_df.to_markdown(index=False)
-
-    # Prepare the prompt
-    prompt = f"""
-{RETURN_INSTRUCTION}
-
-Given the following user-defined model defined in Python code:
-
-```python
-{model_code_formatted}
-```
-
-and the following uncertain input distributions:
-
-{inputs_df}
-
-The results of the HSIC analysis are given below:
-
-{hsic_results}
-
-Please:
-  - Tabulate all the HSIC data and present it in an effective way.
-  - Explain the mathematical basis of the HSIC method in sensitivity analysis.
-  - Explain the Hilbert-Schmidt Independence Criterion (HSIC) and its use in measuring the dependence between input variables and the output.
-  - Discuss the normalized R2-HSIC indices, indicating the proportion of the output variance explained by each input.
-  - Explain the raw HSIC values, measuring the absolute dependence between each input and the output.
-  - Interpret the p-values, determining the statistical significance of the HSIC indices.
-  - Analyze the data and convey your observations, highlighting which variables are most influential and any notable findings.
-  - Reference the HSIC results table in your discussion.
-"""
-
-    # Unique keys for session state
-    response_key = 'hsic_response_markdown'
-    fig_key = 'hsic_fig'
-
-    # Check if the results are already in session state
-    if response_key not in st.session_state:
-        response_markdown = call_groq_api(prompt, model_name=language_model)
-        st.session_state[response_key] = response_markdown
+    # Generate samples
+    X = problem.getSample(N)
+    
+    # Convert model to OpenTURNS function if it's not already
+    if not isinstance(model, ot.Function):
+        ot_model = ot.PythonFunction(dimension, 1, model)
     else:
-        response_markdown = st.session_state[response_key]
+        ot_model = model
+    
+    # Evaluate model
+    Y = ot_model(X)
+    
+    # Create covariance model collection for HSIC
+    covarianceModelCollection = []
+    
+    # Add covariance models for each input variable
+    for i in range(dimension):
+        Xi = X.getMarginal(i)
+        inputCovariance = ot.SquaredExponential(1)
+        inputCovariance.setScale(Xi.computeStandardDeviation())
+        covarianceModelCollection.append(inputCovariance)
+    
+    # Add covariance model for output
+    outputCovariance = ot.SquaredExponential(1)
+    outputCovariance.setScale(Y.computeStandardDeviation())
+    covarianceModelCollection.append(outputCovariance)
+    
+    # Choose an estimator (HSICVStat is biased but asymptotically unbiased)
+    estimatorType = ot.HSICVStat()
+    
+    # Build the HSIC estimator
+    hsicEstimator = ot.HSICEstimatorGlobalSensitivity(
+        covarianceModelCollection, X, Y, estimatorType
+    )
+    
+    # Get the HSIC indices
+    hsic_indices = np.array(hsicEstimator.getHSICIndices())
+    
+    # Get the R2-HSIC indices (normalized)
+    normalized_indices = np.array(hsicEstimator.getR2HSICIndices())
+    
+    # Get p-values
+    p_values_asymptotic = np.array(hsicEstimator.getPValuesAsymptotic())
+    p_values_permutation = np.array(hsicEstimator.getPValuesPermutation())
+    
+    # Create results dictionary
+    results = {
+        'hsic_indices': hsic_indices,
+        'normalized_indices': normalized_indices,
+        'p_values_asymptotic': p_values_asymptotic,
+        'p_values_permutation': p_values_permutation,
+        'input_names': input_names,
+        'hsic_estimator': hsicEstimator  # Store the estimator for potential future use
+    }
 
-    if fig_key not in st.session_state:
-        st.session_state[fig_key] = fig
-    else:
-        fig = st.session_state[fig_key]
+    return results
 
-    # Display the results
-    st.markdown(response_markdown)
-    st.pyplot(fig)
+def create_hsic_dataframe(results):
+    """
+    Create a DataFrame with HSIC analysis results.
+    
+    Parameters
+    ----------
+    results : dict
+        Dictionary containing HSIC results
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with HSIC results
+    """
+    df = pd.DataFrame({
+        'Variable': results['input_names'],
+        'HSIC_Index': results['hsic_indices'],
+        'Normalized_Index': results['normalized_indices'],
+        'p_value_asymptotic': results['p_values_asymptotic'],
+        'p_value_permutation': results['p_values_permutation']
+    })
+    
+    # Sort by normalized index
+    df = df.sort_values('Normalized_Index', ascending=False).reset_index(drop=True)
+    
+    return df
+
+def create_hsic_plots(results):
+    """
+    Create interactive Plotly visualizations for HSIC results.
+    
+    Parameters
+    ----------
+    results : dict
+        Dictionary containing HSIC results
+        
+    Returns
+    -------
+    go.Figure
+        Plotly figure with HSIC visualizations
+    """
+    # Extract data
+    normalized_indices = results['normalized_indices']
+    hsic_indices = results['hsic_indices']
+    p_values_asymptotic = results['p_values_asymptotic']
+    p_values_permutation = results['p_values_permutation']
+    input_names = results['input_names']
+    
+    # Sort by normalized index
+    idx = np.argsort(normalized_indices)[::-1]
+    normalized_indices = normalized_indices[idx]
+    hsic_indices = hsic_indices[idx]
+    p_values_asymptotic = p_values_asymptotic[idx]
+    p_values_permutation = p_values_permutation[idx]
+    input_names = [input_names[i] for i in idx]
+    
+    # Create a subplot with 3 plots
+    fig = make_subplots(
+        rows=2, 
+        cols=2,
+        subplot_titles=(
+            "Normalized HSIC Indices", 
+            "Raw HSIC Indices", 
+            "Asymptotic p-values", 
+            "Permutation p-values"
+        ),
+        vertical_spacing=0.15,
+        horizontal_spacing=0.1
+    )
+    
+    # Add normalized HSIC indices
+    fig.add_trace(
+        go.Bar(
+            x=input_names,
+            y=normalized_indices,
+            name="Normalized HSIC",
+            marker_color='rgb(55, 83, 109)',
+            hovertemplate="<b>%{x}</b><br>Normalized HSIC: %{y:.4f}<extra></extra>"
+        ),
+        row=1, col=1
+    )
+    
+    # Add raw HSIC indices
+    fig.add_trace(
+        go.Bar(
+            x=input_names,
+            y=hsic_indices,
+            name="Raw HSIC",
+            marker_color='rgb(26, 118, 255)',
+            hovertemplate="<b>%{x}</b><br>HSIC: %{y:.6e}<extra></extra>"
+        ),
+        row=1, col=2
+    )
+    
+    # Add asymptotic p-values
+    fig.add_trace(
+        go.Bar(
+            x=input_names,
+            y=p_values_asymptotic,
+            name="Asymptotic p-value",
+            marker_color='rgb(219, 64, 82)',
+            hovertemplate="<b>%{x}</b><br>p-value: %{y:.4e}<extra></extra>"
+        ),
+        row=2, col=1
+    )
+    
+    # Add significance threshold line
+    fig.add_trace(
+        go.Scatter(
+            x=input_names,
+            y=[0.05] * len(input_names),
+            mode='lines',
+            line=dict(color='black', width=2, dash='dash'),
+            name="Significance (α=0.05)",
+            hoverinfo='name'
+        ),
+        row=2, col=1
+    )
+    
+    # Add permutation p-values
+    fig.add_trace(
+        go.Bar(
+            x=input_names,
+            y=p_values_permutation,
+            name="Permutation p-value",
+            marker_color='rgb(214, 39, 40)',
+            hovertemplate="<b>%{x}</b><br>p-value: %{y:.4e}<extra></extra>"
+        ),
+        row=2, col=2
+    )
+    
+    # Add significance threshold line
+    fig.add_trace(
+        go.Scatter(
+            x=input_names,
+            y=[0.05] * len(input_names),
+            mode='lines',
+            line=dict(color='black', width=2, dash='dash'),
+            name="Significance (α=0.05)",
+            hoverinfo='name',
+            showlegend=False
+        ),
+        row=2, col=2
+    )
+    
+    # Update layout
+    fig.update_layout(
+        height=700,
+        width=1000,
+        title_text="HSIC Sensitivity Analysis",
+        title_font_size=20,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        template="plotly_white"
+    )
+    
+    # Update y-axes
+    fig.update_yaxes(title_text="Normalized HSIC", row=1, col=1)
+    fig.update_yaxes(title_text="Raw HSIC", row=1, col=2)
+    fig.update_yaxes(title_text="p-value", type="log", row=2, col=1)
+    fig.update_yaxes(title_text="p-value", type="log", row=2, col=2)
+    
+    # Update x-axes
+    for i in range(1, 3):
+        for j in range(1, 3):
+            fig.update_xaxes(tickangle=45, row=i, col=j)
+    
+    return fig

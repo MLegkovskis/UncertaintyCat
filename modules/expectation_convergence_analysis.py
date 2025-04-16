@@ -1,19 +1,48 @@
-import openturns as ot
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
+import openturns as ot
 import streamlit as st
-from modules.api_utils import call_groq_api
-from modules.common_prompt import RETURN_INSTRUCTION
-from modules.openturns_utils import get_ot_distribution, get_ot_model
-
+from utils.constants import RETURN_INSTRUCTION
+from utils.core_utils import call_groq_api, create_chat_interface
+from utils.model_utils import get_ot_model
+from scipy import stats
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import uuid
+import json
+import os
+from groq import Groq
 
 def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8000, language_model='groq'):
-    # Create distributions
-    distribution = get_ot_distribution(problem)
+    """Perform enterprise-grade expectation convergence analysis.
+    
+    This module provides comprehensive analysis of Monte Carlo convergence,
+    including both mean and standard deviation convergence, distribution analysis,
+    and statistical tests for convergence.
+    
+    Parameters
+    ----------
+    model : callable
+        The model function to analyze
+    problem : ot.Distribution
+        OpenTURNS distribution object defining the problem
+    model_code_str : str
+        String representation of the model code
+    N_samples : int, optional
+        Maximum number of samples for convergence analysis
+    language_model : str, optional
+        Language model to use for AI insights
+    """
+    # Ensure problem is an OpenTURNS distribution
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        raise ValueError("Problem must be an OpenTURNS distribution")
+    
+    # Use the distribution directly
+    distribution = problem
 
-    # Create OpenTURNS model
-    ot_model = get_ot_model(model, problem)
+    # Create OpenTURNS model if needed
+    ot_model = get_ot_model(model)
 
     # Define the input random vector and the output random vector
     input_random_vector = ot.RandomVector(distribution)
@@ -44,174 +73,605 @@ def expectation_convergence_analysis(model, problem, model_code_str, N_samples=8
     lower_bounds = mean_estimates - z_value * standard_errors
     upper_bounds = mean_estimates + z_value * standard_errors
     
-    fig, axes = plt.subplots(1, 3, figsize=(21, 6), dpi=120)
-
-    # --- Mean Estimate Convergence Plot (Linear Scale) ---
-    axes[0].plot(sample_sizes, mean_estimates, label='Mean Estimate', color='#1f77b4', linewidth=2)
-    axes[0].fill_between(sample_sizes, lower_bounds, upper_bounds, color='#1f77b4', alpha=0.2, label='95% Confidence Interval')
-
-    # Highlight the point of convergence
-    convergence_point = (sample_sizes[-1], mean_estimates[-1])
-    axes[0].scatter(*convergence_point, color='red', s=100, zorder=5, label='Converged Mean')
-    axes[0].annotate(f'Converged Mean: {mean_estimates[-1]:.4f}',
-                     xy=convergence_point,
-                     xytext=(-100, 20),  # Adjust position within the plot
-                     textcoords='offset points',
-                     fontsize=12,
-                     arrowprops=dict(arrowstyle='->', color='red', linewidth=2))
-
-    axes[0].set_title('Convergence of Mean Estimate (Linear Scale)', fontsize=16, fontweight='bold')
-    axes[0].set_xlabel('Sample Size', fontsize=14)
-    axes[0].set_ylabel('Mean Estimate of Output Y', fontsize=14)
-    axes[0].tick_params(axis='both', which='major', labelsize=12)
-    axes[0].legend(fontsize=12, loc='best')
-    axes[0].grid(True, linestyle='--', alpha=0.7)
-
-    # --- Mean Estimate Convergence Plot (Logarithmic Scale) ---
-    axes[1].plot(sample_sizes, mean_estimates, label='Mean Estimate', color='#1f77b4', linewidth=2)
-    axes[1].fill_between(sample_sizes, lower_bounds, upper_bounds, color='#1f77b4', alpha=0.2, label='95% Confidence Interval')
-
-    # Highlight the point of convergence within the plot
-    axes[1].scatter(*convergence_point, color='red', s=100, zorder=5, label='Converged Mean')
-    axes[1].annotate(f'Converged Mean: {mean_estimates[-1]:.4f}',
-                     xy=convergence_point,
-                     xytext=(-100, 20),  # Adjust position within the plot
-                     textcoords='offset points',
-                     fontsize=12,
-                     arrowprops=dict(arrowstyle='->', color='red', linewidth=2))
-
-    axes[1].set_title('Convergence of Mean Estimate (Log Scale)', fontsize=16, fontweight='bold')
-    axes[1].set_xscale('log')
-    axes[1].set_xlabel('Sample Size (Log Scale)', fontsize=14)
-    axes[1].set_ylabel('Mean Estimate of Output Y', fontsize=14)
-    axes[1].tick_params(axis='both', which='major', labelsize=12)
-    axes[1].legend(fontsize=12, loc='best')
-    axes[1].grid(True, linestyle='--', alpha=0.7)
-    # --- Distribution of Y Plot ---
-
-    # Generate samples of Y at convergence
-    sample_size = 5000
-    input_sample = distribution.getSample(sample_size)
+    # Use the required sample size from convergence analysis for distribution analysis
+    convergence_sample_size = int(initial_sample_size)
+    
+    # Generate samples for distribution analysis
+    input_sample = distribution.getSample(convergence_sample_size)
     output_sample = ot_model(input_sample)
-
     Y_values = np.array(output_sample).flatten()
-
-    # Plot histogram with density curve
-    import seaborn as sns
-    sns.histplot(Y_values, bins=50, kde=True, color='#2ca02c', edgecolor='black', alpha=0.7, ax=axes[2])
-
-    axes[2].set_title('Distribution of Model Output Y at Convergence', fontsize=16, fontweight='bold')
-    axes[2].set_xlabel('Output Y', fontsize=14)
-    axes[2].set_ylabel('Frequency', fontsize=14)
-    axes[2].tick_params(axis='both', which='major', labelsize=12)
-
-    # Calculate statistics
+    
+    # Calculate statistics for distribution analysis
     mean_Y = np.mean(Y_values)
     std_Y = np.std(Y_values)
     conf_int = [mean_Y - 1.96 * std_Y, mean_Y + 1.96 * std_Y]
-
-    # Add vertical lines for mean and confidence intervals
-    axes[2].axvline(mean_Y, color='blue', linestyle='--', linewidth=2, label=f'Mean: {mean_Y:.4f}')
-    axes[2].axvline(conf_int[0], color='purple', linestyle='--', linewidth=2, label=f'95% CI Lower: {conf_int[0]:.4f}')
-    axes[2].axvline(conf_int[1], color='purple', linestyle='--', linewidth=2, label=f'95% CI Upper: {conf_int[1]:.4f}')
-
-    # Add annotations for statistics
-    # axes[2].annotate(f'Mean: {mean_Y:.4f}',
-    #                  xy=(mean_Y, axes[2].get_ylim()[1]*0.9),
-    #                  xytext=(10, 0),
-    #                  textcoords='offset points',
-    #                  fontsize=12,
-    #                  color='blue',
-    #                  rotation=90)
-
-    # axes[2].annotate(f'95% CI Lower: {conf_int[0]:.4f}',
-    #                  xy=(conf_int[0], axes[2].get_ylim()[1]*0.7),
-    #                  xytext=(10, 0),
-    #                  textcoords='offset points',
-    #                  fontsize=12,
-    #                  color='purple',
-    #                  rotation=90)
-
-    # axes[2].annotate(f'95% CI Upper: {conf_int[1]:.4f}',
-    #                  xy=(conf_int[1], axes[2].get_ylim()[1]*0.7),
-    #                  xytext=(10, 0),
-    #                  textcoords='offset points',
-    #                  fontsize=12,
-    #                  color='purple',
-    #                  rotation=90)
-
-    axes[2].legend(fontsize=12, loc='best')
-    axes[2].grid(True, linestyle='--', alpha=0.7)
-
-    # --- Overall Figure Adjustments ---
-    plt.suptitle('Expectation Convergence and Output Distribution', fontsize=18, fontweight='bold')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust the rect to fit the suptitle
-    # Prepare data for the prompt
-    convergence_summary = f"""
-- The convergence algorithm determined that the model statistics converge at a sample size of {int(initial_sample_size)}.
-- The final mean estimate is {mean_estimates[-1]:.6f}.
-- The standard deviation at convergence is {final_std_dev:.6f}.
-- The 95% confidence interval for the mean estimate is from {lower_bounds[-1]:.6f} to {upper_bounds[-1]:.6f}.
-"""
-
-    # Prepare the input parameters and their uncertainties
+    skewness = stats.skew(Y_values)
+    kurtosis = stats.kurtosis(Y_values)
+    q1, q3 = np.percentile(Y_values, [25, 75])
+    iqr = q3 - q1
+    
+    # Calculate standard deviation convergence
+    std_dev_estimates = []
+    
+    # Compute running standard deviation for each sample size
+    for i, size in enumerate(sample_sizes):
+        if i == 0:
+            # For the first point, use the standard deviation from the first sample
+            std_dev_estimates.append(np.std(Y_values[:int(size)]))
+        else:
+            # For subsequent points, compute standard deviation based on accumulated samples
+            std_dev_estimates.append(np.std(Y_values[:int(size)]))
+    
+    std_dev_estimates = np.array(std_dev_estimates)
+    
+    # Create inputs DataFrame for the prompt
+    dimension = distribution.getDimension()
     input_parameters = []
-    for name, dist_info in zip(problem['names'], problem['distributions']):
+    for i in range(dimension):
+        marginal = distribution.getMarginal(i)
+        name = marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}"
         input_parameters.append({
             'Variable': name,
-            'Distribution': dist_info['type'],
-            'Parameters': dist_info['params']
+            'Distribution': marginal.__class__.__name__,
+            'Parameters': list(marginal.getParameter())
         })
-
     inputs_df = pd.DataFrame(input_parameters)
-    inputs_md_table = inputs_df.to_markdown(index=False)
+    
+    # RESULTS SECTION    
+    main_col, chat_col = st.columns([2, 1])
+    
+    with main_col:
+        with st.expander("Results", expanded=True):
+            # Convergence Statistics
+            st.subheader("Convergence Statistics")
+            
+            # Create a summary table for quick reference
+            summary_df = pd.DataFrame({
+                'Metric': [
+                    'Final Mean Estimate', 
+                    'Standard Deviation', 
+                    '95% Confidence Interval', 
+                    'Required Sample Size',
+                    'Relative Standard Error',
+                    'Coefficient of Variation'
+                ],
+                'Value': [
+                    f"{mean_estimates[-1]:.6f}",
+                    f"{final_std_dev:.6f}",
+                    f"[{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]",
+                    f"{convergence_sample_size}",
+                    f"{(final_std_dev / mean_estimates[-1]):.4%}",
+                    f"{(final_std_dev / np.abs(mean_estimates[-1])):.4%}"
+                ]
+            })
+            st.dataframe(summary_df, use_container_width=True)
+            
+            # Combined Convergence Visualization
+            st.subheader("Convergence Visualization")
+            
+            # Create Plotly figure with 2x2 subplots for combined convergence analysis
+            fig_convergence = make_subplots(
+                rows=2, cols=2,
+                subplot_titles=(
+                    "Mean Convergence (Linear Scale)", 
+                    "Mean Convergence (Log Scale)",
+                    "Standard Deviation Convergence (Linear Scale)",
+                    "Standard Deviation Convergence (Log Scale)"
+                ),
+                shared_xaxes=True,
+                vertical_spacing=0.15,
+                horizontal_spacing=0.08
+            )
+            
+            # --- Mean Estimate Convergence Plot (Linear Scale) ---
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=mean_estimates,
+                    mode='lines',
+                    name='Mean Estimate',
+                    line=dict(color='#1f77b4', width=2)
+                ),
+                row=1, col=1
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=upper_bounds,
+                    mode='lines',
+                    name='95% CI Upper',
+                    line=dict(width=0),
+                    showlegend=False
+                ),
+                row=1, col=1
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=lower_bounds,
+                    mode='lines',
+                    name='95% Confidence Interval',
+                    line=dict(width=0),
+                    fill='tonexty',
+                    fillcolor='rgba(31, 119, 180, 0.2)'
+                ),
+                row=1, col=1
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=[sample_sizes[-1]],
+                    y=[mean_estimates[-1]],
+                    mode='markers',
+                    name='Final Mean',
+                    marker=dict(color='red', size=10)
+                ),
+                row=1, col=1
+            )
+            
+            # --- Mean Estimate Convergence Plot (Log Scale) ---
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=mean_estimates,
+                    mode='lines',
+                    name='Mean Estimate',
+                    line=dict(color='#1f77b4', width=2),
+                    showlegend=False
+                ),
+                row=1, col=2
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=upper_bounds,
+                    mode='lines',
+                    name='95% CI Upper',
+                    line=dict(width=0),
+                    showlegend=False
+                ),
+                row=1, col=2
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=lower_bounds,
+                    mode='lines',
+                    name='95% CI Lower',
+                    line=dict(width=0),
+                    fill='tonexty',
+                    fillcolor='rgba(31, 119, 180, 0.2)',
+                    showlegend=False
+                ),
+                row=1, col=2
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=[sample_sizes[-1]],
+                    y=[mean_estimates[-1]],
+                    mode='markers',
+                    name='Final Mean',
+                    marker=dict(color='red', size=10),
+                    showlegend=False
+                ),
+                row=1, col=2
+            )
+            
+            # --- Standard Deviation Convergence Plot (Linear Scale) ---
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=std_dev_estimates,
+                    mode='lines',
+                    name='Std Dev Estimate',
+                    line=dict(color='#ff7f0e', width=2)
+                ),
+                row=2, col=1
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=[sample_sizes[-1]],
+                    y=[std_dev_estimates[-1]],
+                    mode='markers',
+                    name='Final Std Dev',
+                    marker=dict(color='red', size=10)
+                ),
+                row=2, col=1
+            )
+            
+            # --- Standard Deviation Convergence Plot (Log Scale) ---
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=sample_sizes,
+                    y=std_dev_estimates,
+                    mode='lines',
+                    name='Std Dev Estimate',
+                    line=dict(color='#ff7f0e', width=2),
+                    showlegend=False
+                ),
+                row=2, col=2
+            )
+            
+            fig_convergence.add_trace(
+                go.Scatter(
+                    x=[sample_sizes[-1]],
+                    y=[std_dev_estimates[-1]],
+                    mode='markers',
+                    name='Final Std Dev',
+                    marker=dict(color='red', size=10),
+                    showlegend=False
+                ),
+                row=2, col=2
+            )
+            
+            # Update x-axis to log scale for the second column
+            fig_convergence.update_xaxes(type='log', row=1, col=2)
+            fig_convergence.update_xaxes(type='log', row=2, col=2)
+            
+            # Update layout
+            fig_convergence.update_layout(
+                height=800,  # Increased height for 2x2 layout
+                width=1000,
+                title_text="Monte Carlo Convergence Analysis",
+                title_font=dict(size=16),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                template="plotly_white"
+            )
+            
+            # Update axes labels
+            fig_convergence.update_xaxes(title_text="Sample Size", row=2, col=1)
+            fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=1)
+            fig_convergence.update_yaxes(title_text="Std Dev Estimate", row=2, col=1)
+            
+            fig_convergence.update_xaxes(title_text="Sample Size (Log Scale)", row=2, col=2)
+            fig_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=2)
+            fig_convergence.update_yaxes(title_text="Std Dev Estimate", row=2, col=2)
+            
+            st.plotly_chart(fig_convergence, use_container_width=True)
+            
+            # Add explanation of the plots
+            st.markdown("""
+            **Interpretation Guide:**
+            - **Linear Scale Plots**: Show the raw convergence behavior of the estimates
+            - **Log Scale Plots**: Highlight early convergence behavior and are useful for identifying the minimum required sample size
+            - The **95% confidence interval** for the mean represents the range where we are 95% confident the true mean lies
+            - Stable standard deviation estimates indicate reliable uncertainty quantification
+            """)
+            
+            # Output Distribution Analysis
+            st.subheader("Output Distribution Analysis")
+            
+            # Add note about convergence-based analysis
+            st.markdown(f"""
+            <div style="background-color: #f0f2f6; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+            <strong>Note:</strong> This distribution analysis is performed using {convergence_sample_size} samples, which corresponds to the converged sample size from the analysis above. This ensures that the distribution characteristics are representative of the true underlying distribution.
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Create a distribution statistics table
+            dist_stats_df = pd.DataFrame({
+                'Statistic': [
+                    'Mean', 
+                    'Standard Deviation', 
+                    'Skewness', 
+                    'Kurtosis',
+                    'Interquartile Range',
+                    '95% Prediction Interval'
+                ],
+                'Value': [
+                    f"{mean_Y:.6f}",
+                    f"{std_Y:.6f}",
+                    f"{skewness:.4f}",
+                    f"{kurtosis:.4f}",
+                    f"{iqr:.4f}",
+                    f"{conf_int[0]:.4f}, {conf_int[1]:.4f}"
+                ]
+            })
+            st.dataframe(dist_stats_df, use_container_width=True)
+            
+            # Add quantile information
+            st.markdown("#### Quantile Information")
+            quantiles = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+            quantile_values = np.quantile(Y_values, quantiles)
+            
+            quantiles_df = pd.DataFrame({
+                'Quantile': [f"{q*100}%" for q in quantiles],
+                'Value': quantile_values
+            })
+            st.dataframe(quantiles_df, use_container_width=True)
+            
+            # Create enhanced distribution visualization
+            st.markdown("#### Distribution Visualization")
+            
+            # Create a figure with subplots for box plot and distribution
+            fig_dist = make_subplots(
+                rows=1, 
+                cols=2,
+                subplot_titles=["Box Plot of Output", "Distribution of Output"],
+                specs=[[{"type": "box"}, {"type": "histogram"}]],
+                horizontal_spacing=0.1
+            )
+            
+            # Add box plot
+            fig_dist.add_trace(
+                go.Box(
+                    y=Y_values,
+                    name="Output",
+                    boxmean=True,
+                    marker_color='royalblue',
+                    boxpoints='outliers'
+                ),
+                row=1, col=1
+            )
+            
+            # Add histogram with KDE
+            fig_dist.add_trace(
+                go.Histogram(
+                    x=Y_values,
+                    histnorm='probability density',
+                    name="Output",
+                    marker=dict(color='royalblue', opacity=0.6)
+                ),
+                row=1, col=2
+            )
+            
+            # Add KDE
+            kde_x = np.linspace(min(Y_values), max(Y_values), 1000)
+            kde = stats.gaussian_kde(Y_values)
+            kde_y = kde(kde_x)
+            
+            fig_dist.add_trace(
+                go.Scatter(
+                    x=kde_x,
+                    y=kde_y,
+                    mode='lines',
+                    name='KDE',
+                    line=dict(color='firebrick', width=2)
+                ),
+                row=1, col=2
+            )
+            
+            # Add reference lines for mean and median
+            mean_val = np.mean(Y_values)
+            median_val = np.median(Y_values)
+            
+            # Add mean line to histogram
+            fig_dist.add_vline(
+                x=mean_val,
+                line_dash="dash",
+                line_color="green",
+                annotation_text=f"Mean: {mean_val:.2f}",
+                annotation_position="top right",
+                row=1, col=2
+            )
+            
+            # Add median line to histogram
+            fig_dist.add_vline(
+                x=median_val,
+                line_dash="dash",
+                line_color="orange",
+                annotation_text=f"Median: {median_val:.2f}",
+                annotation_position="top left",
+                row=1, col=2
+            )
+            
+            # Update layout
+            fig_dist.update_layout(
+                height=500,
+                showlegend=False,
+                title_text="Output Distribution Analysis",
+                margin=dict(l=60, r=50, t=80, b=50)
+            )
+            
+            st.plotly_chart(fig_dist, use_container_width=True)
+            
+            # Add interpretation of skewness and kurtosis
+            st.markdown("#### Distribution Shape Interpretation")
+            
+            if abs(skewness) < 0.5:
+                skew_interpretation = "The distribution is approximately symmetric."
+            elif skewness < -0.5:
+                skew_interpretation = "The distribution is negatively skewed (left-tailed), with more extreme values on the left."
+            else:
+                skew_interpretation = "The distribution is positively skewed (right-tailed), with more extreme values on the right."
+                
+            if abs(kurtosis) < 0.5:
+                kurt_interpretation = "The distribution has a similar tail weight to a normal distribution."
+            elif kurtosis < -0.5:
+                kurt_interpretation = "The distribution has lighter tails than a normal distribution (platykurtic)."
+            else:
+                kurt_interpretation = "The distribution has heavier tails than a normal distribution (leptokurtic), indicating more extreme values."
+            
+            st.markdown(f"**Skewness**: {skew_interpretation}")
+            st.markdown(f"**Kurtosis**: {kurt_interpretation}")
+        
+        # AI INSIGHTS SECTION
+        if language_model:        
+            with st.expander("AI Insights", expanded=True):
+                # Prepare convergence summary for the prompt
+                convergence_summary = f"""
+                Final Mean Estimate: {mean_estimates[-1]:.6f}
+                Standard Error: {final_std_dev:.6f}
+                95% Confidence Interval: [{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]
+                Coefficient of Variation: {(final_std_dev/abs(mean_estimates[-1])):.6f}
+                
+                Output Distribution Statistics:
+                Mean: {mean_Y:.6f}
+                Median: {np.median(Y_values):.6f}
+                Standard Deviation: {std_Y:.6f}
+                Skewness: {skewness:.6f}
+                Excess Kurtosis: {kurtosis:.6f}
+                """
+                
+                # Check if the interpretation is already in session_state
+                if "convergence_interpretation" in st.session_state:
+                    st.markdown(st.session_state["convergence_interpretation"])
+                else:
+                    # Prepare the prompt
+                    prompt = f"""
+                    You are an expert in uncertainty quantification and Monte Carlo methods. Analyze the following convergence results and provide insights:
+                    
+                    Model code:
+                    ```python
+                    {model_code_str}
+                    ```
+                    
+                    Input distributions:
+                    {inputs_df.to_markdown(index=False)}
+                    
+                    Convergence analysis results:
+                    {convergence_summary}
+                    
+                    Please provide a comprehensive analysis of the Monte Carlo convergence results:
+                    1. Explain what the convergence plot and metrics tell us about the reliability of the mean estimate
+                    2. Interpret the output distribution statistics (mean, standard deviation, skewness, kurtosis)
+                    3. Discuss the implications of these results for uncertainty in the model output
+                    4. Suggest whether more samples might be needed for better convergence
+                    
+                    Your analysis should be detailed yet accessible, with clear explanations of technical concepts.
+                    """
+                    
+                    # Call the API
+                    with st.spinner("Generating expert analysis..."):
+                        response_markdown = call_groq_api(prompt, model_name=language_model)
+                        st.session_state["convergence_interpretation"] = response_markdown
+                    
+                    st.markdown(st.session_state["convergence_interpretation"])
 
-    # Use the provided model_code_str directly
-    model_code = model_code_str
+    # CHAT INTERFACE in the right column
+    with chat_col:
+        st.markdown("### Ask Questions About This Analysis")
+        
+        # Display a disclaimer about the prompt
+        disclaimer_text = """
+        **Note:** The AI assistant has been provided with the model code, input distributions, 
+        and the convergence analysis results above. You can ask questions to clarify any aspects of the analysis.
+        """
+        st.info(disclaimer_text)
+        
+        # Initialize session state for chat messages if not already done
+        if "convergence_analysis_chat_messages" not in st.session_state:
+            st.session_state.convergence_analysis_chat_messages = []
+        
+        # Create a container with fixed height for the chat messages
+        chat_container_height = 500  # Height in pixels
+        
+        # Apply CSS to create a scrollable container
+        st.markdown(f"""
+        <style>
+        .chat-container {{
+            height: {chat_container_height}px;
+            overflow-y: auto;
+            border: 1px solid #e6e6e6;
+            border-radius: 5px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            margin-bottom: 15px;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Create a container for the chat messages
+        with st.container():
+            # Use HTML to create a scrollable container
+            chat_messages_html = "<div class='chat-container'>"
+            
+            # Display existing messages
+            for message in st.session_state.convergence_analysis_chat_messages:
+                role_style = "background-color: #e1f5fe; border-radius: 10px; padding: 8px; margin: 5px 0;" if message["role"] == "assistant" else "background-color: #f0f0f0; border-radius: 10px; padding: 8px; margin: 5px 0;"
+                role_label = "Assistant:" if message["role"] == "assistant" else "You:"
+                chat_messages_html += f"<div style='{role_style}'><strong>{role_label}</strong><br>{message['content']}</div>"
+            
+            chat_messages_html += "</div>"
+            st.markdown(chat_messages_html, unsafe_allow_html=True)
+        
+        # Chat input below the scrollable container
+        prompt = st.chat_input("Ask a question about the convergence analysis...", key="side_chat_input")
+        
+        # Process user input
+        if prompt:
+            # Add user message to chat history
+            st.session_state.convergence_analysis_chat_messages.append({"role": "user", "content": prompt})
+            
+            # Generate context for the assistant
+            context = f"""
+            You are an expert assistant helping users understand convergence analysis results. 
+            
+            Here is the model code:
+            ```python
+            {model_code_str}
+            ```
+            
+            Here is information about the input distributions:
+            {inputs_df.to_markdown(index=False)}
+            
+            Here is the convergence analysis summary:
+            Final Mean Estimate: {mean_estimates[-1]:.6f}
+            Standard Error: {final_std_dev:.6f}
+            95% Confidence Interval: [{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]
+            Coefficient of Variation: {(final_std_dev/abs(mean_estimates[-1])):.6f}
+            
+            Output Distribution Statistics:
+            Mean: {mean_Y:.6f}
+            Median: {np.median(Y_values):.6f}
+            Standard Deviation: {std_Y:.6f}
+            Skewness: {skewness:.6f}
+            Excess Kurtosis: {kurtosis:.6f}
+            
+            Here is the explanation that was previously generated:
+            {st.session_state.get("convergence_interpretation", "No interpretation available yet.")}
+            
+            Answer the user's question based on this information. Be concise but thorough.
+            If you're not sure about something, acknowledge the limitations of your knowledge.
+            Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+            """
+        
+            # Include previous conversation history
+            chat_history = ""
+            if len(st.session_state.convergence_analysis_chat_messages) > 1:
+                chat_history = "Previous conversation:\n"
+                for i, msg in enumerate(st.session_state.convergence_analysis_chat_messages[:-1]):
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    chat_history += f"{role}: {msg['content']}\n\n"
+            
+            # Create the final prompt
+            chat_prompt = f"""
+            {context}
+            
+            {chat_history}
+            
+            Current user question: {prompt}
+            
+            Please provide a helpful, accurate response to this question.
+            """
+            
+            # Call API with chat history
+            with st.spinner("Thinking..."):
+                try:
+                    response_text = call_groq_api(chat_prompt, model_name=language_model)
+                except Exception as e:
+                    st.error(f"Error calling API: {str(e)}")
+                    response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
+            
+            # Add assistant response to chat history
+            st.session_state.convergence_analysis_chat_messages.append({"role": "assistant", "content": response_text})
+            
+            # Rerun to display the new message immediately
+            st.rerun()
 
-    # Format the model code for inclusion in the prompt
-    model_code_formatted = '\n'.join(['    ' + line for line in model_code.strip().split('\n')])
-
-    # Prepare the prompt
-    prompt = f"""
-{RETURN_INSTRUCTION}
-
-Given the following user-defined model defined in Python code:
-
-```python
-{model_code_formatted}
-```
-
-and the following uncertain input distributions:
-
-{inputs_df}
-
-Given the following summary of an expectation convergence analysis (remember you must convert everything given to you into a valid Markdown):
-
-{convergence_summary}
-
-Please:
-  - Provide a detailed summary and interpretation of the results.
-  - Focus on the likely operating range of the model under the specified uncertainty.
-  - Explain the significance of the convergence of the mean estimate, referencing the Central Limit Theorem and statistical concepts.
-  - Discuss how the confidence interval helps in understanding the risk and operational range of the model when deployed in reality.
-"""
-
-    response_key = 'expectation_response_markdown'
-    fig_key = 'expectation_fig'
-
-    # Check if the results are already in session state
-    if response_key not in st.session_state:
-        response_markdown = call_groq_api(prompt, model_name=language_model)
-        st.session_state[response_key] = response_markdown
-    else:
-        response_markdown = st.session_state[response_key]
-
-    if fig_key not in st.session_state:
-        st.session_state[fig_key] = fig
-    else:
-        fig = st.session_state[fig_key]
-
-    # Display the results
-    st.markdown(response_markdown)
-    st.pyplot(fig)
+def expectation_convergence_analysis_joint(model, problem, model_code_str, N_samples=8000, language_model='groq'):
+    """Analyze convergence of Monte Carlo estimation with joint analysis."""
+    # This function is kept for backward compatibility but now calls the main function
+    expectation_convergence_analysis(model, problem, model_code_str, N_samples, language_model)
