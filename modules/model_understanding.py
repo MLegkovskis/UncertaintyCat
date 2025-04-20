@@ -50,12 +50,30 @@ def compute_model_understanding(model, problem, model_code_str, is_pce_used=Fals
     
     # Extract distribution information
     distributions = []
-    inputs_df = pd.DataFrame(columns=["Variable", "Distribution", "Parameters"])
+    inputs_df = pd.DataFrame(columns=["Variable", "Distribution", "Parameters", "Bounds", "Mean", "Std"])
     
     for i in range(dimension):
         marginal = problem.getMarginal(i)
         dist_type = marginal.getName()
         dist_params = str(marginal.getParameter())
+        
+        # Get distribution bounds, mean, and standard deviation
+        try:
+            lower_bound = marginal.getRange().getLowerBound()[0]
+            upper_bound = marginal.getRange().getUpperBound()[0]
+            bounds = f"[{lower_bound:.4f}, {upper_bound:.4f}]"
+        except:
+            bounds = "N/A"
+            
+        try:
+            mean = marginal.getMean()[0]
+        except:
+            mean = np.nan
+            
+        try:
+            std = marginal.getStandardDeviation()[0]
+        except:
+            std = np.nan
         
         distributions.append({
             'type': dist_type,
@@ -65,14 +83,17 @@ def compute_model_understanding(model, problem, model_code_str, is_pce_used=Fals
         inputs_df = pd.concat([inputs_df, pd.DataFrame({
             "Variable": [input_names[i]],
             "Distribution": [dist_type],
-            "Parameters": [dist_params]
+            "Parameters": [dist_params],
+            "Bounds": [bounds],
+            "Mean": [mean],
+            "Std": [std]
         })], ignore_index=True)
     
     # Format the model code for inclusion in the prompt
     model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
     
     # Convert inputs_df to markdown table for the prompt
-    inputs_md_table = inputs_df.to_markdown(index=False)
+    inputs_md_table = inputs_df[["Variable", "Distribution", "Parameters"]].to_markdown(index=False)
 
     # Generate prompt for the language model
     def generate_prompt(additional_instructions=""):
@@ -131,6 +152,8 @@ Input Parameters:
 {additional_instructions}
 """.strip()
 
+    max_attempts = 5
+    
     # Generate the prompt for the language model
     prompt = generate_prompt()
     
@@ -144,19 +167,40 @@ Input Parameters:
     
     # Get response from language model
     try:
-        response_text = call_groq_api(prompt, model_name=language_model)
+        # Try multiple attempts if needed
+        best_response_text = ""
+        attempts = 0
+
+        while attempts < max_attempts:
+            try:
+                response_text = call_groq_api(prompt, model_name=language_model)
+                # If we get here, the response was successful
+                best_response_text = response_text
+                break
+            except Exception as e:
+                attempts += 1
+                if attempts >= max_attempts:
+                    raise e
+                # Wait a bit before retrying
+                import time
+                time.sleep(2)
+        
+        if not best_response_text:
+            best_response_text = "Error: Unable to generate model explanation after multiple attempts."
     except Exception as e:
-        response_text = f"Error generating model explanation: {str(e)}"
+        best_response_text = f"Error generating model explanation: {str(e)}"
     
     # Return results dictionary
     return {
         'model_code_str': model_code_str,
         'inputs_df': inputs_df,
         'inputs_md_table': inputs_md_table,
-        'explanation': response_text,
+        'explanation': best_response_text,
         'is_pce_used': is_pce_used,
         'original_model_code_str': original_model_code_str,
-        'metamodel_str': metamodel_str
+        'metamodel_str': metamodel_str,
+        'distributions': distributions,
+        'problem': problem
     }
 
 def display_model_understanding(analysis_results, language_model='groq'):
@@ -179,7 +223,7 @@ def display_model_understanding(analysis_results, language_model='groq'):
     original_model_code_str = analysis_results['original_model_code_str']
     metamodel_str = analysis_results['metamodel_str']
     
-    # Store the explanation in session state for reuse
+    # Store the explanation in session state for reuse in the global chat
     if 'model_understanding_response_markdown' not in st.session_state:
         st.session_state['model_understanding_response_markdown'] = explanation
     
@@ -190,7 +234,7 @@ def display_model_understanding(analysis_results, language_model='groq'):
         # Display input distributions
         st.write("### Input Distributions")
         try:
-            # Display the dataframe
+            # Display the dataframe with enhanced formatting
             st.dataframe(
                 inputs_df,
                 column_config={
@@ -203,24 +247,24 @@ def display_model_understanding(analysis_results, language_model='groq'):
                 },
                 use_container_width=True
             )
+            
+            # If OpenTURNS has the markdown representation, use it as well
+            if hasattr(problem := analysis_results.get('problem', None), '__repr_markdown__'):
+                try:
+                    markdown_repr = problem.__repr_markdown__()
+                    st.markdown(markdown_repr, unsafe_allow_html=True)
+                except:
+                    pass
         except Exception as e:
             st.error(f"Error displaying input distributions: {e}")
-        
-        # Display model code
-        st.write("### Model Code")
-        st.code(model_code_str, language="python")
         
         # If a metamodel is used, display it
         if is_pce_used and metamodel_str:
             st.write("### Polynomial Chaos Expansion Metamodel")
             st.info("This analysis uses a polynomial chaos expansion (PCE) metamodel instead of the original model.")
             
-            # Display the original model
-            st.write("#### Original Model")
-            st.code(original_model_code_str, language="python")
-            
-            # Display the metamodel
-            st.write("#### PCE Metamodel")
+            # Display metamodel information
+            st.write("#### PCE Metamodel Information")
             st.code(metamodel_str, language="python")
 
 def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq', display_results=True):
@@ -265,6 +309,9 @@ def model_understanding(model, problem, model_code_str, is_pce_used=False, origi
             metamodel_str, 
             language_model
         )
+        
+        # Add the problem to the results for potential markdown representation
+        analysis_results['problem'] = problem
         
         # Display results if requested
         if display_results:

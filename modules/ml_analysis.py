@@ -16,12 +16,12 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import scipy.stats as stats
 from scipy.stats import pearsonr
-from utils.core_utils import call_groq_api, create_chat_interface
+from utils.core_utils import call_groq_api
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
 
-def compute_ml_analysis(model, problem, model_code_str=None, language_model='groq'):
+def compute_ml_analysis(model, problem, size=1000, model_code_str=None, language_model='groq'):
     """
     Compute machine learning-based sensitivity analysis using SHAP values without UI components.
     
@@ -34,6 +34,8 @@ def compute_ml_analysis(model, problem, model_code_str=None, language_model='gro
         Either the model function or DataFrame containing input samples and model outputs
     problem : ot.Distribution
         OpenTURNS distribution representing the input uncertainty
+    size : int, optional
+        Number of samples for Monte Carlo simulation, by default 1000
     model_code_str : str, optional
         String representation of the model code for documentation, by default None
     language_model : str, optional
@@ -58,7 +60,7 @@ def compute_ml_analysis(model, problem, model_code_str=None, language_model='gro
     # If model is a function, generate data by running Monte Carlo simulation
     if callable(model) and not isinstance(model, pd.DataFrame):
         # Generate Monte Carlo samples
-        results = monte_carlo_simulation(model, problem, N=1000, seed=42)
+        results = monte_carlo_simulation(model, problem, N=size, seed=42)
         # Convert to DataFrame
         data = create_monte_carlo_dataframe(results)
     else:
@@ -75,25 +77,52 @@ def compute_ml_analysis(model, problem, model_code_str=None, language_model='gro
     # Calculate SHAP values
     shap_results = calculate_shap_values(rf_model, X_test, input_names)
     
+    # Create visualizations
+    fig_importance = create_importance_plot(shap_results)
+    fig_dependence = create_dependence_plots(shap_results, X_test, input_names)
+    fig_validation = create_validation_plot(performance_metrics['y_test'], performance_metrics['y_pred'])
+    
+    # Find most influential variables
+    top_feature = shap_results["shap_summary_df"]['Feature'].iloc[0]
+    significant_features_count = sum(shap_results["importance_df"]['Importance'] > 0.05)
+    
+    # Create model metrics dataframe
+    model_metrics_df = pd.DataFrame({
+        'Metric': ['R² Score', 'RMSE', 'Cross-Val R² (mean)', 'Cross-Val R² (std)'],
+        'Value': [
+            f"{performance_metrics['r2']:.4f}",
+            f"{performance_metrics['rmse']:.4f}",
+            f"{performance_metrics['cv_r2_mean']:.4f}",
+            f"{performance_metrics['cv_r2_std']:.4f}"
+        ]
+    })
+    
     # Generate expert analysis if a language model is provided
-    ml_interpretation = None
+    ai_insights = None
     if language_model and model_code_str:
-        ml_interpretation = generate_expert_analysis(
+        ai_insights = generate_expert_analysis(
             data, problem, rf_model, input_names, model_code_str, 
             shap_results, performance_metrics, language_model
         )
     
-    # Return all results in a dictionary
+    # Return all results in a dictionary with the correct keys expected by UncertaintyCat.py
     return {
-        "data": data,
         "input_names": input_names,
         "surrogate_model": rf_model,
-        "X_test": X_test,
-        "y_test": y_test,
-        "scaler": scaler,
-        "performance_metrics": performance_metrics,
         "shap_results": shap_results,
-        "ml_interpretation": ml_interpretation
+        "performance_metrics": performance_metrics,
+        "top_feature": top_feature,
+        "significant_features_count": significant_features_count,
+        "fig_importance": fig_importance,
+        "fig_dependence": fig_dependence,
+        "fig_validation": fig_validation,
+        "ai_insights": ai_insights,
+        # Keys expected by UncertaintyCat.py
+        "shap_summary_plot": fig_dependence,
+        "shap_bar_plot": fig_importance,
+        "validation_plot": fig_validation,
+        "feature_importance": shap_results["importance_df"],
+        "model_metrics": model_metrics_df
     }
 
 def display_ml_results(analysis_results, model_code_str=None, language_model='groq'):
@@ -109,35 +138,26 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
     language_model : str, optional
         Language model to use for analysis, by default "groq"
     """
-    # Extract results from the analysis_results dictionary
-    data = analysis_results["data"]
-    input_names = analysis_results["input_names"]
-    rf_model = analysis_results["surrogate_model"]
-    X_test = analysis_results["X_test"]
-    y_test = analysis_results["y_test"]
-    performance_metrics = analysis_results["performance_metrics"]
-    shap_results = analysis_results["shap_results"]
-    ml_interpretation = analysis_results.get("ml_interpretation")
-    
-    # Results section
-    with st.expander("Results", expanded=True):
+    try:
+        # Extract results from the analysis_results dictionary
+        input_names = analysis_results["input_names"]
+        rf_model = analysis_results["surrogate_model"]
+        performance_metrics = analysis_results["performance_metrics"]
+        top_feature = analysis_results["top_feature"]
+        significant_features_count = analysis_results["significant_features_count"]
+        
+        # Get the figures with the correct names
+        shap_bar_plot = analysis_results["shap_bar_plot"]
+        shap_summary_plot = analysis_results["shap_summary_plot"]
+        validation_plot = analysis_results["validation_plot"]
+        
+        # Display SHAP Analysis Results header
         st.subheader("SHAP Analysis Results")
         st.markdown("""
-        ### SHAP Analysis Results
-        
         This analysis uses machine learning techniques to understand the relationship between input variables and model outputs.
         By training a surrogate model (Random Forest) and applying SHAP (SHapley Additive exPlanations), we can identify
         which variables have the most influence on the model output and how they affect predictions.
-        
-        **Key Concepts:**
-        - **SHAP (SHapley Additive exPlanations)**: A unified approach to explain the output of any machine learning model
-        - **Feature Importance**: Ranking of variables by their overall impact on predictions
-        - **Dependence Plots**: Show how the effect of a variable changes across its range
         """)
-        
-        # Display key metrics
-        top_feature = shap_results["shap_summary_df"]['Feature'].iloc[0]
-        significant_features_count = sum(shap_results["importance_df"]['Importance'] > 0.05)
         
         # Create metrics in columns
         col1, col2, col3 = st.columns(3)
@@ -148,10 +168,7 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
         with col3:
             st.metric("Model Accuracy", f"{performance_metrics['r2']:.4f} R²")
         
-        # Display model performance
-        st.subheader("Surrogate Model Performance")
-        
-        # Create metrics in columns
+        # Display model performance metrics
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("R² Score", f"{performance_metrics['r2']:.4f}")
@@ -160,44 +177,32 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
         with col3:
             st.metric("Cross-Val R²", f"{performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}")
         
-        # Add validation plot
-        create_validation_plot(performance_metrics['y_test'], performance_metrics['y_pred'])
+        # Display validation plot
+        st.subheader("Validation Plot")
+        st.plotly_chart(validation_plot, use_container_width=True)
         
-        # Create interactive visualizations
-        create_interactive_visualizations(shap_results, X_test, input_names, performance_metrics)
+        # Display importance plot
+        st.subheader("Feature Importance")
+        st.plotly_chart(shap_bar_plot, use_container_width=True)
         
-        # Add model performance metrics explanation as a regular section instead of an expander
-        st.subheader("Understanding Model Performance Metrics")
-        st.markdown("""
-        - **R² Score**: Coefficient of determination (0-1)
-          - Measures the proportion of variance in the output that is predictable from the inputs
-          - Higher values indicate better fit (1.0 is perfect prediction)
-          - Values below 0.5 suggest poor model performance
+        # Display dependence plots
+        st.subheader("Feature Dependence")
+        st.plotly_chart(shap_summary_plot, use_container_width=True)
         
-        - **RMSE (Root Mean Square Error)**:
-          - Measures the average magnitude of prediction errors
-          - Lower values indicate better fit
-          - In the same units as the output variable
-        
-        - **Cross-Validation R²**:
-          - Average R² score across 5 different data splits
-          - Measures how well the model generalizes to unseen data
-          - The ± value shows the standard deviation across folds
-        
-        - **Validation Plot**:
-          - Shows actual vs. predicted values
-          - Points should fall close to the diagonal line (perfect prediction)
-          - Scatter indicates prediction uncertainty
-          - Systematic deviations suggest model bias
-        """)
+        # AI Insights section
+        if "ai_insights" in analysis_results and analysis_results["ai_insights"]:
+            # Store the insights in session state for reuse in the global chat
+            if 'ml_analysis_response_markdown' not in st.session_state:
+                st.session_state['ml_analysis_response_markdown'] = analysis_results["ai_insights"]
+            
+            st.subheader("AI-Generated Expert Analysis")
+            st.markdown(analysis_results["ai_insights"])
     
-    # AI Insights section (only if ml_interpretation is available)
-    if ml_interpretation:
-        with st.expander("AI Insights", expanded=True):
-            st.markdown("### AI-Generated Expert Analysis")
-            st.markdown(ml_interpretation)
+    except Exception as e:
+        st.error(f"Error in ML analysis display: {str(e)}")
+        st.code(traceback.format_exc())
 
-def ml_analysis(model, problem, model_code_str=None, language_model='groq', display_results=True):
+def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='groq', display_results=True):
     """
     Perform machine learning-based sensitivity analysis using SHAP values with enterprise-grade visualizations.
     
@@ -210,6 +215,8 @@ def ml_analysis(model, problem, model_code_str=None, language_model='groq', disp
         Either the model function or DataFrame containing input samples and model outputs
     problem : ot.Distribution
         OpenTURNS distribution representing the input uncertainty
+    size : int, optional
+        Number of samples for Monte Carlo simulation, by default 1000
     model_code_str : str, optional
         String representation of the model code for documentation, by default None
     language_model : str, optional
@@ -223,27 +230,16 @@ def ml_analysis(model, problem, model_code_str=None, language_model='groq', disp
         Dictionary containing ML analysis results
     """
     try:
-        # Compute ML analysis
-        with st.spinner("Running ML Analysis...") if display_results else nullcontext():
-            analysis_results = compute_ml_analysis(
-                model, problem, model_code_str=model_code_str, language_model=language_model
-            )
+        # Use a context manager to conditionally display results
+        display_context = st.expander("Machine Learning Analysis", expanded=True) if display_results else nullcontext()
         
-        # Store results in session state for later access
-        if 'ml_analysis_results' not in st.session_state:
-            st.session_state.ml_analysis_results = {}
-        
-        # Use model's description as a key if available, otherwise use a default key
-        if hasattr(model, 'getDescription') and model.getDescription()[0] != "":
-            model_key = model.getDescription()[0]
-        else:
-            model_key = "default_model"
-        
-        st.session_state.ml_analysis_results[model_key] = analysis_results
-        
-        # Display results if requested
-        if display_results:
-            display_ml_results(analysis_results, model_code_str, language_model)
+        with display_context:
+            # Compute the analysis
+            analysis_results = compute_ml_analysis(model, problem, size, model_code_str, language_model)
+            
+            # Display the results if requested
+            if display_results:
+                display_ml_results(analysis_results, model_code_str, language_model)
         
         return analysis_results
     
@@ -251,14 +247,16 @@ def ml_analysis(model, problem, model_code_str=None, language_model='groq', disp
         if display_results:
             st.error(f"Error in ML analysis: {str(e)}")
             st.code(traceback.format_exc(), language="python")
-        raise e
+        return None
 
 # Define a nullcontext class to use when display_results is False
 class nullcontext:
     def __init__(self, enter_result=None):
         self.enter_result = enter_result
+    
     def __enter__(self):
         return self.enter_result
+    
     def __exit__(self, *excinfo):
         pass
 
@@ -278,61 +276,45 @@ def train_surrogate_model(data, input_names):
     tuple
         (rf_model, X_test, y_test, scaler, performance_metrics)
     """
-    # Check if the model is already in session_state
-    if ('rf_model' in st.session_state and 'X_test' in st.session_state and
-        'y_test' in st.session_state and 'scaler' in st.session_state and
-        'rf_performance' in st.session_state):
-        return (
-            st.session_state['rf_model'],
-            st.session_state['X_test'],
-            st.session_state['y_test'],
-            st.session_state['scaler'],
-            st.session_state['rf_performance']
-        )
-    else:
-        X = data[input_names]
-        y = data['Y']
-
-        # Standardize features
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_scaled, y, test_size=0.2, random_state=42
-        )
-
-        # Fit Random Forest Regressor
-        rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
-        rf_model.fit(X_train, y_train)
-        
-        # Calculate performance metrics
-        y_pred = rf_model.predict(X_test)
-        r2 = r2_score(y_test, y_pred)
-        mse = mean_squared_error(y_test, y_pred)
-        rmse = np.sqrt(mse)
-        
-        # Cross-validation
-        cv_scores = cross_val_score(rf_model, X_scaled, y, cv=5, scoring='r2')
-        
-        performance_metrics = {
-            'r2': r2,
-            'mse': mse,
-            'rmse': rmse,
-            'cv_r2_mean': np.mean(cv_scores),
-            'cv_r2_std': np.std(cv_scores),
-            'y_test': y_test,
-            'y_pred': y_pred
-        }
-
-        # Store in session_state
-        st.session_state['rf_model'] = rf_model
-        st.session_state['X_test'] = X_test
-        st.session_state['y_test'] = y_test
-        st.session_state['scaler'] = scaler
-        st.session_state['rf_performance'] = performance_metrics
+    # Separate inputs and outputs
+    X = data[input_names].values
+    y = data['Y'].values
     
-        return rf_model, X_test, y_test, scaler, performance_metrics
+    # Split data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Scale the input features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Train a Random Forest model
+    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf_model.fit(X_train_scaled, y_train)
+    
+    # Make predictions on the test set
+    y_pred = rf_model.predict(X_test_scaled)
+    
+    # Calculate performance metrics
+    r2 = r2_score(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    
+    # Perform cross-validation
+    cv_scores = cross_val_score(rf_model, X, y, cv=5, scoring='r2')
+    cv_r2_mean = np.mean(cv_scores)
+    cv_r2_std = np.std(cv_scores)
+    
+    # Create a dictionary of performance metrics
+    performance_metrics = {
+        'r2': r2,
+        'rmse': rmse,
+        'cv_r2_mean': cv_r2_mean,
+        'cv_r2_std': cv_r2_std,
+        'y_test': y_test,
+        'y_pred': y_pred
+    }
+    
+    return rf_model, X_test_scaled, y_test, scaler, performance_metrics
 
 def calculate_shap_values(model, X_test, feature_names):
     """
@@ -352,54 +334,84 @@ def calculate_shap_values(model, X_test, feature_names):
     dict
         Dictionary containing SHAP analysis results
     """
-    if ('shap_values' in st.session_state and 'shap_summary_df' in st.session_state and
-        'importance_df' in st.session_state):
-        shap_values = st.session_state['shap_values']
-        shap_summary_df = st.session_state['shap_summary_df']
-        importance_df = st.session_state['importance_df']
-    else:
-        # Ensure X_test is a DataFrame with feature names
-        X_test_df = pd.DataFrame(X_test, columns=feature_names)
-        
-        # Create the explainer
-        explainer = shap.TreeExplainer(model)
-        
-        # Calculate SHAP values
-        shap_values = explainer(X_test_df)
-        
-        # Calculate mean absolute SHAP values for each feature
-        mean_abs_shap_values = np.abs(shap_values.values).mean(axis=0)
-        
-        # Create a DataFrame with feature names and mean absolute SHAP values
-        shap_summary_df = pd.DataFrame({
-            'Feature': feature_names,
-            'Mean |SHAP|': mean_abs_shap_values
-        })
-        
-        # Sort by mean absolute SHAP values in descending order
-        shap_summary_df = shap_summary_df.sort_values('Mean |SHAP|', ascending=False)
-        
-        # Calculate feature importances from the model
-        importances = model.feature_importances_
-        importance_df = pd.DataFrame({
-            'Feature': feature_names,
-            'Importance': importances
-        }).sort_values('Importance', ascending=False)
-        
-        # Store in session_state
-        st.session_state['shap_values'] = shap_values
-        st.session_state['shap_summary_df'] = shap_summary_df
-        st.session_state['importance_df'] = importance_df
+    # Create a SHAP explainer
+    explainer = shap.TreeExplainer(model)
     
+    # Calculate SHAP values
+    shap_values = explainer(X_test)
+    
+    # Calculate mean absolute SHAP values for feature importance
+    mean_abs_shap = np.abs(shap_values.values).mean(0)
+    
+    # Create a DataFrame with feature importance
+    importance_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Importance': mean_abs_shap / np.sum(mean_abs_shap)  # Normalize to sum to 1
+    })
+    
+    # Sort by importance
+    importance_df = importance_df.sort_values('Importance', ascending=False).reset_index(drop=True)
+    
+    # Create a summary DataFrame for the SHAP summary plot
+    shap_summary_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Mean |SHAP|': mean_abs_shap
+    })
+    
+    # Sort by mean absolute SHAP value
+    shap_summary_df = shap_summary_df.sort_values('Mean |SHAP|', ascending=False).reset_index(drop=True)
+    
+    # Return all SHAP-related results
     return {
-        "shap_values": shap_values,
-        "shap_summary_df": shap_summary_df,
-        "importance_df": importance_df
+        'shap_values': shap_values,
+        'importance_df': importance_df,
+        'shap_summary_df': shap_summary_df,
+        'feature_names': feature_names
     }
 
-def create_interactive_visualizations(shap_results, X_test, feature_names, performance_metrics):
+def create_importance_plot(shap_results):
     """
-    Create interactive Plotly visualizations for SHAP analysis results.
+    Create an interactive feature importance plot based on SHAP values.
+    
+    Parameters
+    ----------
+    shap_results : dict
+        Dictionary containing SHAP analysis results
+        
+    Returns
+    -------
+    go.Figure
+        Plotly figure with feature importance plot
+    """
+    # Extract data
+    shap_summary_df = shap_results['shap_summary_df']
+    
+    # Create a horizontal bar chart
+    fig = px.bar(
+        shap_summary_df,
+        y='Feature',
+        x='Mean |SHAP|',
+        orientation='h',
+        title='Feature Importance (SHAP Values)',
+        color='Mean |SHAP|',
+        color_continuous_scale='viridis'
+    )
+    
+    # Update layout
+    fig.update_layout(
+        xaxis_title='Mean |SHAP| Value',
+        yaxis_title='Feature',
+        yaxis=dict(autorange="reversed"),  # Put highest importance at the top
+        coloraxis_showscale=False,
+        height=400,
+        template='plotly_white'
+    )
+    
+    return fig
+
+def create_dependence_plots(shap_results, X_test, feature_names, max_features=3):
+    """
+    Create interactive dependence plots for the top features.
     
     Parameters
     ----------
@@ -409,191 +421,181 @@ def create_interactive_visualizations(shap_results, X_test, feature_names, perfo
         Test data features
     feature_names : list
         List of feature names
-    performance_metrics : dict
-        Dictionary containing model performance metrics
+    max_features : int, optional
+        Maximum number of features to show, by default 3
+        
+    Returns
+    -------
+    go.Figure
+        Plotly figure with dependence plots
     """
-    shap_values = shap_results["shap_values"]
-    shap_summary_df = shap_results["shap_summary_df"]
-    importance_df = shap_results["importance_df"]
+    # Extract data
+    shap_values = shap_results['shap_values']
+    shap_summary_df = shap_results['shap_summary_df']
     
-    # Ensure X_test is a DataFrame with feature names
-    X_test_df = pd.DataFrame(X_test, columns=feature_names)
+    # Get the top features
+    top_features = shap_summary_df['Feature'].head(max_features).tolist()
     
-    # Create a 2x2 subplot figure
-    st.subheader("SHAP Analysis Visualizations")
+    # Create a subplot grid
+    rows = (len(top_features) + 1) // 2  # Ceiling division
+    cols = min(2, len(top_features))
     
-    # Create a figure with 2 rows and 2 columns
     fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=(
-            "SHAP Feature Importance", 
-            "Random Forest Feature Importance",
-            "SHAP Values Distribution", 
-            "Feature Correlation with SHAP Values"
-        ),
-        specs=[
-            [{"type": "bar"}, {"type": "bar"}],
-            [{"type": "box"}, {"type": "scatter"}]
-        ],
-        vertical_spacing=0.3,  # Increased spacing to prevent overlap
+        rows=rows,
+        cols=cols,
+        subplot_titles=[f"{feature} Impact" for feature in top_features],
+        vertical_spacing=0.2,
         horizontal_spacing=0.1
     )
     
-    # 1. SHAP Feature Importance (Bar Chart) - Top left
-    fig.add_trace(
-        go.Bar(
-            y=shap_summary_df['Feature'],
-            x=shap_summary_df['Mean |SHAP|'],
-            orientation='h',
-            marker_color='#1f77b4',
-            name='Mean |SHAP|'
-        ),
-        row=1, col=1
-    )
+    # Create a DataFrame from X_test for easier indexing
+    X_test_df = pd.DataFrame(X_test, columns=feature_names)
     
-    # 2. Random Forest Feature Importance (Bar Chart) - Top right
-    fig.add_trace(
-        go.Bar(
-            y=importance_df['Feature'],
-            x=importance_df['Importance'],
-            orientation='h',
-            marker_color='#ff7f0e',
-            name='RF Importance'
-        ),
-        row=1, col=2
-    )
-    
-    # 3. SHAP Values Distribution (Box Plot) - Bottom left
-    # Prepare data for box plot
-    box_data = []
-    for feature in shap_summary_df['Feature'].tolist():
-        box_data.append(
-            go.Box(
-                y=shap_values[:, feature].values,
+    # Add dependence plots for each top feature
+    for i, feature in enumerate(top_features):
+        # Calculate row and column for this subplot
+        row = i // cols + 1
+        col = i % cols + 1
+        
+        # Get feature values and SHAP values
+        feature_values = X_test_df[feature].values
+        feature_shap_values = shap_values.values[:, feature_names.index(feature)]
+        
+        # Create scatter plot
+        fig.add_trace(
+            go.Scatter(
+                x=feature_values,
+                y=feature_shap_values,
+                mode='markers',
+                marker=dict(
+                    color=feature_shap_values,
+                    colorscale='RdBu_r',
+                    size=8,
+                    colorbar=dict(title="SHAP Value") if i == 0 else None,
+                    showscale=i == 0
+                ),
                 name=feature,
-                boxmean=True,
-                jitter=0.3,
-                pointpos=-1.8,
-                boxpoints='outliers'
-            )
+                hovertemplate=f"{feature}: %{{x:.4f}}<br>SHAP value: %{{y:.4f}}<extra></extra>"
+            ),
+            row=row, col=col
         )
+        
+        # Add a horizontal line at y=0
+        fig.add_shape(
+            type="line",
+            x0=min(feature_values),
+            y0=0,
+            x1=max(feature_values),
+            y1=0,
+            line=dict(color="black", width=1, dash="dash"),
+            row=row, col=col
+        )
+        
+        # Update axes
+        fig.update_xaxes(title_text=feature, row=row, col=col)
+        fig.update_yaxes(title_text="SHAP Value", row=row, col=col)
     
-    # Add all box plots to the figure
-    for box in box_data[:5]:  # Limit to top 5 features for clarity
-        fig.add_trace(box, row=2, col=1)
+    # Update layout
+    fig.update_layout(
+        height=300 * rows,
+        title_text="Feature Dependence Plots",
+        showlegend=False,
+        template='plotly_white'
+    )
     
-    # 4. Feature Correlation with SHAP Values (Scatter Plot) - Bottom right
-    # Get top feature for scatter plot
-    top_feature = shap_summary_df['Feature'].iloc[0]
+    return fig
+
+def create_validation_plot(y_true, y_pred):
+    """
+    Create an interactive validation plot showing actual vs. predicted values.
     
-    # Create scatter plot for top feature
+    Parameters
+    ----------
+    y_true : array-like
+        True target values
+    y_pred : array-like
+        Predicted target values
+        
+    Returns
+    -------
+    go.Figure
+        Plotly figure with validation plot
+    """
+    # Calculate metrics
+    r2 = r2_score(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    
+    # Calculate correlation
+    correlation, _ = pearsonr(y_true, y_pred)
+    
+    # Create a DataFrame for the scatter plot
+    validation_df = pd.DataFrame({
+        'Actual': y_true,
+        'Predicted': y_pred,
+        'Residual': y_true - y_pred
+    })
+    
+    # Calculate min and max for the diagonal line
+    min_val = min(validation_df['Actual'].min(), validation_df['Predicted'].min())
+    max_val = max(validation_df['Actual'].max(), validation_df['Predicted'].max())
+    
+    # Add some padding to the limits
+    range_val = max_val - min_val
+    min_val -= range_val * 0.05
+    max_val += range_val * 0.05
+    
+    # Create a scatter plot
+    fig = go.Figure()
+    
+    # Add scatter plot
     fig.add_trace(
         go.Scatter(
-            x=X_test_df[top_feature],
-            y=shap_values[:, top_feature].values,
+            x=validation_df['Actual'],
+            y=validation_df['Predicted'],
             mode='markers',
             marker=dict(
+                color=validation_df['Residual'],
+                colorscale='RdBu_r',
                 size=8,
-                color=X_test_df[top_feature],
-                colorscale='Viridis',
-                colorbar=dict(title=top_feature),
-                showscale=True
+                colorbar=dict(title="Residual")
             ),
-            name=f'SHAP for {top_feature}'
-        ),
-        row=2, col=2
+            name='Predictions',
+            hovertemplate="Actual: %{x:.4f}<br>Predicted: %{y:.4f}<br>Residual: %{marker.color:.4f}<extra></extra>"
+        )
+    )
+    
+    # Add diagonal line (perfect prediction)
+    fig.add_trace(
+        go.Scatter(
+            x=[min_val, max_val],
+            y=[min_val, max_val],
+            mode='lines',
+            line=dict(color="black", width=2, dash="dash"),
+            name='Perfect Prediction'
+        )
     )
     
     # Update layout
     fig.update_layout(
-        height=800,
-        width=1000,
-        title_text="SHAP Analysis Dashboard",
-        showlegend=False,
-        template="plotly_white"
+        title=f"Model Validation (R² = {r2:.4f}, RMSE = {rmse:.4f})",
+        xaxis_title='Actual Values',
+        yaxis_title='Predicted Values',
+        height=400,
+        template='plotly_white',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
-    # Update axes
-    fig.update_xaxes(title_text="Mean |SHAP| Value", row=1, col=1)
-    fig.update_xaxes(title_text="Random Forest Importance", row=1, col=2)
-    fig.update_xaxes(title_text=f"{top_feature} Value", row=2, col=2)
+    # Set equal axis ranges
+    fig.update_xaxes(range=[min_val, max_val])
+    fig.update_yaxes(range=[min_val, max_val])
     
-    fig.update_yaxes(title_text="Feature", row=1, col=1)
-    fig.update_yaxes(title_text="Feature", row=1, col=2)
-    fig.update_yaxes(title_text="SHAP Value", row=2, col=1)
-    fig.update_yaxes(title_text=f"SHAP Value for {top_feature}", row=2, col=2)
-    
-    # Display the figure
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Create dependence plots for top features
-    st.subheader("SHAP Dependence Plots for Top Features")
-    st.markdown("""
-    These plots show how the SHAP value (impact on model output) changes
-    with the feature value. This helps understand the relationship between
-    each input variable and the model output.
-    """)
-    
-    # Get top 3 features
-    top_features = shap_summary_df['Feature'].head(3).tolist()
-    
-    # Create a row of 3 columns for the top features
-    cols = st.columns(len(top_features))
-    
-    # Create a dependence plot for each top feature
-    for i, feature in enumerate(top_features):
-        # Find most correlated feature for coloring
-        corr_matrix = X_test_df.corr().abs()
-        corr_feature = corr_matrix[feature].drop(feature).idxmax()
-        
-        # Create scatter plot
-        scatter_fig = px.scatter(
-            x=X_test_df[feature],
-            y=shap_values[:, feature].values,
-            color=X_test_df[corr_feature],
-            labels={
-                'x': feature,
-                'y': f'SHAP value for {feature}',
-                'color': corr_feature
-            },
-            title=f"SHAP Dependence Plot: {feature}",
-            color_continuous_scale='Viridis',
-            height=400
-        )
-        
-        # Add trend line
-        scatter_fig.add_trace(
-            go.Scatter(
-                x=X_test_df[feature].sort_values(),
-                y=np.poly1d(np.polyfit(X_test_df[feature], shap_values[:, feature].values, 1))(X_test_df[feature].sort_values()),
-                mode='lines',
-                name='Trend',
-                line=dict(color='red', width=2, dash='dash')
-            )
-        )
-        
-        # Update layout
-        scatter_fig.update_layout(
-            template="plotly_white",
-            margin=dict(l=10, r=10, t=40, b=10)
-        )
-        
-        # Display in the appropriate column
-        with cols[i]:
-            st.plotly_chart(scatter_fig, use_container_width=True)
-            
-            # Add interpretation
-            mean_shap = np.mean(shap_values[:, feature].values)
-            direction = "positive" if mean_shap > 0 else "negative"
-            strength = abs(mean_shap) / shap_summary_df['Mean |SHAP|'].max()
-            strength_desc = "strong" if strength > 0.66 else "moderate" if strength > 0.33 else "weak"
-            
-            st.markdown(f"""
-            **Key Insights for {feature}:**
-            - Overall {direction} impact on predictions ({strength_desc} effect)
-            - {'Higher values generally increase predictions' if mean_shap > 0 else 'Higher values generally decrease predictions'}
-            - Interacts with {corr_feature} (color scale)
-            """)
+    return fig
 
 def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_str, 
                            shap_results, performance_metrics, language_model='groq'):
@@ -624,225 +626,83 @@ def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_
     str
         The generated AI analysis text
     """
-    # Check if the interpretation is already in session_state
-    if 'ml_interpretation' in st.session_state:
-        return st.session_state['ml_interpretation']
-    else:
-        # Format the model code for inclusion in the prompt
-        if model_code_str:
-            model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
-        else:
-            model_code_formatted = "No model code provided"
-        
-        # Calculate correlations
-        correlations = []
-        for feature in feature_names:
-            corr, _ = pearsonr(data[feature], data['Y'])
-            correlations.append((feature, corr))
-        
-        corr_df = pd.DataFrame(correlations, columns=['Feature', 'Correlation'])
-        corr_df = corr_df.sort_values('Correlation', key=abs, ascending=False)
-        
-        # Format the dataframes as markdown tables
-        importance_table = shap_results["importance_df"].to_markdown(index=False)
-        corr_table = corr_df.to_markdown(index=False)
-        shap_table = shap_results["shap_summary_df"].to_markdown(index=False)
-        
-        # Prepare the inputs description
-        input_parameters = []
-        dimension = problem.getDimension()
-        for i in range(dimension):
-            marginal = problem.getMarginal(i)
-            name = marginal.getDescription()[0]
-            if name == "":
-                name = f"X{i+1}"
-            dist_type = marginal.__class__.__name__
-            params = marginal.getParameter()
-            input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
-        
-        inputs_description = '\n'.join(input_parameters)
-        
-        # Prepare the prompt
-        prompt = f"""
-        {RETURN_INSTRUCTION}
-
-        ## SHAP Analysis
-
-        Given the following user-defined model defined in Python code:
-
-        ```python
-        {model_code_formatted}
-        ```
-
-        and the following uncertain input distributions:
-
-        {inputs_description}
-
-        The performance metrics of the Random Forest surrogate model are as follows:
-
-        - R² Score: {performance_metrics['r2']:.4f}
-        - Mean Squared Error: {performance_metrics['mse']:.4f}
-        - RMSE: {performance_metrics['rmse']:.4f}
-        - Cross-Validation R² (mean ± std): {performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}
-
-        The Random Forest feature importances are provided in the table below:
-
-        {importance_table}
-
-        The correlations between the input variables and the output are provided in the table below:
-
-        {corr_table}
-
-        The mean absolute SHAP values for each feature are provided in the table below:
-
-        {shap_table}
-
-        Please provide a comprehensive analysis of the results:
-        
-        1. Explain what SHAP values represent and how they help interpret the model
-        2. Analyze the surrogate model performance and what it tells us about the system
-        3. Compare SHAP-based importance with traditional Random Forest importance
-        4. Identify the most influential variables and explain their impact on the output
-        5. Discuss any interesting patterns or relationships revealed by the SHAP analysis
-        6. Provide actionable insights based on the SHAP results
-        
-        Your analysis should be detailed yet accessible, with clear explanations of technical concepts.
-        """
-
-        # Call the API
-        with st.spinner("Generating expert analysis..."):
-            response_markdown = call_groq_api(prompt, model_name=language_model)
-            st.session_state['ml_interpretation'] = response_markdown
-
+    # Format the model code for inclusion in the prompt
+    model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')]) if model_code_str else ""
+    
+    # Prepare the inputs description
+    input_parameters = []
+    dimension = problem.getDimension()
+    for i in range(dimension):
+        marginal = problem.getMarginal(i)
+        name = feature_names[i]
+        dist_type = marginal.__class__.__name__
+        params = marginal.getParameter()
+        input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
+    
+    inputs_description = '\n'.join(input_parameters)
+    
+    # Format the feature importance table
+    importance_table = shap_results['importance_df'].to_markdown(index=False, floatfmt=".4f")
+    
+    # Format the performance metrics
+    performance_text = f"""
+    - R² Score: {performance_metrics['r2']:.4f}
+    - RMSE: {performance_metrics['rmse']:.4f}
+    - Cross-Validation R² (mean ± std): {performance_metrics['cv_r2_mean']:.4f} ± {performance_metrics['cv_r2_std']:.4f}
+    """
+    
+    # Prepare the prompt
+    prompt = f"""
+    {RETURN_INSTRUCTION}
+    
+    Given the following user-defined model defined in Python code:
+    
+    ```python
+    {model_code_formatted}
+    ```
+    
+    and the following uncertain input distributions:
+    
+    {inputs_description}
+    
+    A machine learning sensitivity analysis has been performed using a Random Forest surrogate model and SHAP values.
+    
+    The feature importance results are:
+    
+    {importance_table}
+    
+    The surrogate model performance metrics are:
+    {performance_text}
+    
+    Please provide an expert analysis of these results:
+    
+    1. **Surrogate Model Performance**
+       - Evaluate the quality of the Random Forest surrogate model
+       - Discuss what the R² score, RMSE, and cross-validation results tell us about the model's predictive power
+       - Explain any limitations or caveats in interpreting these results
+    
+    2. **Feature Importance Analysis**
+       - Identify which variables have the strongest influence on the model output based on SHAP values
+       - Explain what these importance values mean in the context of sensitivity analysis
+       - Discuss how SHAP values provide insights beyond traditional sensitivity measures
+    
+    3. **Physical Interpretation**
+       - Relate the identified important variables to the physical behavior of the model
+       - Explain why certain variables might be more influential than others
+       - Discuss any surprising or counter-intuitive findings
+    
+    4. **Recommendations**
+       - Suggest which variables should be prioritized for uncertainty reduction
+       - Recommend additional analyses that might be valuable given these ML patterns
+       - Provide guidance on how these results can inform decision-making or model refinement
+    
+    Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations.
+    """
+    
+    # Call the AI API
+    try:
+        response_markdown = call_groq_api(prompt, model_name=language_model)
         return response_markdown
-
-def create_validation_plot(y_true, y_pred):
-    """
-    Create an interactive validation plot showing actual vs. predicted values.
-    
-    Parameters
-    ----------
-    y_true : array-like
-        True target values
-    y_pred : array-like
-        Predicted target values
-    """
-    # Create a DataFrame for the validation plot
-    validation_df = pd.DataFrame({
-        'Actual': y_true,
-        'Predicted': y_pred,
-        'Error': np.abs(y_true - y_pred)
-    })
-    
-    # Calculate min and max for plot limits
-    min_val = min(validation_df['Actual'].min(), validation_df['Predicted'].min())
-    max_val = max(validation_df['Actual'].max(), validation_df['Predicted'].max())
-    
-    # Add some padding to the limits
-    range_val = max_val - min_val
-    min_val -= range_val * 0.05
-    max_val += range_val * 0.05
-    
-    # Create the scatter plot
-    fig = go.Figure()
-    
-    # Add the scatter plot of actual vs predicted
-    fig.add_trace(
-        go.Scatter(
-            x=validation_df['Actual'],
-            y=validation_df['Predicted'],
-            mode='markers',
-            marker=dict(
-                size=8,
-                color=validation_df['Error'],
-                colorscale='Viridis',
-                colorbar=dict(title='Absolute Error'),
-                showscale=True
-            ),
-            name='Test Samples'
-        )
-    )
-    
-    # Add the perfect prediction line
-    fig.add_trace(
-        go.Scatter(
-            x=[min_val, max_val],
-            y=[min_val, max_val],
-            mode='lines',
-            line=dict(color='red', width=2, dash='dash'),
-            name='Perfect Prediction'
-        )
-    )
-    
-    # Add confidence intervals (±RMSE)
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    x_range = np.linspace(min_val, max_val, 100)
-    
-    fig.add_trace(
-        go.Scatter(
-            x=x_range,
-            y=x_range + rmse,
-            mode='lines',
-            line=dict(color='rgba(0,0,0,0.3)', width=1, dash='dot'),
-            name=f'+RMSE ({rmse:.4f})'
-        )
-    )
-    
-    fig.add_trace(
-        go.Scatter(
-            x=x_range,
-            y=x_range - rmse,
-            mode='lines',
-            line=dict(color='rgba(0,0,0,0.3)', width=1, dash='dot'),
-            name=f'-RMSE ({rmse:.4f})'
-        )
-    )
-    
-    # Update layout
-    fig.update_layout(
-        title='Surrogate Model Validation: Actual vs. Predicted Values',
-        xaxis_title='Actual Values',
-        yaxis_title='Predicted Values',
-        template='plotly_white',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        height=500
-    )
-    
-    # Set equal axis ranges
-    fig.update_xaxes(range=[min_val, max_val])
-    fig.update_yaxes(range=[min_val, max_val])
-    
-    # Add a grid
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
-    
-    # Display the figure
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Add interpretation
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Calculate percentage of points within RMSE
-        within_rmse = np.sum(np.abs(y_true - y_pred) <= rmse) / len(y_true) * 100
-        st.metric("Points within ±RMSE", f"{within_rmse:.1f}%")
-        
-    with col2:
-        # Calculate max error
-        max_error = np.max(np.abs(y_true - y_pred))
-        st.metric("Maximum Error", f"{max_error:.4f}")
-    
-    # Add a brief explanation
-    st.markdown("""
-    **Validation Plot Interpretation:**
-    - **Points on diagonal line**: Perfect predictions
-    - **Color intensity**: Magnitude of prediction error
-    - **Dotted lines**: ±RMSE confidence interval
-    - **Clustering pattern**: Indicates model's prediction accuracy across the output range
-    """)
+    except Exception as e:
+        print(f"Error generating expert analysis: {str(e)}")
+        return f"Error generating expert analysis: {str(e)}"

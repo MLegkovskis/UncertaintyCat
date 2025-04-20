@@ -16,6 +16,10 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
     variance explained by individual variables from that explained by correlations with 
     other inputs.
     
+    ANCOVA (Analysis of Covariance) is a variance-based method that generalizes the ANOVA 
+    (Analysis of Variance) decomposition for models with correlated input parameters. It 
+    decomposes the total variance into uncorrelated (physical) effects and correlated effects.
+    
     Parameters
     ----------
     model : ot.Function
@@ -99,6 +103,14 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
         # Generate correlated sample for ANCOVA
         X_corr = problem.getSample(size)
         
+        # Calculate correlation matrix
+        correlation_matrix = np.zeros((dimension, dimension))
+        for i in range(dimension):
+            for j in range(dimension):
+                input_i = X_corr.getMarginal(i).asPoint()
+                input_j = X_corr.getMarginal(j).asPoint()
+                correlation_matrix[i, j] = np.corrcoef(input_i, input_j)[0, 1]
+        
         # Check if inputs are correlated
         has_copula = False
         try:
@@ -173,67 +185,69 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
         # Sort by ANCOVA index for better visualization
         indices_df = indices_df.sort_values('ANCOVA Index', ascending=False)
         
-        # Create Plotly bar chart for ANCOVA indices
-        fig_bar = go.Figure()
+        # Determine if there are correlation effects
+        has_correlation_effects = any(indices_df['Correlated Index'].abs() > 0.001)
         
-        # Add ANCOVA indices
-        fig_bar.add_trace(go.Bar(
+        # Create a combined bar chart showing both total ANCOVA indices and their decomposition
+        fig_combined = go.Figure()
+        
+        # Add total ANCOVA indices (S_i)
+        fig_combined.add_trace(go.Bar(
             x=indices_df['Variable'],
             y=indices_df['ANCOVA Index'],
-            name='ANCOVA Indices',
-            marker_color='rgba(31, 119, 180, 0.8)'
+            name='Total ANCOVA Index (S<sub>i</sub>)',
+            marker_color='rgba(55, 83, 109, 0.8)',
+            hovertemplate='%{x}: S<sub>i</sub> = %{y:.4f}<extra></extra>'
         ))
         
-        # Update layout
-        fig_bar.update_layout(
-            title='ANCOVA Sensitivity Indices',
-            xaxis_title='Input Variables',
-            yaxis_title='Sensitivity Index',
-            template='plotly_white',
-            height=500,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            )
-        )
-        
-        # Create stacked bar chart for uncorrelated and correlated contributions
-        fig_stacked = go.Figure()
-        
-        # Add uncorrelated contribution
-        fig_stacked.add_trace(go.Bar(
+        # Add uncorrelated contribution (S_i^U)
+        fig_combined.add_trace(go.Bar(
             x=indices_df['Variable'],
             y=indices_df['Uncorrelated Index'],
-            name='Uncorrelated Effect',
-            marker_color='rgba(31, 119, 180, 0.8)'
+            name='Uncorrelated Effect (S<sub>i</sub><sup>U</sup>)',
+            marker_color='rgba(31, 119, 180, 0.8)',
+            hovertemplate='%{x}: S<sub>i</sub><sup>U</sup> = %{y:.4f}<extra></extra>'
         ))
         
-        # Add correlated contribution
-        fig_stacked.add_trace(go.Bar(
+        # Add correlated contribution (S_i^C)
+        fig_combined.add_trace(go.Bar(
             x=indices_df['Variable'],
             y=indices_df['Correlated Index'],
-            name='Correlated Effect',
-            marker_color='rgba(214, 39, 40, 0.8)'
+            name='Correlated Effect (S<sub>i</sub><sup>C</sup>)',
+            marker_color='rgba(214, 39, 40, 0.8)',
+            hovertemplate='%{x}: S<sub>i</sub><sup>C</sup> = %{y:.4f}<extra></extra>'
         ))
         
+        # Add annotations to explain the relationship
+        fig_combined.add_annotation(
+            x=0.02,
+            y=1.12,
+            xref="paper",
+            yref="paper",
+            text="ANCOVA Decomposition: S<sub>i</sub> = S<sub>i</sub><sup>U</sup> + S<sub>i</sub><sup>C</sup>",
+            showarrow=False,
+            font=dict(size=14),
+            align="left"
+        )
+        
         # Update layout
-        fig_stacked.update_layout(
-            title='Decomposition of ANCOVA Indices',
+        fig_combined.update_layout(
+            title='ANCOVA Sensitivity Analysis',
             xaxis_title='Input Variables',
             yaxis_title='Sensitivity Index',
-            barmode='stack',
             template='plotly_white',
-            height=500,
+            height=600,
+            barmode='group',
+            bargap=0.15,
+            bargroupgap=0.1,
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
                 y=1.02,
                 xanchor="right",
                 x=1
-            )
+            ),
+            margin=dict(t=120)  # Add more top margin for the annotation
         )
         
         # Create a pie chart for ANCOVA indices
@@ -250,45 +264,94 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
             legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
         )
         
-        # Create correlation heatmap
-        correlation_matrix = np.zeros((dimension, dimension))
+        # Create improved correlation heatmap
+        # First, let's create a mask for the diagonal to exclude it
+        mask = np.ones((dimension, dimension))
+        np.fill_diagonal(mask, 0)
+        
+        # Apply colorscale only to non-diagonal elements
+        colorscale_values = []
         for i in range(dimension):
             for j in range(dimension):
-                input_i = X_corr.getMarginal(i).asPoint()
-                input_j = X_corr.getMarginal(j).asPoint()
-                correlation_matrix[i, j] = np.corrcoef(input_i, input_j)[0, 1]
+                if i != j:  # Skip diagonal
+                    colorscale_values.append(correlation_matrix[i, j])
         
-        fig_heatmap = go.Figure(data=go.Heatmap(
-            z=correlation_matrix,
+        # Determine colorscale range based on actual data
+        if colorscale_values:
+            abs_max = max(abs(min(colorscale_values)), abs(max(colorscale_values)))
+            abs_max = max(abs_max, 0.1)  # Ensure we have at least some range
+        else:
+            abs_max = 1.0
+            
+        # Create heatmap with improved visualization
+        fig_heatmap = go.Figure()
+        
+        # Add heatmap trace
+        heatmap_trace = go.Heatmap(
+            z=correlation_matrix * mask,  # Apply mask to hide diagonal
             x=variable_names,
             y=variable_names,
             colorscale='RdBu_r',
             zmid=0,
-            colorbar=dict(title='Correlation')
-        ))
+            zmin=-abs_max,
+            zmax=abs_max,
+            colorbar=dict(
+                title='Correlation',
+                titleside='right'
+            ),
+            hovertemplate='%{x} - %{y}: %{z:.4f}<extra></extra>'
+        )
+        fig_heatmap.add_trace(heatmap_trace)
+        
+        # Add text annotations for correlation values
+        for i in range(dimension):
+            for j in range(dimension):
+                if i != j:  # Skip diagonal
+                    color = 'white' if abs(correlation_matrix[i, j]) > 0.4 else 'black'
+                    fig_heatmap.add_annotation(
+                        x=variable_names[j],
+                        y=variable_names[i],
+                        text=f"{correlation_matrix[i, j]:.2f}",
+                        showarrow=False,
+                        font=dict(color=color, size=10)
+                    )
+        
         fig_heatmap.update_layout(
             title='Input Correlation Structure',
             template='plotly_white',
-            height=500
+            height=500,
+            xaxis=dict(side='bottom'),
+            yaxis=dict(autorange='reversed')
         )
         
         # Create explanatory text
         ancova_explanation = """
         ### ANCOVA Sensitivity Analysis
         
-        The Analysis of Covariance (ANCOVA) method is a global sensitivity analysis approach that 
+        The Analysis of Covariance (ANCOVA) method is a variance-based sensitivity analysis approach that 
         specifically accounts for correlations between input variables. It decomposes the variance 
         of the model output into contributions from individual variables and their correlations.
         
+        #### Mathematical Formulation:
+        
+        ANCOVA decomposes the total variance as:
+        
+        $S_i = S_i^U + S_i^C$
+        
+        Where:
+        - $S_i$ is the total ANCOVA index for variable $i$
+        - $S_i^U$ is the uncorrelated (physical) part of the variance due to variable $i$
+        - $S_i^C$ is the correlated part of the variance due to correlations between variable $i$ and other variables
+        
         #### Interpreting the Results:
         
-        - **ANCOVA Index**: Total sensitivity of the output to each input variable
-        - **Uncorrelated Index**: Portion of sensitivity due to the variable's independent effect
-        - **Correlated Index**: Portion of sensitivity due to correlations with other variables
+        - **ANCOVA Index ($S_i$)**: Total sensitivity of the output to each input variable
+        - **Uncorrelated Index ($S_i^U$)**: Portion of sensitivity due to the variable's independent effect
+        - **Correlated Index ($S_i^C$)**: Portion of sensitivity due to correlations with other variables
         - **Correlation %**: Percentage of the total sensitivity that comes from correlations
         
-        Unlike other methods like FAST, ANCOVA specifically accounts for input correlations, making it 
-        more appropriate for models with dependent inputs.
+        Unlike other methods like FAST or standard Sobol indices, ANCOVA specifically accounts for input correlations, 
+        making it more appropriate for models with dependent inputs.
         """
         
         # Generate LLM insights if requested
@@ -296,37 +359,70 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
         if language_model and model_code_str:
             # Prepare the prompt
             prompt = f"""
-            I've performed an ANCOVA sensitivity analysis on the following model:
+            I've performed an ANCOVA (Analysis of Covariance) sensitivity analysis on the following mathematical model:
             ```python
             {model_code_str}
             ```
             
-            The results show these ANCOVA indices:
-            {', '.join([f"{row['Variable']}: {row['ANCOVA Index']:.4f} (Uncorrelated: {row['Uncorrelated Index']:.4f}, Correlated: {row['Correlated Index']:.4f})" for _, row in indices_df.iterrows()])}
+            ANCOVA is a specialized variance-based sensitivity analysis method that explicitly accounts for correlations between input variables. It decomposes the total variance into uncorrelated (physical) and correlated components according to:
             
-            The correlation matrix between inputs shows:
+            S_i = S_i^U + S_i^C
+            
+            Where:
+            - S_i is the total ANCOVA index for variable i
+            - S_i^U is the uncorrelated part representing the variable's direct influence
+            - S_i^C is the correlated part representing influence due to correlations with other variables
+            
+            The ANCOVA indices from my analysis are:
+            {', '.join([f"{row['Variable']}: S_i = {row['ANCOVA Index']:.4f} (S_i^U = {row['Uncorrelated Index']:.4f}, S_i^C = {row['Correlated Index']:.4f})" for _, row in indices_df.iterrows()])}
+            
+            The correlation structure between inputs is:
             {', '.join([f"{variable_names[i]}-{variable_names[j]}: {correlation_matrix[i, j]:.4f}" for i in range(dimension) for j in range(i+1, dimension) if abs(correlation_matrix[i, j]) > 0.1])}
             
-            Please provide 2-3 paragraphs of insights about:
-            1. Which variables have the most influence on the model output and why
-            2. How much of the variance is explained by correlations between inputs
-            3. How these results could inform model simplification or further analysis
+            Please provide a rigorous scientific analysis addressing:
+            
+            1. Variable influence hierarchy: Identify the dominant variables and quantify their relative contributions to output uncertainty. Explain how the ANCOVA indices reveal the mechanistic relationships in the model.
+            
+            2. Correlation effects: Analyze how much of each variable's influence is due to correlations with other inputs. For variables with significant S_i^C values, explain the implications for uncertainty propagation.
+            
+            3. Uncertainty reduction strategies: Based on the ANCOVA decomposition, recommend specific approaches for reducing output uncertainty. Discuss whether focusing on reducing individual parameter uncertainties or addressing correlation structures would be more effective.
+            
+            4. Model simplification potential: Evaluate whether any variables could be fixed at nominal values without significantly affecting output uncertainty, based on their ANCOVA indices.
+            
+            Use precise mathematical language and quantitative statements. Include specific numerical values from the analysis to support your conclusions.
             
             {RETURN_INSTRUCTION}
             """
             
-            # Call the LLM
-            llm_insights = call_groq_api(prompt, model_name=language_model)
+            # Call the LLM with retry logic
+            max_attempts = 3
+            attempts = 0
+            
+            while attempts < max_attempts:
+                try:
+                    llm_insights = call_groq_api(prompt, model_name=language_model)
+                    break
+                except Exception as e:
+                    attempts += 1
+                    if attempts >= max_attempts:
+                        llm_insights = f"Error generating insights: {str(e)}"
+                    # Wait a bit before retrying
+                    import time
+                    time.sleep(2)
         
         # Return all results
         return {
             'indices_df': indices_df,
-            'fig_bar': fig_bar,
-            'fig_stacked': fig_stacked,
+            'fig_combined': fig_combined,
             'fig_pie': fig_pie,
             'fig_heatmap': fig_heatmap,
             'explanation': ancova_explanation,
-            'llm_insights': llm_insights
+            'llm_insights': llm_insights,
+            'correlation_matrix': correlation_matrix,
+            'variable_names': variable_names,
+            'has_copula': has_copula,
+            'has_correlation_effects': has_correlation_effects,
+            'functional_chaos_result': result
         }
     except Exception as e:
         st.error(f"Error in ANCOVA sensitivity analysis: {str(e)}")
@@ -353,11 +449,22 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
         ANCOVA (Analysis of Covariance) sensitivity analysis is particularly useful for models with correlated inputs. 
         It separates the variance explained by individual variables from that explained by correlations with other inputs.
         
+        #### Mathematical Formulation:
+        
+        ANCOVA decomposes the total variance as:
+        
+        $S_i = S_i^U + S_i^C$
+        
+        Where:
+        - $S_i$ is the total ANCOVA index for variable $i$
+        - $S_i^U$ is the uncorrelated (physical) part of the variance due to variable $i$
+        - $S_i^C$ is the correlated part of the variance due to correlations between variable $i$ and other variables
+        
         #### Interpreting the Results:
         
-        - **ANCOVA Index**: Total sensitivity of the output to each input variable
-        - **Uncorrelated Index**: Portion of sensitivity due to the variable's independent effect
-        - **Correlated Index**: Portion of sensitivity due to correlations with other variables
+        - **ANCOVA Index ($S_i$)**: Total sensitivity of the output to each input variable
+        - **Uncorrelated Index ($S_i^U$)**: Portion of sensitivity due to the variable's independent effect
+        - **Correlated Index ($S_i^C$)**: Portion of sensitivity due to correlations with other variables
         - **Correlation %**: Percentage of the total sensitivity that comes from correlations
         
         Unlike FAST analysis, ANCOVA specifically accounts for input correlations, making it more appropriate 
@@ -403,24 +510,13 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
         # Visualizations
         st.subheader("Sensitivity Visualizations")
         
-        # Display the bar chart
-        st.markdown("#### ANCOVA Sensitivity Indices")
+        # Display the combined bar chart
+        st.markdown("#### ANCOVA Sensitivity Analysis")
         st.markdown("""
-        This bar chart shows the total ANCOVA sensitivity index for each variable, 
-        indicating their overall importance to the model output.
+        This grouped bar chart shows both the total ANCOVA sensitivity index ($S_i$) and its decomposition into 
+        uncorrelated ($S_i^U$) and correlated ($S_i^C$) parts for each variable.
         """)
-        st.plotly_chart(ancova_results['fig_bar'], use_container_width=True)
-        
-        # Display stacked bar chart
-        st.markdown("#### Correlation Decomposition")
-        st.markdown("""
-        This stacked bar chart breaks down each variable's sensitivity into:
-        - **Uncorrelated Effect**: The variable's direct influence on the output (blue)
-        - **Correlated Effect**: The influence due to correlations with other variables (red)
-        
-        Variables with large red portions are strongly affected by correlations in the model.
-        """)
-        st.plotly_chart(ancova_results['fig_stacked'], use_container_width=True)
+        st.plotly_chart(ancova_results['fig_combined'], use_container_width=True)
         
         # Display pie chart and heatmap in two columns
         col1, col2 = st.columns(2)
@@ -459,7 +555,7 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
     # AI Insights Section
     if ancova_results['llm_insights'] and language_model:
         with st.expander("AI Insights", expanded=True):
-            # Store the insights in session state for reuse
+            # Store the insights in session state for reuse in the global chat
             if 'ancova_analysis_response_markdown' not in st.session_state:
                 st.session_state['ancova_analysis_response_markdown'] = ancova_results['llm_insights']
             
@@ -500,7 +596,7 @@ def ancova_analysis(model, problem, size=2000, model_code_str=None, language_mod
                 language_model=language_model
             )
             
-            # Save results to session state for later access
+            # Save results to session state for later access and global chat
             if 'ancova_results' not in st.session_state:
                 st.session_state.ancova_results = ancova_results
             

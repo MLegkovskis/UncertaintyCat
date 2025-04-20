@@ -54,150 +54,457 @@ def compute_exploratory_data_analysis(data, N, model, problem, model_code_str):
     
     # Create display names dictionary (for UI only, doesn't change dataframe)
     display_names = {}
-    for col in output_columns:
-        if col == 'Y':
-            display_names[col] = 'Output'
-        else:
-            # For columns like Y1, Y2, etc.
-            output_num = col[1:]  # Extract the number after 'Y'
-            display_names[col] = f'Output {output_num}'
+    for col in data.columns:
+        if col.startswith('X'):
+            display_names[col] = f"Input {col[1:]}"
+        elif col.startswith('Y'):
+            if col == 'Y':
+                display_names[col] = "Output"
+            else:
+                # For columns like Y1, Y2, etc.
+                output_num = col[1:]  # Extract the number after 'Y'
+                display_names[col] = f'Output {output_num}'
     
     if not output_columns:
         raise ValueError("No output columns (Y or Y1, Y2, etc.) found in the data.")
     
-    # Create correlation matrix
+    # Compute correlation matrix
     corr = data.corr()
     
-    # Create a copy for display with renamed columns
+    # Create a displayable version of the correlation matrix
     display_corr = corr.copy()
-    display_corr.rename(columns=display_names, index=display_names, inplace=True)
     
-    # Calculate statistics for each output
-    output_stats = {}
-    for output_col in output_columns:
-        output_data = data[output_col]
-        
-        # Calculate basic statistics
-        stats_dict = {
-            'mean': output_data.mean(),
-            'median': output_data.median(),
-            'std': output_data.std(),
-            'min': output_data.min(),
-            'max': output_data.max(),
-            'skewness': stats.skew(output_data),
-            'kurtosis': stats.kurtosis(output_data),
-            'q1': np.percentile(output_data, 25),
-            'q3': np.percentile(output_data, 75),
-            'iqr': np.percentile(output_data, 75) - np.percentile(output_data, 25)
-        }
-        
-        # Calculate top correlations
-        correlations = corr[output_col].drop(output_columns).sort_values(ascending=False)
-        top_positive = correlations.head(3)
-        top_negative = correlations.sort_values().head(3)
-        
-        stats_dict['top_positive_corr'] = top_positive
-        stats_dict['top_negative_corr'] = top_negative
-        
-        # Store in output_stats
-        output_stats[output_col] = stats_dict
-    
-    # Create pairplot data for each output
-    pairplot_data = {}
-    for output_col in output_columns:
-        # For each output, select a subset of most correlated inputs (up to 5)
-        correlations = corr[output_col].drop(output_columns).abs().sort_values(ascending=False)
-        top_inputs = correlations.head(5).index.tolist()
-        
-        # Create a subset dataframe with these inputs and the output
-        subset_df = data[top_inputs + [output_col]].copy()
-        
-        # Rename the output column for display
-        subset_df.rename(columns={output_col: display_names[output_col]}, inplace=True)
-        
-        # Store in pairplot_data
-        pairplot_data[output_col] = {
-            'df': subset_df,
-            'top_inputs': top_inputs,
-            'display_name': display_names[output_col]
-        }
-    
-    # Calculate distribution fit for each output
-    distribution_fits = {}
-    for output_col in output_columns:
-        output_data = data[output_col]
-        
-        # Define distributions to test
-        distributions_to_fit = [
-            ('Normal', stats.norm),
-            ('Lognormal', stats.lognorm),
-            ('Gamma', stats.gamma),
-            ('Weibull', stats.weibull_min),
-            ('Beta', stats.beta)
-        ]
-        
-        # Fit distributions and perform goodness-of-fit tests
-        fit_results = []
-        
-        for dist_name, dist in distributions_to_fit:
-            try:
-                # Fit distribution
-                params = dist.fit(output_data)
-                
-                # Calculate AIC and BIC
-                log_likelihood = np.sum(dist.logpdf(output_data, *params))
-                k = len(params)
-                n = len(output_data)
-                aic = 2 * k - 2 * log_likelihood
-                bic = k * np.log(n) - 2 * log_likelihood
-                
-                # Perform Kolmogorov-Smirnov test
-                ks_statistic, ks_pvalue = stats.kstest(output_data, dist.cdf, args=params)
-                
-                # Store results
-                fit_results.append({
-                    'Distribution': dist_name,
-                    'Parameters': params,
-                    'AIC': aic,
-                    'BIC': bic,
-                    'KS_Statistic': ks_statistic,
-                    'KS_pvalue': ks_pvalue
-                })
-            except Exception as e:
-                # Skip distributions that fail to fit
-                continue
-        
-        # Convert fit results to DataFrame and sort by AIC
-        if fit_results:
-            fit_df = pd.DataFrame(fit_results)
-            fit_df = fit_df.sort_values('AIC')
-            best_distribution = fit_df.iloc[0]['Distribution']
-            best_params = fit_df.iloc[0]['Parameters']
+    # Create a mapping of original column names to display names for the correlation matrix
+    corr_display_names = {}
+    for col in corr.columns:
+        if col in display_names:
+            corr_display_names[col] = display_names[col]
         else:
-            fit_df = pd.DataFrame()
-            best_distribution = None
-            best_params = None
-        
-        distribution_fits[output_col] = {
-            'fit_df': fit_df,
-            'best_distribution': best_distribution,
-            'best_params': best_params
-        }
+            corr_display_names[col] = col
     
-    # Return all results
+    # Create a version of the correlation matrix with zeros on the diagonal for visualization
+    corr_viz = corr.copy()
+    np.fill_diagonal(corr_viz.values, 0)  # Zero out the diagonal
+    
+    # Format the correlation values for display
+    for i in range(len(display_corr.columns)):
+        for j in range(len(display_corr.index)):
+            if i == j:
+                display_corr.iloc[i, j] = ""  # Set diagonal to empty string for no text
+            else:
+                display_corr.iloc[i, j] = round(display_corr.iloc[i, j], 3)
+    
+    # Create correlation heatmap with original column names and zeroed diagonal
+    fig_corr = go.Figure(data=go.Heatmap(
+        z=corr_viz.values,  # Use the matrix with zeroed diagonal
+        x=[corr_display_names[col] for col in corr.columns],  # Use display names
+        y=[corr_display_names[col] for col in corr.index],    # Use display names
+        colorscale='RdBu_r',
+        zmin=-1,
+        zmax=1,
+        text=display_corr.values,
+        texttemplate="%{text}",
+        textfont={"size": 10},
+    ))
+    
+    fig_corr.update_layout(
+        title="Correlation Matrix",
+        height=600,
+        width=800
+    )
+    
+    # Create combined cross cuts and regression plots
+    combined_plots = {}
+    regression_data = {}
+    
+    for output_col in output_columns:
+        output_combined_plots = {}
+        output_regression_data = []
+        
+        # Get the nominal values of the input parameters
+        input_dimension = problem.getDimension()
+        input_names = problem.getDescription()
+        nominal_point = problem.getMean()
+        
+        for i, input_col in enumerate(input_columns):
+            input_name = input_names[i]
+            
+            # Create a 2x1 subplot figure with shared x-axis (stacked vertically)
+            fig = sp.make_subplots(
+                rows=2, 
+                cols=1,
+                shared_xaxes=True,
+                vertical_spacing=0.05,
+                subplot_titles=[
+                    f"Cross Cut: {input_name} vs {display_names[output_col]}",
+                    f"Regression: {input_name} vs {display_names[output_col]}"
+                ]
+            )
+            
+            # 1. Add cross cut plot (top)
+            # Get the marginal distribution for this input
+            marginal = problem.getMarginal(i)
+            
+            # Get range for this input (mean ± 3*std)
+            mean = marginal.getMean()[0]
+            std = marginal.getStandardDeviation()[0]
+            x_min = max(mean - 3*std, marginal.getRange().getLowerBound()[0])
+            x_max = min(mean + 3*std, marginal.getRange().getUpperBound()[0])
+            
+            # Generate points for the slice
+            n_points = 100
+            x_values = np.linspace(x_min, x_max, n_points)
+            y_values = []
+            
+            # For each point, create a copy of the nominal point and vary only one dimension
+            for x in x_values:
+                # Create a new point with the same values as nominal_point
+                point = ot.Point(nominal_point)
+                # Set the value at index i to x
+                point[i] = x
+                y = model(point)
+                
+                # Handle different types of model outputs
+                if isinstance(y, ot.Point):
+                    # Convert OpenTURNS Point to list
+                    if y.getDimension() > 1:
+                        # For multiple outputs, just use the one we're currently plotting
+                        output_idx = output_columns.index(output_col)
+                        if output_idx < y.getDimension():
+                            y_values.append(y[output_idx])
+                        else:
+                            y_values.append(y[0])
+                    else:
+                        y_values.append(y[0])
+                elif isinstance(y, (list, tuple, np.ndarray)) and len(y) > 1:
+                    # For multiple outputs, just use the one we're currently plotting
+                    output_idx = output_columns.index(output_col)
+                    if output_idx < len(y):
+                        y_values.append(y[output_idx])
+                    else:
+                        y_values.append(y[0])
+                else:
+                    # Handle single output (try to convert to float)
+                    try:
+                        y_values.append(float(y))
+                    except (TypeError, ValueError):
+                        # If conversion fails, use the first element or the raw value
+                        if hasattr(y, '__getitem__'):
+                            y_values.append(y[0])
+                        else:
+                            y_values.append(y)
+            
+            # Add cross cut trace
+            fig.add_trace(
+                go.Scatter(
+                    x=x_values,
+                    y=y_values,
+                    mode='lines',
+                    name='Cross Cut',
+                    line=dict(color='royalblue', width=2)
+                ),
+                row=1, col=1
+            )
+            
+            # 2. Add regression plot (bottom)
+            # Calculate linear regression
+            slope, intercept, r_value, p_value, std_err = stats.linregress(
+                data[input_col], data[output_col]
+            )
+            
+            # Store regression details
+            output_regression_data.append({
+                'input': input_name,
+                'slope': slope,
+                'intercept': intercept,
+                'r_value': r_value,
+                'r_squared': r_value**2,
+                'p_value': p_value,
+                'std_err': std_err
+            })
+            
+            # Add scatter plot
+            fig.add_trace(
+                go.Scatter(
+                    x=data[input_col],
+                    y=data[output_col],
+                    mode='markers',
+                    name='Data Points',
+                    marker=dict(
+                        size=6,
+                        opacity=0.6,
+                        color='royalblue'
+                    ),
+                    hoverinfo='none'  # Disable hover for better performance
+                ),
+                row=2, col=1
+            )
+            
+            # Add regression line
+            x_range = np.linspace(data[input_col].min(), data[input_col].max(), 100)
+            y_pred = slope * x_range + intercept
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=x_range,
+                    y=y_pred,
+                    mode='lines',
+                    name=f'Regression (R²={r_value**2:.3f})',
+                    line=dict(color='firebrick', width=2)
+                ),
+                row=2, col=1
+            )
+            
+            # Add R² annotation
+            fig.add_annotation(
+                x=0.95,
+                y=0.95,
+                xref='x domain',
+                yref='y2 domain',
+                text=f'R² = {r_value**2:.3f}',
+                showarrow=False,
+                font=dict(
+                    family="Arial",
+                    size=12,
+                    color="black"
+                ),
+                align="right",
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="black",
+                borderwidth=1,
+                borderpad=4
+            )
+            
+            # Update layout
+            fig.update_layout(
+                height=600,  # Taller to accommodate vertical layout
+                width=700,   # Narrower since we're stacking vertically
+                title=f"{input_name} Effect on {display_names[output_col]}",
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.1,
+                    xanchor="center",
+                    x=0.5
+                ),
+                margin=dict(t=80, b=80)  # Add margin for title and legend
+            )
+            
+            # Update axis labels - only need x-axis label on bottom plot since they're shared
+            fig.update_yaxes(title_text="Output Value", row=1, col=1)
+            fig.update_xaxes(title_text=input_name, row=2, col=1)  # Only bottom x-axis needs label
+            fig.update_yaxes(title_text="Output Value", row=2, col=1)
+            
+            output_combined_plots[input_name] = fig
+        
+        combined_plots[output_col] = output_combined_plots
+        regression_data[output_col] = output_regression_data
+    
+    # Create 2D cross cuts (contour plots) for pairs of input variables
+    cross_cuts_2d = {}
+    
+    # Only create 2D cross cuts if we have at least 2 input variables
+    if input_dimension >= 2:
+        # Create a grid of 2D cross cuts
+        for i in range(input_dimension):
+            for j in range(i+1, input_dimension):
+                input_name_i = input_names[i]
+                input_name_j = input_names[j]
+                
+                # Get the marginal distributions
+                marginal_i = problem.getMarginal(i)
+                marginal_j = problem.getMarginal(j)
+                
+                # Get ranges for these inputs (mean ± 3*std)
+                mean_i = marginal_i.getMean()[0]
+                std_i = marginal_i.getStandardDeviation()[0]
+                x_min_i = max(mean_i - 3*std_i, marginal_i.getRange().getLowerBound()[0])
+                x_max_i = min(mean_i + 3*std_i, marginal_i.getRange().getUpperBound()[0])
+                
+                mean_j = marginal_j.getMean()[0]
+                std_j = marginal_j.getStandardDeviation()[0]
+                x_min_j = max(mean_j - 3*std_j, marginal_j.getRange().getLowerBound()[0])
+                x_max_j = min(mean_j + 3*std_j, marginal_j.getRange().getUpperBound()[0])
+                
+                # Generate grid points
+                n_points = 30  # Reduced for performance
+                x_values_i = np.linspace(x_min_i, x_max_i, n_points)
+                x_values_j = np.linspace(x_min_j, x_max_j, n_points)
+                X, Y = np.meshgrid(x_values_i, x_values_j)
+                Z = np.zeros_like(X)
+                
+                # Compute function values at each grid point
+                for ii in range(n_points):
+                    for jj in range(n_points):
+                        # Create a copy of the nominal point
+                        point = ot.Point(nominal_point)
+                        # Set the values at indices i and j
+                        point[i] = X[jj, ii]
+                        point[j] = Y[jj, ii]
+                        y = model(point)
+                        
+                        # Handle different types of model outputs
+                        try:
+                            if isinstance(y, ot.Point):
+                                if y.getDimension() > 1:
+                                    # For multiple outputs, just use the first one for the contour
+                                    Z[jj, ii] = y[0]
+                                else:
+                                    Z[jj, ii] = y[0]
+                            elif isinstance(y, (list, tuple, np.ndarray)) and len(y) > 1:
+                                # For multiple outputs, just use the first one for the contour
+                                Z[jj, ii] = y[0]
+                            else:
+                                Z[jj, ii] = float(y)
+                        except (TypeError, ValueError):
+                            # If conversion fails, try to get the first element
+                            if hasattr(y, '__getitem__'):
+                                Z[jj, ii] = y[0]
+                            else:
+                                Z[jj, ii] = 0  # Fallback
+                
+                # Create the contour plot
+                fig = go.Figure(data=
+                    go.Contour(
+                        z=Z,
+                        x=x_values_i,
+                        y=x_values_j,
+                        colorscale='Viridis',
+                        contours=dict(
+                            showlabels=True,
+                            labelfont=dict(size=12, color='white')
+                        ),
+                        colorbar=dict(
+                            title="Output",
+                            titleside="right",
+                            titlefont=dict(size=14)
+                        )
+                    )
+                )
+                
+                fig.update_layout(
+                    title=f"2D Cross Cut: Output vs {input_name_i} and {input_name_j}",
+                    xaxis_title=input_name_i,
+                    yaxis_title=input_name_j,
+                    height=500,
+                    width=600
+                )
+                
+                cross_cuts_2d[f"{input_name_i} vs {input_name_j}"] = fig
+    
+    # Return all results as a dictionary
     return {
         'data': data,
         'input_columns': input_columns,
         'output_columns': output_columns,
         'display_names': display_names,
-        'corr': corr,
-        'display_corr': display_corr,
-        'output_stats': output_stats,
-        'pairplot_data': pairplot_data,
-        'distribution_fits': distribution_fits,
-        'N': N,
-        'model_code_str': model_code_str
+        'correlation_matrix': corr,
+        'display_correlation_matrix': display_corr,
+        'fig_corr': fig_corr,
+        'combined_plots': combined_plots,
+        'regression_data': regression_data,
+        'cross_cuts_2d': cross_cuts_2d
     }
+
+def generate_ai_insights(analysis_results, language_model='groq'):
+    """Generate AI insights for exploratory data analysis results.
+    
+    Parameters
+    ----------
+    analysis_results : dict
+        Dictionary containing all exploratory data analysis results
+    language_model : str, optional
+        Language model to use ('groq' or 'openai')
+        
+    Returns
+    -------
+    str
+        AI-generated insights
+    """
+    try:
+        # Extract key information
+        data = analysis_results['data']
+        output_columns = analysis_results['output_columns']
+        corr = analysis_results['correlation_matrix']
+        
+        # Check if regression_data exists
+        regression_data = analysis_results.get('regression_data', {})
+        if not regression_data:
+            # Create a placeholder if it doesn't exist
+            regression_data = {output_col: [] for output_col in output_columns}
+        
+        # Extract cross cuts data for numerical analysis
+        cross_cuts_data = {}
+        if 'combined_plots' in analysis_results:
+            for output_col in analysis_results['combined_plots']:
+                cross_cuts_data[output_col] = {}
+                for input_name in analysis_results['combined_plots'][output_col]:
+                    # Extract the regression data for this input-output pair
+                    reg_data = None
+                    for reg in regression_data.get(output_col, []):
+                        if reg.get('input') == input_name:
+                            reg_data = reg
+                            break
+                    
+                    if reg_data:
+                        cross_cuts_data[output_col][input_name] = {
+                            'r_squared': reg_data.get('r_squared', 0),
+                            'slope': reg_data.get('slope', 0),
+                            'p_value': reg_data.get('p_value', 1)
+                        }
+        
+        # Prepare prompt with detailed statistical information
+        prompt = f"""
+        Analyze these exploratory data analysis results:
+        
+        Correlation matrix: {corr.to_string()}
+        
+        Cross cuts analysis:
+        {json.dumps(cross_cuts_data, indent=2)}
+        
+        Provide insights on:
+        1. Input-output relationships
+        2. Correlations between variables
+        3. Key patterns in the cross cuts
+        4. Recommendations for further analysis
+        
+        Keep your analysis concise and focused on the practical implications.
+        Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
+        """
+        
+        # Call the AI API
+        from utils.core_utils import call_groq_api
+        
+        # Add a retry mechanism
+        max_retries = 3
+        retry_count = 0
+        insights = None
+        
+        while insights is None and retry_count < max_retries:
+            try:
+                insights = call_groq_api(prompt, model_name=language_model)
+            except Exception as e:
+                retry_count += 1
+                if retry_count >= max_retries:
+                    st.error(f"Error generating AI insights after {max_retries} attempts: {str(e)}")
+                    insights = f"""
+                    ## Error Generating Insights
+                    
+                    There was an error connecting to the language model API: {str(e)}
+                    
+                    Please try again later or check your API key configuration.
+                    """
+        
+        return insights
+    
+    except Exception as e:
+        return f"""
+        ## Error Generating Insights
+        
+        An error occurred while preparing data for the AI: {str(e)}
+        
+        Please check your data and try again.
+        """
 
 def exploratory_data_analysis(data, N, model, problem, model_code_str, language_model='groq', display_results=True):
     """
@@ -222,432 +529,109 @@ def exploratory_data_analysis(data, N, model, problem, model_code_str, language_
     language_model : str, optional
         Language model to use for AI insights, by default 'groq'
     display_results : bool, optional
-        Whether to display results using Streamlit UI (default: True)
-        Set to False when running in batch mode or "Run All Analyses"
+        Whether to display results in the Streamlit interface, by default True
         
     Returns
     -------
     dict
         Dictionary containing all exploratory data analysis results
     """
+    # Compute the exploratory data analysis
     try:
-        # Compute all exploratory data analysis results
         results = compute_exploratory_data_analysis(data, N, model, problem, model_code_str)
         
-        # Save results to session state for later access
-        if 'exploratory_data_results' not in st.session_state:
-            st.session_state.exploratory_data_results = results
+        # Generate AI insights if a language model is specified
+        if language_model:
+            with st.spinner("Generating AI insights for Exploratory Data Analysis..."):
+                insights = generate_ai_insights(results, language_model=language_model)
+                results['ai_insights'] = insights
         
-        # If not displaying results, just return the computed data
-        if not display_results:
-            return results
+        # Save results to session state for later access and global chat
+        if 'exploratory_data_analysis_results' not in st.session_state:
+            st.session_state.exploratory_data_analysis_results = results
         
-        # Extract data from results
-        data = results['data']
-        input_columns = results['input_columns']
-        output_columns = results['output_columns']
-        display_names = results['display_names']
-        corr = results['corr']
-        display_corr = results['display_corr']
-        output_stats = results['output_stats']
-        pairplot_data = results['pairplot_data']
-        distribution_fits = results['distribution_fits']
-        
-        # Create a two-column layout for the main content and chat interface
-        main_col, chat_col = st.columns([2, 1])
-        
-        with main_col:
-            st.markdown("## Exploratory Data Analysis")
-            
-            # RESULTS SECTION
-            with st.expander("Results", expanded=True):
-                # Create correlation matrix
-                st.subheader("Correlation Analysis")
-                
-                # Create a heatmap for the correlation matrix
-                fig_corr = px.imshow(
-                    display_corr, 
-                    text_auto=True, 
-                    aspect="auto", 
-                    color_continuous_scale="RdBu_r",
-                    title="Correlation Matrix"
-                )
-                fig_corr.update_layout(height=600, width=800)
-                st.plotly_chart(fig_corr, use_container_width=True)
-                
-                # Create pairplots for inputs vs outputs (one plot per output)
-                for output_col in output_columns:
-                    display_output = display_names[output_col]
-                    st.subheader(f"Pairplot: Inputs vs {display_output}")
-                    
-                    # Get the pairplot data for this output
-                    pairplot_info = pairplot_data[output_col]
-                    subset_df = pairplot_info['df']
-                    top_inputs = pairplot_info['top_inputs']
-                    
-                    # Create pairplot using plotly
-                    fig = px.scatter_matrix(
-                        subset_df,
-                        dimensions=top_inputs,
-                        color=display_output,
-                        opacity=0.7,
-                        title=f"Pairplot of Top Correlated Inputs vs {display_output}"
-                    )
-                    fig.update_layout(height=800, width=800)
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Display correlation values for this output
-                    st.markdown(f"#### Top Correlations with {display_output}")
-                    
-                    # Get top positive and negative correlations
-                    top_pos = output_stats[output_col]['top_positive_corr']
-                    top_neg = output_stats[output_col]['top_negative_corr']
-                    
-                    # Display in two columns
-                    pos_col, neg_col = st.columns(2)
-                    
-                    with pos_col:
-                        st.markdown("**Strongest Positive Correlations:**")
-                        for var, corr_val in top_pos.items():
-                            st.markdown(f"- **{var}**: {corr_val:.4f}")
-                    
-                    with neg_col:
-                        st.markdown("**Strongest Negative Correlations:**")
-                        for var, corr_val in top_neg.items():
-                            st.markdown(f"- **{var}**: {corr_val:.4f}")
-                
-                # Distribution Analysis for each output
-                for output_col in output_columns:
-                    display_output = display_names[output_col]
-                    st.subheader(f"Distribution Analysis: {display_output}")
-                    
-                    # Get the output data and stats
-                    output_data = data[output_col]
-                    stats_dict = output_stats[output_col]
-                    fit_info = distribution_fits[output_col]
-                    
-                    # Display summary statistics
-                    st.markdown("#### Summary Statistics")
-                    
-                    # Create a summary table
-                    summary_df = pd.DataFrame({
-                        'Statistic': [
-                            'Mean', 
-                            'Median', 
-                            'Standard Deviation', 
-                            'Minimum',
-                            'Maximum',
-                            'Skewness',
-                            'Kurtosis',
-                            'Interquartile Range (IQR)'
-                        ],
-                        'Value': [
-                            f"{stats_dict['mean']:.6f}",
-                            f"{stats_dict['median']:.6f}",
-                            f"{stats_dict['std']:.6f}",
-                            f"{stats_dict['min']:.6f}",
-                            f"{stats_dict['max']:.6f}",
-                            f"{stats_dict['skewness']:.4f} ({'Positively Skewed' if stats_dict['skewness'] > 0 else 'Negatively Skewed' if stats_dict['skewness'] < 0 else 'Symmetric'})",
-                            f"{stats_dict['kurtosis']:.4f} ({'Leptokurtic (heavy-tailed)' if stats_dict['kurtosis'] > 0 else 'Platykurtic (light-tailed)' if stats_dict['kurtosis'] < 0 else 'Mesokurtic (normal-like)'})",
-                            f"{stats_dict['iqr']:.6f}"
-                        ]
-                    })
-                    st.dataframe(summary_df, use_container_width=True)
-                    
-                    # Create distribution visualization
-                    st.markdown("#### Distribution Visualization")
-                    
-                    # Create a figure with histogram and box plot
-                    fig_dist = sp.make_subplots(
-                        rows=2, 
-                        cols=1,
-                        subplot_titles=["Histogram with KDE", "Box Plot"],
-                        vertical_spacing=0.2,
-                        row_heights=[0.7, 0.3]
-                    )
-                    
-                    # Add histogram
-                    fig_dist.add_trace(
-                        go.Histogram(
-                            x=output_data,
-                            histnorm='probability density',
-                            name="Histogram",
-                            marker=dict(color='royalblue', opacity=0.7)
-                        ),
-                        row=1, col=1
-                    )
-                    
-                    # Add KDE
-                    kde_x = np.linspace(min(output_data), max(output_data), 1000)
-                    kde = stats.gaussian_kde(output_data)
-                    kde_y = kde(kde_x)
-                    
-                    fig_dist.add_trace(
-                        go.Scatter(
-                            x=kde_x,
-                            y=kde_y,
-                            mode='lines',
-                            name='KDE',
-                            line=dict(color='firebrick', width=2)
-                        ),
-                        row=1, col=1
-                    )
-                    
-                    # Add best fit distribution if available
-                    best_distribution = fit_info['best_distribution']
-                    best_params = fit_info['best_params']
-                    
-                    if best_distribution:
-                        # Generate points for the fitted distribution
-                        x_range = np.linspace(min(output_data), max(output_data), 1000)
-                        
-                        if best_distribution == 'Normal':
-                            y_fit = stats.norm.pdf(x_range, *best_params)
-                            dist_name = f"Normal(μ={best_params[0]:.4f}, σ={best_params[1]:.4f})"
-                        elif best_distribution == 'Lognormal':
-                            y_fit = stats.lognorm.pdf(x_range, *best_params)
-                            dist_name = f"Lognormal(s={best_params[0]:.4f}, loc={best_params[1]:.4f}, scale={best_params[2]:.4f})"
-                        elif best_distribution == 'Gamma':
-                            y_fit = stats.gamma.pdf(x_range, *best_params)
-                            dist_name = f"Gamma(a={best_params[0]:.4f}, loc={best_params[1]:.4f}, scale={best_params[2]:.4f})"
-                        elif best_distribution == 'Weibull':
-                            y_fit = stats.weibull_min.pdf(x_range, *best_params)
-                            dist_name = f"Weibull(c={best_params[0]:.4f}, loc={best_params[1]:.4f}, scale={best_params[2]:.4f})"
-                        elif best_distribution == 'Beta':
-                            y_fit = stats.beta.pdf(x_range, *best_params)
-                            dist_name = f"Beta(a={best_params[0]:.4f}, b={best_params[1]:.4f}, loc={best_params[2]:.4f}, scale={best_params[3]:.4f})"
-                        
-                        fig_dist.add_trace(
-                            go.Scatter(
-                                x=x_range,
-                                y=y_fit,
-                                mode='lines',
-                                name=f'Best Fit: {dist_name}',
-                                line=dict(color='green', width=2)
-                            ),
-                            row=1, col=1
-                        )
-                    
-                    # Add box plot
-                    fig_dist.add_trace(
-                        go.Box(
-                            x=output_data,
-                            name=display_output,
-                            boxmean=True,
-                            marker_color='royalblue'
-                        ),
-                        row=2, col=1
-                    )
-                    
-                    # Update layout
-                    fig_dist.update_layout(
-                        height=600,
-                        title_text=f"Distribution Analysis for {display_output}",
-                        showlegend=True
-                    )
-                    
-                    # Update axis labels
-                    fig_dist.update_xaxes(title_text=display_output, row=2, col=1)
-                    fig_dist.update_yaxes(title_text="Probability Density", row=1, col=1)
-                    
-                    # Display the figure
-                    st.plotly_chart(fig_dist, use_container_width=True)
-                    
-                    # Display distribution fitting results if available
-                    fit_df = fit_info['fit_df']
-                    if not fit_df.empty:
-                        st.markdown("#### Distribution Fitting Results")
-                        
-                        # Format the dataframe for display
-                        display_fit_df = fit_df.copy()
-                        display_fit_df = display_fit_df[['Distribution', 'AIC', 'BIC', 'KS_Statistic', 'KS_pvalue']]
-                        display_fit_df['AIC'] = display_fit_df['AIC'].map('{:.2f}'.format)
-                        display_fit_df['BIC'] = display_fit_df['BIC'].map('{:.2f}'.format)
-                        display_fit_df['KS_Statistic'] = display_fit_df['KS_Statistic'].map('{:.4f}'.format)
-                        display_fit_df['KS_pvalue'] = display_fit_df['KS_pvalue'].map('{:.4f}'.format)
-                        
-                        st.dataframe(display_fit_df, use_container_width=True)
-                        
-                        # Add explanation of the metrics
-                        st.markdown("""
-                        **Interpretation of Metrics:**
-                        - **AIC (Akaike Information Criterion)**: Lower values indicate better fit. Penalizes complexity.
-                        - **BIC (Bayesian Information Criterion)**: Lower values indicate better fit. Penalizes complexity more strongly than AIC.
-                        - **KS_Statistic**: Kolmogorov-Smirnov test statistic. Lower values indicate better fit.
-                        - **KS_pvalue**: p-value for the KS test. Higher values indicate better fit. Values above 0.05 suggest the distribution is a good fit.
-                        """)
-            
-            # AI Insights Section
-            if language_model:
-                with st.expander("AI Insights", expanded=True):
-                    # Prepare the prompt
-                    # Use the first output for simplicity
-                    primary_output = output_columns[0]
-                    display_output = display_names[primary_output]
-                    stats_dict = output_stats[primary_output]
-                    
-                    # Get top correlations for the primary output
-                    top_pos = output_stats[primary_output]['top_positive_corr']
-                    top_neg = output_stats[primary_output]['top_negative_corr']
-                    
-                    # Format correlations for the prompt
-                    corr_text = "Top Positive Correlations:\n"
-                    for var, corr_val in top_pos.items():
-                        corr_text += f"- {var}: {corr_val:.4f}\n"
-                    
-                    corr_text += "\nTop Negative Correlations:\n"
-                    for var, corr_val in top_neg.items():
-                        corr_text += f"- {var}: {corr_val:.4f}\n"
-                    
-                    prompt = f"""
-{RETURN_INSTRUCTION}
-
-Analyze these exploratory data analysis results for an enterprise-grade engineering model:
-
-```python
-{model_code_str}
-```
-
-Sample Size: {N}
-
-Output Statistics for {display_output}:
-- Mean: {stats_dict['mean']:.6f}
-- Median: {stats_dict['median']:.6f}
-- Standard Deviation: {stats_dict['std']:.6f}
-- Skewness: {stats_dict['skewness']:.4f}
-- Kurtosis: {stats_dict['kurtosis']:.4f}
-
-{corr_text}
-
-Please provide a comprehensive enterprise-grade analysis of these exploratory data analysis results. Your analysis should include:
-
-1. Executive Summary
-   - Key findings and their business/engineering implications
-   - Assessment of the output distribution characteristics
-   - Overall evaluation of the input-output relationships
-
-2. Technical Analysis
-   - Interpretation of the output distribution (shape, center, spread)
-   - Analysis of the correlation patterns between inputs and outputs
-   - Identification of the most influential input variables
-   - Assessment of potential nonlinearities or interactions
-
-3. Risk Assessment
-   - Implications of the distribution characteristics for risk management
-   - Potential areas of concern based on the correlations
-   - Reliability considerations based on the data patterns
-
-4. Recommendations
-   - Guidance for system optimization based on the exploratory analysis
-   - Suggestions for further analysis or model refinement
-   - Variables that should be closely monitored or controlled
-
-Focus on actionable insights that would be valuable for executive decision-makers in an engineering context.
-"""
-                    
-                    with st.spinner("Generating expert analysis..."):
-                        if 'exploratory_analysis_response' not in st.session_state:
-                            response = call_groq_api(prompt, model_name=language_model)
-                            st.session_state.exploratory_analysis_response = response
-                        else:
-                            response = st.session_state.exploratory_analysis_response
-                        
-                        st.markdown(response)
-        
-        # CHAT INTERFACE in the right column
-        with chat_col:
-            st.markdown("### Ask Questions About This Analysis")
-            
-            # Display a disclaimer about the prompt
-            disclaimer_text = """
-            **Note:** The AI assistant has been provided with the model code and the 
-            exploratory data analysis results. You can ask questions to clarify any aspects of the analysis.
-            """
-            st.info(disclaimer_text)
-            
-            # Initialize session state for chat messages if not already done
-            if "exploratory_analysis_chat_messages" not in st.session_state:
-                st.session_state.exploratory_analysis_chat_messages = []
-            
-            # Create chat interface
-            create_chat_interface(
-                "exploratory_analysis_chat",
-                lambda prompt: f"""
-                You are an expert assistant helping users understand exploratory data analysis results. 
-                
-                Here is the model code:
-                ```python
-                {model_code_str}
-                ```
-                
-                Here is the exploratory data analysis summary for {display_output}:
-                - Mean: {stats_dict['mean']:.6f}
-                - Median: {stats_dict['median']:.6f}
-                - Standard Deviation: {stats_dict['std']:.6f}
-                - Skewness: {stats_dict['skewness']:.4f}
-                - Kurtosis: {stats_dict['kurtosis']:.4f}
-                
-                {corr_text}
-                
-                Here is the explanation that was previously generated:
-                {st.session_state.get('eda_response', 'No analysis available yet.')}
-                
-                Answer the user's question: {prompt}
-                
-                Be concise but thorough. Use LaTeX for equations when necessary, formatted as $...$ for inline or $$...$$ for display.
-                """,
-                input_placeholder="Ask a question about the exploratory analysis...",
-                disclaimer_text="Ask questions about the exploratory data analysis results.",
-                language_model=language_model
-            )
+        # Display results if requested
+        if display_results:
+            display_exploratory_data_analysis_results(results, language_model)
         
         return results
-        
+    
     except Exception as e:
         if display_results:
             st.error(f"Error in exploratory data analysis: {str(e)}")
-        raise
+        raise e
 
-def display_exploratory_data_results(analysis_results, language_model='groq'):
+def display_exploratory_data_analysis_results(analysis_results, language_model='groq'):
     """
-    Display exploratory data analysis results in the Streamlit interface.
+    Display enterprise-grade exploratory data analysis results.
+    
+    This function creates and displays interactive visualizations and insights
+    for the exploratory data analysis results.
     
     Parameters
     ----------
     analysis_results : dict
-        Dictionary containing exploratory data analysis results
+        Dictionary containing all exploratory data analysis results from compute_exploratory_data_analysis
     language_model : str, optional
-        Language model to use for AI insights, by default 'groq'
+        Language model to use for AI insights ('groq' or 'openai')
     """
-    # Extract results
-    df = analysis_results.get('data')
-    input_names = analysis_results.get('input_names')
-    output_names = analysis_results.get('output_names')
-    histograms = analysis_results.get('histograms')
-    scatter_plots = analysis_results.get('scatter_plots')
-    correlation_matrix = analysis_results.get('correlation_matrix')
-    summary_stats = analysis_results.get('summary_stats')
-    eda_interpretation = analysis_results.get('eda_interpretation')
+    st.markdown("## Exploratory Data Analysis")
     
-    # Display summary statistics
-    st.subheader("Summary Statistics")
-    st.dataframe(summary_stats, use_container_width=True)
+    # RESULTS SECTION
+    with st.expander("Results", expanded=True):
+        # Display correlation matrix
+        st.subheader("Correlation Analysis")
+        st.plotly_chart(analysis_results['fig_corr'], use_container_width=True)
+        
+        # Display combined cross cuts and regression plots
+        st.subheader("Input-Output Relationships & Cross Cuts")
+        st.markdown("""
+        These plots show how each input parameter affects the output in two ways:
+        1. **Cross Cut** (top): Shows how the output changes when varying one input parameter while keeping all others at their nominal values
+        2. **Regression** (bottom): Shows the relationship between the input and output values from the Monte Carlo simulation
+        """)
+        
+        # Create output tabs if multiple outputs
+        if len(analysis_results['output_columns']) > 1:
+            output_tabs = st.tabs([analysis_results['display_names'][col] for col in analysis_results['output_columns']])
+            
+            for output_col, tab in zip(analysis_results['output_columns'], output_tabs):
+                with tab:
+                    # Create tabs for each input variable
+                    input_tabs = st.tabs(list(analysis_results['combined_plots'][output_col].keys()))
+                    for i, (input_name, tab) in enumerate(zip(analysis_results['combined_plots'][output_col].keys(), input_tabs)):
+                        with tab:
+                            st.plotly_chart(analysis_results['combined_plots'][output_col][input_name], use_container_width=True)
+        else:
+            # If there's only one output, no need for output tabs
+            output_col = analysis_results['output_columns'][0]
+            
+            # Create tabs for each input variable
+            input_tabs = st.tabs(list(analysis_results['combined_plots'][output_col].keys()))
+            for i, (input_name, tab) in enumerate(zip(analysis_results['combined_plots'][output_col].keys(), input_tabs)):
+                with tab:
+                    st.plotly_chart(analysis_results['combined_plots'][output_col][input_name], use_container_width=True)
+        
+        # Display 2D cross cuts if available
+        if 'cross_cuts_2d' in analysis_results and analysis_results['cross_cuts_2d']:
+            st.subheader("2D Cross Cuts of the Function")
+            st.markdown("""
+            These contour plots show how the output changes when varying two input parameters at a time,
+            while keeping all other parameters at their nominal values. This helps identify
+            interaction effects between pairs of parameters.
+            """)
+            
+            # Create tabs for each 2D cross cut
+            cross_cut_2d_tabs = st.tabs(list(analysis_results['cross_cuts_2d'].keys()))
+            for i, (input_pair, tab) in enumerate(zip(analysis_results['cross_cuts_2d'].keys(), cross_cut_2d_tabs)):
+                with tab:
+                    st.plotly_chart(analysis_results['cross_cuts_2d'][input_pair], use_container_width=True)
     
-    # Display histograms
-    st.subheader("Histograms")
-    for hist in histograms:
-        st.plotly_chart(hist, use_container_width=True)
-    
-    # Display scatter plots
-    st.subheader("Scatter Plots")
-    for scatter in scatter_plots:
-        st.plotly_chart(scatter, use_container_width=True)
-    
-    # Display correlation matrix
-    st.subheader("Correlation Matrix")
-    st.plotly_chart(correlation_matrix, use_container_width=True)
-    
-    # Display AI interpretation if available
-    if eda_interpretation:
-        st.subheader("AI Insights")
-        st.markdown(eda_interpretation)
+    # AI INSIGHTS SECTION
+    if 'ai_insights' in analysis_results and analysis_results['ai_insights']:
+        with st.expander("AI Insights", expanded=True):
+            # Store the insights in session state for reuse in the global chat
+            if 'exploratory_data_analysis_response_markdown' not in st.session_state:
+                st.session_state['exploratory_data_analysis_response_markdown'] = analysis_results['ai_insights']
+            
+            st.markdown(analysis_results['ai_insights'])

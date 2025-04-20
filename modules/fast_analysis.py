@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-from utils.core_utils import call_groq_api, create_chat_interface
+from utils.core_utils import call_groq_api
 from utils.constants import RETURN_INSTRUCTION
 import streamlit as st
 import plotly.graph_objects as go
@@ -105,141 +105,136 @@ def compute_fast_sensitivity_analysis(model, problem, size=400, model_code_str=N
         xaxis_title='Input Variables',
         yaxis_title='Sensitivity Index',
         barmode='group',
+        template='plotly_white',
+        height=500,
         legend=dict(
             orientation="h",
             yanchor="bottom",
             y=1.02,
             xanchor="right",
             x=1
-        ),
-        template='plotly_white'
+        )
     )
     
-    # Create pie chart for first order indices
-    fig_pie_first = px.pie(
-        indices_df, 
-        values='First Order', 
-        names='Variable',
-        title='First Order Indices Distribution',
-        color_discrete_sequence=px.colors.qualitative.Plotly
+    # Create a unified bar chart showing the breakdown of total order indices
+    fig_breakdown = go.Figure()
+    
+    # Add first order (direct effect) bars
+    fig_breakdown.add_trace(go.Bar(
+        x=indices_df['Variable'],
+        y=indices_df['First Order'],
+        name='Direct Effect',
+        marker_color='rgba(31, 119, 180, 0.8)'
+    ))
+    
+    # Add interaction effect bars (stacked on top of first order)
+    fig_breakdown.add_trace(go.Bar(
+        x=indices_df['Variable'],
+        y=indices_df['Interaction'],
+        name='Interaction Effect',
+        marker_color='rgba(214, 39, 40, 0.8)'
+    ))
+    
+    # Update layout for the breakdown chart
+    fig_breakdown.update_layout(
+        title='FAST Sensitivity Indices Breakdown',
+        xaxis_title='Input Variables',
+        yaxis_title='Sensitivity Index',
+        barmode='stack',
+        template='plotly_white',
+        height=500,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
-    fig_pie_first.update_traces(textposition='inside', textinfo='percent+label')
     
-    # Create pie chart for total order indices
-    fig_pie_total = px.pie(
-        indices_df, 
-        values='Total Order', 
-        names='Variable',
-        title='Total Order Indices Distribution',
-        color_discrete_sequence=px.colors.qualitative.Plotly
-    )
-    fig_pie_total.update_traces(textposition='inside', textinfo='percent+label')
-    
-    # Create explanation text
-    fast_explanation = """
-    ## FAST Sensitivity Analysis Results
-    
-    The Fourier Amplitude Sensitivity Test (FAST) is a global sensitivity analysis method that quantifies how much each input variable contributes to the variance of the model output.
-    
-    - **First Order Indices**: Measure the direct effect of each input variable on the output variance, without considering interactions.
-    - **Total Order Indices**: Measure the total contribution of each input variable to the output variance, including all interactions with other variables.
-    - **Interaction**: The difference between Total Order and First Order indices, representing the contribution of interactions.
-    
-    The sum of First Order indices being close to 1 indicates that the model is primarily additive with minimal interactions between variables.
-    """
-    
-    # Generate LLM insights if a language model is provided
+    # Generate LLM insights and explanation if requested
     llm_insights = None
+    explanation = None
     if language_model and model_code_str:
-        # Create a prompt for the language model
-        prompt = f"""
-        I have performed a FAST sensitivity analysis on the following model:
-        
+        # Prepare the prompt for insights
+        insights_prompt = f"""
+        I've performed a FAST sensitivity analysis on the following model:
         ```python
         {model_code_str}
         ```
         
-        Here are the results:
-        First Order Indices: {firstOrderIndices}
-        Total Order Indices: {totalOrderIndices}
+        The results show these first order indices:
+        {', '.join([f"{name}: {float(firstOrderIndices[i]):.4f}" for i, name in enumerate(variable_names)])}
         
-        Variable names: {variable_names}
+        And these total order indices:
+        {', '.join([f"{name}: {float(totalOrderIndices[i]):.4f}" for i, name in enumerate(variable_names)])}
         
-        Please provide insights about these sensitivity analysis results. 
-        Explain what they mean for this specific model, which variables are most influential, 
-        and whether there are significant interaction effects. 
-        Keep your response concise and focused on actionable insights.
+        Please provide 2-3 paragraphs of insights about:
+        1. Which variables have the most influence on the model output and why
+        2. The significance of any interaction effects observed
+        3. How these results could inform model simplification or further analysis
         
         {RETURN_INSTRUCTION}
         """
         
-        try:
-            llm_insights = call_groq_api(prompt, model_name=language_model)
-        except Exception as e:
-            llm_insights = f"Unable to generate insights: {str(e)}"
+        # Prepare the prompt for explanation using OpenTURNS documentation
+        explanation_prompt = f"""
+        Please provide a concise explanation of the FAST (Fourier Amplitude Sensitivity Test) method for sensitivity analysis.
+        
+        Here is the technical information about the FAST method from OpenTURNS documentation:
+        
+        FAST is a sensitivity analysis method based on the ANOVA decomposition of variance using Fourier expansion.
+        It works with a random vector X of independent components and recasts the representation as a function of a scalar parameter s.
+        
+        The Fourier expansion of the model response is:
+        f(s) = ∑ A_k cos(ks) + B_k sin(ks)
+        
+        The first order indices are estimated by:
+        S_i = D_i/D = ∑(A_p^2 + B_p^2) / ∑(A_n^2 + B_n^2)
+        
+        The total order indices are estimated by:
+        T_i = 1 - D_{-i}/D = 1 - ∑(A_k^2 + B_k^2) / ∑(A_n^2 + B_n^2)
+        
+        Where:
+        - D is the total variance
+        - D_i is the portion of variance from the i-th input
+        - D_{-i} is the variance due to all inputs except the i-th
+        
+        Based on this information, please explain in simple terms:
+        1. What the FAST method is and how it works conceptually
+        2. What first order indices represent and how to interpret them
+        3. What total order indices represent and how they differ from first order
+        4. What interaction effects mean in this context
+        5. The advantages and limitations of the FAST method
+        
+        Format your response in markdown with appropriate headers and bullet points.
+        Keep it educational but accessible to non-experts.
+        
+        {RETURN_INSTRUCTION}
+        """
+        
+        # Call the LLM for insights
+        llm_insights = call_groq_api(insights_prompt, model_name=language_model)
+        
+        # Call the LLM for explanation
+        explanation = call_groq_api(explanation_prompt, model_name=language_model)
+    else:
+        # Provide a minimal explanation if no LLM is available
+        explanation = """
+        ### FAST Sensitivity Analysis
+        
+        The FAST method quantifies how each input variable contributes to the model output variance.
+        First order indices measure direct effects, while total order indices include interactions.
+        """
     
-    # Return results as a dictionary
+    # Return all results
     return {
         'indices_df': indices_df,
         'fig_bar': fig_bar,
-        'fig_pie_first': fig_pie_first,
-        'fig_pie_total': fig_pie_total,
-        'explanation': fast_explanation,
+        'fig_breakdown': fig_breakdown,
+        'explanation': explanation,
         'llm_insights': llm_insights
     }
-
-def fast_sensitivity_analysis(model, problem, size=400, model_code_str=None, language_model=None, display_results=True):
-    """Perform enterprise-grade FAST sensitivity analysis.
-    
-    This module provides comprehensive global sensitivity analysis using the Fourier Amplitude 
-    Sensitivity Test (FAST) method, which is a relevant alternative to the classical simulation 
-    approach for computing sensitivity indices. The FAST method decomposes the model response 
-    using Fourier decomposition.
-    
-    Parameters
-    ----------
-    model : ot.Function
-        OpenTURNS function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution (typically a JointDistribution)
-    size : int, optional
-        Number of samples for FAST analysis (default is 400)
-    model_code_str : str, optional
-        String representation of the model code for documentation
-    language_model : str, optional
-        Language model to use for analysis
-    display_results : bool, optional
-        Whether to display results in the UI (default is True)
-        
-    Returns
-    -------
-    dict
-        Dictionary containing the results of the FAST analysis
-    """
-    try:
-        # Compute FAST sensitivity analysis results
-        fast_results = compute_fast_sensitivity_analysis(
-            model, problem, size=size, model_code_str=model_code_str,
-            language_model=language_model
-        )
-        
-        # Store results in session state for later access
-        if 'fast_results' not in st.session_state:
-            st.session_state.fast_results = {}
-        
-        # Use model's description as a key if available, otherwise use a default key
-        model_key = model.getDescription()[0] if model.getDescription()[0] != "" else "default_model"
-        st.session_state.fast_results[model_key] = fast_results
-        
-        # Display results if requested
-        if display_results:
-            display_fast_results(fast_results, language_model, model_code_str)
-            
-        return fast_results
-    except Exception as e:
-        if display_results:
-            st.error(f"Error in FAST sensitivity analysis: {str(e)}")
-        raise e
 
 def display_fast_results(fast_results, language_model=None, model_code_str=None):
     """
@@ -301,21 +296,13 @@ def display_fast_results(fast_results, language_model=None, model_code_str=None)
         """)
         st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
         
-        # Display pie charts in two columns
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### First Order Indices Distribution")
-            st.markdown("""
-            This pie chart shows the relative direct contribution of each variable to the output variance.
-            """)
-            st.plotly_chart(fast_results['fig_pie_first'], use_container_width=True)
-        with col2:
-            st.markdown("#### Total Order Indices Distribution")
-            st.markdown("""
-            This pie chart shows the relative total contribution (including interactions) of each variable.
-            """)
-            st.plotly_chart(fast_results['fig_pie_total'], use_container_width=True)
-            
+        # Display the breakdown chart
+        st.markdown("#### FAST Sensitivity Indices Breakdown")
+        st.markdown("""
+        This bar chart shows the breakdown of Total Order indices into direct effects and interaction effects.
+        """)
+        st.plotly_chart(fast_results['fig_breakdown'], use_container_width=True)
+        
         # Add interpretation based on results
         if sum_first_order < 0.7:
             st.info("""
@@ -329,15 +316,64 @@ def display_fast_results(fast_results, language_model=None, model_code_str=None)
             indicating that the model output is primarily determined by the direct effects of individual variables,
             with minimal interaction effects.
             """)
-        
+    
     # AI Insights Section
     if fast_results['llm_insights'] and language_model:
         with st.expander("AI Insights", expanded=True):
-            # Store the insights in session state for reuse
+            # Store the insights in session state for reuse in the global chat
             if 'fast_analysis_response_markdown' not in st.session_state:
                 st.session_state['fast_analysis_response_markdown'] = fast_results['llm_insights']
             
             st.markdown(fast_results['llm_insights'])
+
+def fast_sensitivity_analysis(size=400, model=None, problem=None, model_code_str=None, language_model=None, display_results=True):
+    """Perform enterprise-grade FAST sensitivity analysis.
+    
+    This module provides comprehensive global sensitivity analysis using the Fourier Amplitude 
+    Sensitivity Test (FAST) method, which is a relevant alternative to the classical simulation 
+    approach for computing sensitivity indices. The FAST method decomposes the model response 
+    using Fourier decomposition.
+    
+    Parameters
+    ----------
+    size : int, optional
+        Number of samples for FAST analysis (default is 400)
+    model : ot.Function
+        OpenTURNS function to analyze
+    problem : ot.Distribution
+        OpenTURNS distribution (typically a JointDistribution)
+    model_code_str : str, optional
+        String representation of the model code for documentation
+    language_model : str, optional
+        Language model to use for analysis
+    display_results : bool, optional
+        Whether to display results in the UI (default is True)
+        
+    Returns
+    -------
+    dict
+        Dictionary containing the results of the FAST analysis
+    """
+    try:
+        # Compute FAST sensitivity analysis results
+        fast_results = compute_fast_sensitivity_analysis(
+            model, problem, size=size, model_code_str=model_code_str,
+            language_model=language_model
+        )
+        
+        # Store results in session state for later access and global chat
+        if 'fast_analysis_results' not in st.session_state:
+            st.session_state.fast_analysis_results = fast_results
+        
+        # Display results if requested
+        if display_results:
+            display_fast_results(fast_results, language_model, model_code_str)
+            
+        return fast_results
+    except Exception as e:
+        if display_results:
+            st.error(f"Error in FAST sensitivity analysis: {str(e)}")
+        raise e
 
 def fast_analysis(model, problem, size=400, model_code_str=None, language_model=None, display_results=True):
     """
@@ -363,7 +399,7 @@ def fast_analysis(model, problem, size=400, model_code_str=None, language_model=
     """
     with st.spinner("Running FAST Sensitivity Analysis..."):
         fast_results = fast_sensitivity_analysis(
-            model, problem, size=size, model_code_str=model_code_str,
+            size, model, problem, model_code_str=model_code_str,
             language_model=language_model, display_results=display_results
         )
         

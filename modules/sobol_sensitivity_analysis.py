@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
 
-def compute_sobol_analysis(N, model, problem):
+def compute_sobol_analysis(N, model, problem, model_code_str=None, language_model='groq'):
     """Compute Sobol sensitivity analysis results without displaying UI elements.
     
     This function performs all Sobol sensitivity analysis calculations and returns
@@ -23,6 +23,10 @@ def compute_sobol_analysis(N, model, problem):
         OpenTURNS function to analyze
     problem : ot.Distribution
         OpenTURNS distribution (typically a JointDistribution)
+    model_code_str : str, optional
+        String representation of the model code for documentation
+    language_model : str, optional
+        Language model to use for analysis
         
     Returns
     -------
@@ -232,35 +236,130 @@ def compute_sobol_analysis(N, model, problem):
         height=400
     )
     
-    # Create the indices table text for AI prompt
-    indices_table = "\n".join(
-        f"- {row['Variable']}:\n"
-        f"  First Order: {row['First Order']:.4f} {row['First Order CI']}\n"
-        f"  Total Order: {row['Total Order']:.4f} {row['Total Order CI']}\n"
-        f"  Interaction: {row['Total Order'] - row['First Order']:.4f} ({row['Interaction %']:.1f}%)"
-        for _, row in indices_df.iterrows()
-    )
+    # Create heatmap for second-order indices if available
+    fig_heatmap = None
+    if S2_matrix is not None:
+        fig_heatmap = px.imshow(
+            S2_matrix,
+            x=variable_names,
+            y=variable_names,
+            color_continuous_scale='RdBu_r',
+            title='Second-Order Interaction Effects',
+            labels=dict(color='Interaction Index')
+        )
+        fig_heatmap.update_layout(height=500, template='plotly_white')
     
-    # Add distribution information text for AI prompt
-    dist_info_text = "\n".join(
-        f"- {row['Variable']}: {row['Distribution']}, parameters {row['Parameters']}"
-        for _, row in dist_df.iterrows()
-    )
+    # Create a display DataFrame with the most relevant columns
+    display_df = indices_df[['Variable', 'First Order', 'First Order CI', 'Total Order', 'Total Order CI', 'Interaction', 'Interaction %']]
+    display_df['Interaction %'] = display_df['Interaction %'].apply(lambda x: f"{x:.2f}%")
+    display_df.columns = ['Variable', 'First Order (S₁)', 'S₁ Confidence Interval', 'Total Order (S₁ᵀ)', 'S₁ᵀ Confidence Interval', 'Interaction Effect', 'Interaction %']
     
-    # Return all computed results
+    # Generate AI insights if requested
+    ai_insights = None
+    if model_code_str and language_model:
+        # Generate prompt for AI insights
+        indices_table = "\n".join(
+            f"- {row['Variable']}:\n"
+            f"  First Order: {row['First Order']:.4f} {row['First Order CI']}\n"
+            f"  Total Order: {row['Total Order']:.4f} {row['Total Order CI']}\n"
+            f"  Interaction: {row['Total Order'] - row['First Order']:.4f} ({row['Interaction %']:.1f}%)"
+            for _, row in indices_df.iterrows()
+        )
+        
+        # Add distribution information
+        dist_info_text = "\n".join(
+            f"- {row['Variable']}: {row['Distribution']}, parameters {row['Parameters']}"
+            for _, row in dist_df.iterrows()
+        )
+        
+        prompt = f"""
+{RETURN_INSTRUCTION}
+
+Analyze these Sobol sensitivity analysis results for an enterprise-grade engineering model:
+
+```python
+{model_code_str}
+```
+
+Input Distributions:
+{dist_info_text}
+
+Sobol Indices:
+{indices_table}
+
+Sum of First-Order Indices: {sum_first_order:.4f}
+Sum of Total-Order Indices: {sum_total_order:.4f}
+Interaction Effect: {interaction_effect:.4f}
+
+Please provide a comprehensive enterprise-grade analysis that includes:
+
+1. Executive Summary
+   - Key findings and their business implications
+   - Most influential parameters and their significance
+   - Overall assessment of model robustness
+
+2. Technical Analysis
+   - Detailed interpretation of first-order and total-order indices
+   - Analysis of confidence intervals and statistical significance
+   - Evaluation of interaction effects and their implications
+
+3. Risk Assessment
+   - Identification of critical variables for risk management
+   - Quantification of uncertainty propagation through the model
+   - Potential failure modes based on sensitivity patterns
+
+4. Optimization Opportunities
+   - Variables that offer the greatest potential for system improvement
+   - Cost-benefit analysis of reducing uncertainty in specific inputs
+   - Recommendations for model simplification if appropriate
+
+5. Decision Support
+   - Specific actionable recommendations for stakeholders
+   - Prioritized list of variables for further investigation
+   - Guidance for monitoring and control strategies
+
+Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations that would be valuable for executive decision-makers in an engineering context.
+"""
+        
+        try:
+            ai_insights = call_groq_api(prompt, model_name=language_model)
+        except Exception as e:
+            ai_insights = f"Error generating AI insights: {str(e)}"
+    
+    # Find top interactions if S2_matrix is available
+    interactions_df = None
+    if S2_matrix is not None:
+        interactions = []
+        for i in range(dimension):
+            for j in range(i+1, dimension):
+                interactions.append({
+                    'Variables': f"{variable_names[i]} × {variable_names[j]}",
+                    'Interaction Index': float(S2_matrix[i, j])
+                })
+        
+        if interactions:
+            interactions_df = pd.DataFrame(interactions).sort_values('Interaction Index', ascending=False).head(5)
+    
+    # Return all results in a dictionary
     return {
-        'indices_df': indices_df,
-        'sum_first_order': sum_first_order,
-        'sum_total_order': sum_total_order,
-        'interaction_effect': interaction_effect,
-        'fig_bar': fig_bar,
-        'fig_interaction': fig_interaction,
-        'S2_matrix': S2_matrix,
-        'variable_names': variable_names,
-        'dimension': dimension,
-        'dist_df': dist_df,
-        'indices_table': indices_table,
-        'dist_info_text': dist_info_text
+        # Data
+        "indices_df": display_df,
+        "sum_first_order": sum_first_order,
+        "sum_total_order": sum_total_order,
+        "interaction_effect": interaction_effect,
+        "S2_matrix": S2_matrix,
+        "variable_names": variable_names,
+        "dimension": dimension,
+        "dist_info": dist_df,
+        "interactions_df": interactions_df,
+        
+        # Figures
+        "fig_bar": fig_bar,
+        "fig_interaction": fig_interaction,
+        "fig_heatmap": fig_heatmap,
+        
+        # AI insights
+        "ai_insights": ai_insights
     }
 
 def display_sobol_results(results, model_code_str, language_model='groq'):
@@ -282,12 +381,13 @@ def display_sobol_results(results, model_code_str, language_model='groq'):
     interaction_effect = results['interaction_effect']
     fig_bar = results['fig_bar']
     fig_interaction = results['fig_interaction']
+    fig_heatmap = results['fig_heatmap']
     S2_matrix = results['S2_matrix']
     variable_names = results['variable_names']
     dimension = results['dimension']
-    dist_df = results['dist_df']
-    indices_table = results['indices_table']
-    dist_info_text = results['dist_info_text']
+    dist_df = results['dist_info']
+    interactions_df = results['interactions_df']
+    ai_insights = results['ai_insights']
     
     st.markdown("## Sobol Sensitivity Analysis")
     
@@ -309,13 +409,8 @@ def display_sobol_results(results, model_code_str, language_model='groq'):
         - **Confidence Intervals**: 95% confidence bounds for the sensitivity indices
         """)
         
-        # Create a display DataFrame with the most relevant columns
-        display_df = indices_df[['Variable', 'First Order', 'First Order CI', 'Total Order', 'Total Order CI', 'Interaction', 'Interaction %']]
-        display_df['Interaction %'] = display_df['Interaction %'].apply(lambda x: f"{x:.2f}%")
-        display_df.columns = ['Variable', 'First Order (S₁)', 'S₁ Confidence Interval', 'Total Order (S₁ᵀ)', 'S₁ᵀ Confidence Interval', 'Interaction Effect', 'Interaction %']
-        
         # Display the DataFrame
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(indices_df, use_container_width=True)
         
         # Variance Decomposition Summary
         st.markdown("#### Variance Decomposition Summary")
@@ -362,24 +457,16 @@ def display_sobol_results(results, model_code_str, language_model='groq'):
             Darker colors indicate stronger interactions between the corresponding variables.
             """)
             
-            # Create a heatmap for second-order interactions
-            fig_heatmap = go.Figure(data=go.Heatmap(
-                z=S2_matrix,
-                x=variable_names,
-                y=variable_names,
-                colorscale='Viridis',
-                colorbar=dict(title='Interaction Strength')
-            ))
-            
-            fig_heatmap.update_layout(
-                title='Second-Order Interaction Heatmap',
-                xaxis_title='Variables',
-                yaxis_title='Variables',
-                height=600,
-                width=800
-            )
-            
+            # Display the heatmap
             st.plotly_chart(fig_heatmap, use_container_width=True)
+            
+            # Display top interactions
+            if interactions_df is not None:
+                st.subheader("Top Interactions")
+                st.markdown("""
+                This table shows the top interactions between variables, ranked by their interaction index.
+                """)
+                st.dataframe(interactions_df, use_container_width=True)
         
         # Display input distributions
         st.subheader("Input Distributions")
@@ -409,10 +496,10 @@ Analyze these Sobol sensitivity analysis results for an enterprise-grade enginee
 ```
 
 Input Distributions:
-{dist_info_text}
+{dist_df.to_markdown(index=False)}
 
 Sobol Indices:
-{indices_table}
+{indices_df.to_markdown(index=False)}
 
 Sum of First-Order Indices: {sum_first_order:.4f}
 Sum of Total-Order Indices: {sum_total_order:.4f}
@@ -490,7 +577,7 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
     """
     try:
         # Compute the Sobol analysis results
-        results = compute_sobol_analysis(N, model, problem)
+        results = compute_sobol_analysis(N, model, problem, model_code_str, language_model)
         
         # If display_results is True, show the results using Streamlit UI
         if display_results:

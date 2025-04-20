@@ -199,8 +199,8 @@ def validate_taylor_surrogate(model, problem, n_validation=100, random_seed=42):
     
     # Create validation data for plotting
     validation_data = {
-        'original': original_outputs.flatten(),
-        'surrogate': surrogate_outputs.flatten(),
+        'original_values': original_outputs.flatten(),
+        'taylor_values': surrogate_outputs.flatten(),
         'errors': errors.flatten(),
         'points': [np.array([validation_sample[i][j] for j in range(dimension)]) for i in range(n_validation)]
     }
@@ -210,7 +210,7 @@ def validate_taylor_surrogate(model, problem, n_validation=100, random_seed=42):
         'mse': mse,
         'rmse': rmse,
         'mae': mae,
-        'r_squared': r_squared,
+        'r2': r_squared,
         'nrmse': nrmse,
         'validation_data': validation_data,
         'is_vector_output': is_vector_output
@@ -257,102 +257,204 @@ def compute_taylor_analysis(model, problem, model_code_str=None, language_model=
     # Compute Taylor indices
     taylor_results = compute_taylor_indices(model, problem)
     
-    # Validate the Taylor surrogate model
-    validation_results = validate_taylor_surrogate(model, problem, n_validation=100)
+    # Validate the Taylor approximation
+    validation_results = validate_taylor_surrogate(model, problem)
     
-    # Create Taylor dataframe
+    # Extract results
+    input_names = taylor_results['input_names']
+    sensitivity_indices = taylor_results['sensitivity_indices']
+    gradients = taylor_results['gradients']
+    variances = taylor_results['variances']
+    nominal_point = taylor_results['nominal_point']
+    nominal_value = taylor_results['nominal_value']
+    
+    # Create DataFrame
     taylor_df = create_taylor_dataframe(taylor_results)
     
-    # Create detailed dataframe
-    detailed_df = pd.DataFrame({
-        'Variable': taylor_results['input_names'],
-        'Nominal_Point': taylor_results['nominal_point'],
-        'Gradient': taylor_results['gradients'],
-        'Variance': taylor_results['variances'],
-        'Sensitivity_Index': taylor_results['sensitivity_indices'],
-        'Sensitivity_Index (%)': taylor_results['sensitivity_indices'] * 100
-    })
+    # Create bar chart for sensitivity indices
+    bar_chart = go.Figure()
     
-    # Sort by importance
-    taylor_df = taylor_df.sort_values('Sensitivity_Index (%)', ascending=False).reset_index(drop=True)
-    detailed_df = detailed_df.sort_values('Sensitivity_Index', ascending=False).reset_index(drop=True)
+    # Add sensitivity indices
+    bar_chart.add_trace(go.Bar(
+        x=input_names,
+        y=sensitivity_indices,
+        name='Sensitivity Index',
+        marker_color='rgba(31, 119, 180, 0.8)'
+    ))
     
-    # Get most influential variable
-    most_influential = taylor_df.iloc[0]['Variable']
-    most_influential_value = taylor_df.iloc[0]['Sensitivity_Index (%)']
+    # Update layout
+    bar_chart.update_layout(
+        title='Taylor-based Sensitivity Indices',
+        xaxis_title='Input Variables',
+        yaxis_title='Sensitivity Index',
+        template='plotly_white',
+        height=500
+    )
     
-    # Calculate sum of importance factors
-    sum_importance = taylor_df['Sensitivity_Index (%)'].sum()
+    # Create scatter plot for validation
+    validation_plot = go.Figure()
     
-    # Generate AI insights if a language model is provided
+    # Add scatter plot
+    validation_plot.add_trace(go.Scatter(
+        x=validation_results['validation_data']['original_values'],
+        y=validation_results['validation_data']['taylor_values'],
+        mode='markers',
+        marker=dict(
+            color=validation_results['validation_data']['errors'],
+            colorscale='RdBu_r',
+            colorbar=dict(title='Error'),
+            size=8
+        ),
+        name='Validation Points'
+    ))
+    
+    # Add diagonal line (perfect prediction)
+    min_val = min(min(validation_results['validation_data']['original_values']), min(validation_results['validation_data']['taylor_values']))
+    max_val = max(max(validation_results['validation_data']['original_values']), max(validation_results['validation_data']['taylor_values']))
+    
+    validation_plot.add_trace(go.Scatter(
+        x=[min_val, max_val],
+        y=[min_val, max_val],
+        mode='lines',
+        line=dict(color='black', width=2, dash='dash'),
+        name='Perfect Prediction'
+    ))
+    
+    # Update layout
+    validation_plot.update_layout(
+        title='Taylor Approximation Validation',
+        xaxis_title='Original Model Output',
+        yaxis_title='Taylor Approximation',
+        template='plotly_white',
+        height=500
+    )
+    
+    # Create gradient plot
+    gradient_plot = go.Figure()
+    
+    # Add gradient bars
+    gradient_plot.add_trace(go.Bar(
+        x=input_names,
+        y=gradients,
+        name='Gradient',
+        marker_color='rgba(44, 160, 44, 0.8)'
+    ))
+    
+    # Update layout
+    gradient_plot.update_layout(
+        title='Model Gradients at Nominal Point',
+        xaxis_title='Input Variables',
+        yaxis_title='Gradient (∂Y/∂X)',
+        template='plotly_white',
+        height=500
+    )
+    
+    # Generate AI insights if requested
     ai_insights = None
-    if language_model and model_code_str:
-        # Format the model code for inclusion in the prompt
-        model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')]) if model_code_str else ""
-        
-        # Prepare the inputs description
-        input_parameters = []
-        dimension = problem.getDimension()
-        for i in range(dimension):
+    if model_code_str and language_model:
+        # Create distribution information for the prompt
+        dist_info = []
+        for i, name in enumerate(input_names):
             marginal = problem.getMarginal(i)
-            name = taylor_results['input_names'][i]
-            dist_type = marginal.__class__.__name__
-            params = marginal.getParameter()
-            input_parameters.append(f"- **{name}**: {dist_type} distribution with parameters {list(params)}")
+            dist_info.append({
+                'Variable': name,
+                'Distribution': marginal.__class__.__name__,
+                'Parameters': str(list(marginal.getParameter())),
+                'Mean': float(marginal.getMean()[0]),
+                'Std': float(marginal.getStandardDeviation()[0])
+            })
+        dist_df = pd.DataFrame(dist_info)
         
-        inputs_description = '\n'.join(input_parameters)
-        
-        # Create a markdown table for the Taylor indices
-        taylor_table = taylor_df.to_markdown(index=False)
+        # Format the model code for inclusion in the prompt
+        if model_code_str:
+            model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
+        else:
+            model_code_formatted = "Model code not available"
         
         # Create the prompt
         prompt = f"""
-        {RETURN_INSTRUCTION}
-        
-        I've performed a Taylor sensitivity analysis on the following model:
-        
-        ```python
-        {model_code_formatted}
-        ```
-        
-        with the following input distributions:
-        
-        {inputs_description}
-        
-        Here are the Taylor sensitivity indices:
-        
-        {taylor_table}
-        
-        The model was evaluated at the nominal point (typically the mean of each input variable).
-        The nominal value of the output is {taylor_results['nominal_value']:.6f}.
-        
-        The linear surrogate model has an R² of {validation_results['r_squared']:.4f} and RMSE of {validation_results['rmse']:.4f}.
-        
-        Please provide an expert analysis of these Taylor sensitivity results, including:
-        
-        1. An explanation of what Taylor sensitivity indices represent and how they're calculated
-        2. An interpretation of the most important variables and their influence
-        3. A discussion of the validity of the linear approximation based on the R² value
-        4. Recommendations for further analysis or model refinement
-        
-        Keep your response concise, technical, and focused on actionable insights.
-        """
+{RETURN_INSTRUCTION}
+
+## Taylor Sensitivity Analysis Results
+
+I need your expert analysis of these Taylor sensitivity analysis results for the following model:
+
+```python
+{model_code_formatted}
+```
+
+### Input Distributions:
+{dist_df.to_markdown(index=False)}
+
+### Nominal Point:
+{pd.DataFrame({'Variable': input_names, 'Value': nominal_point}).to_markdown(index=False)}
+
+### Nominal Output Value:
+{nominal_value}
+
+### Taylor Sensitivity Analysis Results:
+{taylor_df.to_markdown(index=False)}
+
+### Validation Results:
+- R² Score: {validation_results['r2']:.4f}
+- Mean Absolute Error: {validation_results['mae']:.4f}
+- Root Mean Squared Error: {validation_results['rmse']:.4f}
+
+Please provide a comprehensive analysis that includes:
+
+1. **Executive Summary**
+   - Key findings and their practical implications
+   - Most influential parameters identified by the Taylor analysis
+   - Assessment of the Taylor approximation's accuracy
+
+2. **Technical Analysis**
+   - Interpretation of the sensitivity indices and gradients
+   - Explanation of how the Taylor expansion approximates the model
+   - Analysis of the linearity assumption and its validity for this model
+
+3. **Recommendations**
+   - Practical guidance for model simplification or optimization
+   - Suggestions for further analysis or validation
+   - Variables that should be prioritized for uncertainty reduction
+
+Format your response with clear section headings and bullet points where appropriate.
+Focus on actionable insights that would be valuable for decision-makers.
+"""
         
         try:
             ai_insights = call_groq_api(prompt, model_name=language_model)
         except Exception as e:
-            ai_insights = f"Unable to generate AI insights: {str(e)}"
+            ai_insights = f"Error generating AI insights: {str(e)}"
     
-    # Return all results in a dictionary
+    # Create a metrics dataframe
+    metrics_df = pd.DataFrame({
+        'Metric': ['R² Score', 'Mean Absolute Error', 'Root Mean Squared Error'],
+        'Value': [
+            f"{validation_results['r2']:.4f}",
+            f"{validation_results['mae']:.4f}",
+            f"{validation_results['rmse']:.4f}"
+        ]
+    })
+    
+    # Return all results in a dictionary with the correct keys for the comprehensive report
     return {
-        'taylor_results': taylor_results,
-        'validation_results': validation_results,
-        'taylor_df': taylor_df,
-        'detailed_df': detailed_df,
-        'most_influential': most_influential,
-        'most_influential_value': most_influential_value,
-        'sum_importance': sum_importance,
-        'ai_insights': ai_insights
+        # Data
+        "taylor_df": taylor_df,
+        "nominal_point": nominal_point,
+        "nominal_value": nominal_value,
+        "gradients": gradients,
+        "variances": variances,
+        "sensitivity_indices": sensitivity_indices,
+        "input_names": input_names,
+        "validation_metrics": metrics_df,
+        
+        # Figures
+        "bar_chart": bar_chart,
+        "validation_plot": validation_plot,
+        "gradient_plot": gradient_plot,
+        
+        # AI insights
+        "ai_insights": ai_insights
     }
 
 def display_taylor_results(analysis_results, model_code_str=None, language_model='groq'):
@@ -369,13 +471,17 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         Language model to use for analysis
     """
     # Extract results from the analysis_results dictionary
-    taylor_results = analysis_results['taylor_results']
-    validation_results = analysis_results['validation_results']
     taylor_df = analysis_results['taylor_df']
-    detailed_df = analysis_results['detailed_df']
-    most_influential = analysis_results['most_influential']
-    most_influential_value = analysis_results['most_influential_value']
-    sum_importance = analysis_results['sum_importance']
+    nominal_point = analysis_results['nominal_point']
+    nominal_value = analysis_results['nominal_value']
+    gradients = analysis_results['gradients']
+    variances = analysis_results['variances']
+    sensitivity_indices = analysis_results['sensitivity_indices']
+    input_names = analysis_results['input_names']
+    validation_metrics = analysis_results['validation_metrics']
+    bar_chart = analysis_results['bar_chart']
+    validation_plot = analysis_results['validation_plot']
+    gradient_plot = analysis_results['gradient_plot']
     ai_insights = analysis_results.get('ai_insights')
     
     # Results Section
@@ -384,7 +490,7 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         st.subheader("Taylor Analysis Overview")
         st.markdown(f"""
         The Taylor expansion is performed around the nominal point (typically the mean of each input variable).
-        The nominal value of the output is **{taylor_results['nominal_value']:.6f}**.
+        The nominal value of the output is **{nominal_value:.6f}**.
         
         The Taylor importance factors are calculated as:
         
@@ -401,11 +507,11 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         # Create metrics in columns
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Nominal Output Value", f"{taylor_results['nominal_value']:.6f}")
+            st.metric("Nominal Output Value", f"{nominal_value:.6f}")
         with col2:
-            st.metric("Sum of Importance Factors", f"{sum_importance:.2f}%")
+            st.metric("Sum of Importance Factors", f"{sum(sensitivity_indices):.2f}%")
         with col3:
-            st.metric("Linear Model R²", f"{validation_results['r_squared']:.4f}")
+            st.metric("Linear Model R²", f"{validation_metrics['Value'][0]}")
         
         # Model Validation
         st.subheader("Linear Surrogate Model Validation")
@@ -415,49 +521,17 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         A good fit indicates that the Taylor importance factors are reliable.
         """)
         
-        # Extract validation data and R²
-        validation_data = validation_results['validation_data']
-        r2_value = validation_results['r_squared']
-        
-        # Create the scatter plot
-        fig_validation = px.scatter(
-            x=validation_data['original'],
-            y=validation_data['surrogate'],
-            labels={'x': 'Original Model', 'y': 'Linear Surrogate Model'},
-            title='Original vs. Linear Surrogate Model Predictions'
-        )
-        
-        # Add the perfect prediction line
-        min_val = min(min(validation_data['original']), min(validation_data['surrogate']))
-        max_val = max(max(validation_data['original']), max(validation_data['surrogate']))
-        fig_validation.add_trace(
-            go.Scatter(
-                x=[min_val, max_val],
-                y=[min_val, max_val],
-                mode='lines',
-                name='Perfect Prediction',
-                line=dict(color='red', dash='dash')
-            )
-        )
-        
-        # Update layout
-        fig_validation.update_layout(
-            template='plotly_white',
-            height=500,
-            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-        )
-        
         # Display the plot
-        st.plotly_chart(fig_validation, use_container_width=True)
+        st.plotly_chart(validation_plot, use_container_width=True)
         
         # Add warning if R² is low
-        if r2_value < 0.7:
+        if float(validation_metrics['Value'][0]) < 0.7:
             st.warning("""
             **Warning**: The linear surrogate model does not adequately approximate the original model.
             Taylor importance factors may not provide reliable sensitivity information.
             Consider using a more advanced sensitivity analysis method like Sobol indices.
             """)
-        elif r2_value < 0.9:
+        elif float(validation_metrics['Value'][0]) < 0.9:
             st.info("""
             **Note**: The linear surrogate model provides a moderate approximation of the original model.
             Taylor importance factors should be interpreted with caution.
@@ -469,50 +543,27 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         # Display summary metrics
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Most Influential Variable", most_influential, f"{most_influential_value:.2f}%")
+            st.metric("Most Influential Variable", input_names[np.argmax(sensitivity_indices)], f"{max(sensitivity_indices)*100:.2f}%")
         with col2:
             st.metric("Number of Variables", f"{len(taylor_df)}")
         with col3:
-            st.metric("Variables with >5% Influence", f"{sum(taylor_df['Sensitivity_Index (%)'] > 5)}")
+            st.metric("Variables with >5% Influence", f"{sum(sensitivity_indices > 0.05)}")
         
         # Create the bar chart
-        fig_bar = px.bar(
-            taylor_df,
-            x='Variable',
-            y='Sensitivity_Index (%)',
-            title='Taylor Importance Factors (%)',
-            text='Sensitivity_Index (%)',
-            color='Sensitivity_Index (%)',
-            color_continuous_scale='Viridis'
-        )
-        
-        # Update layout
-        fig_bar.update_layout(
-            template='plotly_white',
-            height=500,
-            coloraxis_showscale=False,
-            yaxis_title='Importance (%)',
-            xaxis_title='Variable'
-        )
-        
-        # Format text
-        fig_bar.update_traces(
-            texttemplate='%{text:.2f}%',
-            textposition='outside'
-        )
-        
-        # Display the plot
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(bar_chart, use_container_width=True)
         
         # Detailed Results
         st.subheader("Detailed Results")
         
         # Create a display dataframe with formatted values
-        display_df = detailed_df.copy()
-        display_df['Gradient'] = display_df['Gradient'].apply(lambda x: f"{x:.6f}")
-        display_df['Variance'] = display_df['Variance'].apply(lambda x: f"{x:.6f}")
-        display_df['Sensitivity_Index'] = display_df['Sensitivity_Index'].apply(lambda x: f"{x:.6f}")
-        display_df['Sensitivity_Index (%)'] = display_df['Sensitivity_Index (%)'].apply(lambda x: f"{x:.2f}%")
+        display_df = pd.DataFrame({
+            'Variable': input_names,
+            'Nominal_Point': nominal_point,
+            'Gradient': gradients,
+            'Variance': variances,
+            'Sensitivity_Index': sensitivity_indices,
+            'Sensitivity_Index (%)': sensitivity_indices * 100
+        })
         
         # Display the dataframe
         st.dataframe(display_df, use_container_width=True)
