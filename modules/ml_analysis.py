@@ -231,7 +231,7 @@ def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='
     """
     try:
         # Use a context manager to conditionally display results
-        display_context = st.expander("Machine Learning Analysis", expanded=True) if display_results else nullcontext()
+        display_context = st.container() if display_results else nullcontext()
         
         with display_context:
             # Compute the analysis
@@ -250,6 +250,41 @@ def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='
         return None
 
 # Define a nullcontext class to use when display_results is False
+def get_ml_context_for_chat(ml_results):
+    """
+    Generate a formatted string containing ML analysis results for the global chat context.
+    
+    Parameters
+    ----------
+    ml_results : dict
+        Dictionary containing the results of the ML analysis
+        
+    Returns
+    -------
+    str
+        Formatted string with ML analysis results for chat context
+    """
+    context = ""
+    
+    # SHAP summary (feature importance)
+    shap_summary_df = None
+    if "shap_results" in ml_results and "shap_summary_df" in ml_results["shap_results"]:
+        shap_summary_df = ml_results["shap_results"]["shap_summary_df"]
+    elif "feature_importance" in ml_results:
+        shap_summary_df = ml_results["feature_importance"]
+    
+    if shap_summary_df is not None:
+        context += "\n\n### ML Analysis: SHAP Feature Importance\n"
+        context += shap_summary_df.to_markdown(index=False)
+    
+    # Model metrics
+    model_metrics_df = ml_results.get("model_metrics")
+    if model_metrics_df is not None:
+        context += "\n\n### ML Model Performance Metrics\n"
+        context += model_metrics_df.to_markdown(index=False)
+    
+    return context
+
 class nullcontext:
     def __init__(self, enter_result=None):
         self.enter_result = enter_result

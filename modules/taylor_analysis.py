@@ -485,7 +485,7 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
     ai_insights = analysis_results.get('ai_insights')
     
     # Results Section
-    with st.expander("Results", expanded=True):
+    with st.container():
         # Overview
         st.subheader("Taylor Analysis Overview")
         st.markdown(f"""
@@ -570,9 +570,8 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
     
     # AI Insights section (only if ai_insights is available)
     if ai_insights:
-        with st.expander("AI Insights", expanded=True):
-            st.markdown("### AI-Generated Expert Analysis")
-            st.markdown(ai_insights)
+        st.markdown("### AI-Generated Expert Analysis")
+        st.markdown(ai_insights)
 
 def taylor_analysis(model, problem, model_code_str=None, language_model='groq', display_results=True):
     """
@@ -613,3 +612,36 @@ def taylor_analysis(model, problem, model_code_str=None, language_model='groq', 
         if display_results:
             st.error(f"Error in Taylor analysis: {str(e)}")
         raise
+
+def get_taylor_context_for_chat(taylor_results):
+    """
+    Generate a formatted string containing Taylor analysis results for the global chat context.
+    
+    Parameters
+    ----------
+    taylor_results : dict
+        Dictionary containing the results of the Taylor analysis
+        
+    Returns
+    -------
+    str
+        Formatted string with Taylor analysis results for chat context
+    """
+    context = ""
+    
+    # Try to get a DataFrame from the results
+    taylor_indices_df = None
+    if "indices_df" in taylor_results:
+        taylor_indices_df = taylor_results["indices_df"]
+    elif "input_names" in taylor_results and "sensitivity_indices" in taylor_results:
+        taylor_indices_df = pd.DataFrame({
+            'Variable': taylor_results['input_names'],
+            'Sensitivity Index': taylor_results['sensitivity_indices']
+        })
+        taylor_indices_df = taylor_indices_df.sort_values('Sensitivity Index', ascending=False)
+    
+    if taylor_indices_df is not None:
+        context += "\n\n### Taylor Sensitivity Analysis Results\n"
+        context += taylor_indices_df.to_markdown(index=False)
+    
+    return context

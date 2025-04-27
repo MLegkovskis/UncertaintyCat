@@ -296,8 +296,7 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
             zmin=-abs_max,
             zmax=abs_max,
             colorbar=dict(
-                title='Correlation',
-                titleside='right'
+                title='Correlation'
             ),
             hovertemplate='%{x} - %{y}: %{z:.4f}<extra></extra>'
         )
@@ -356,59 +355,59 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
         
         # Generate LLM insights if requested
         llm_insights = None
-        if language_model and model_code_str:
-            # Prepare the prompt
-            prompt = f"""
-            I've performed an ANCOVA (Analysis of Covariance) sensitivity analysis on the following mathematical model:
-            ```python
-            {model_code_str}
-            ```
-            
-            ANCOVA is a specialized variance-based sensitivity analysis method that explicitly accounts for correlations between input variables. It decomposes the total variance into uncorrelated (physical) and correlated components according to:
-            
-            S_i = S_i^U + S_i^C
-            
-            Where:
-            - S_i is the total ANCOVA index for variable i
-            - S_i^U is the uncorrelated part representing the variable's direct influence
-            - S_i^C is the correlated part representing influence due to correlations with other variables
-            
-            The ANCOVA indices from my analysis are:
-            {', '.join([f"{row['Variable']}: S_i = {row['ANCOVA Index']:.4f} (S_i^U = {row['Uncorrelated Index']:.4f}, S_i^C = {row['Correlated Index']:.4f})" for _, row in indices_df.iterrows()])}
-            
-            The correlation structure between inputs is:
-            {', '.join([f"{variable_names[i]}-{variable_names[j]}: {correlation_matrix[i, j]:.4f}" for i in range(dimension) for j in range(i+1, dimension) if abs(correlation_matrix[i, j]) > 0.1])}
-            
-            Please provide a rigorous scientific analysis addressing:
-            
-            1. Variable influence hierarchy: Identify the dominant variables and quantify their relative contributions to output uncertainty. Explain how the ANCOVA indices reveal the mechanistic relationships in the model.
-            
-            2. Correlation effects: Analyze how much of each variable's influence is due to correlations with other inputs. For variables with significant S_i^C values, explain the implications for uncertainty propagation.
-            
-            3. Uncertainty reduction strategies: Based on the ANCOVA decomposition, recommend specific approaches for reducing output uncertainty. Discuss whether focusing on reducing individual parameter uncertainties or addressing correlation structures would be more effective.
-            
-            4. Model simplification potential: Evaluate whether any variables could be fixed at nominal values without significantly affecting output uncertainty, based on their ANCOVA indices.
-            
-            Use precise mathematical language and quantitative statements. Include specific numerical values from the analysis to support your conclusions.
-            
-            {RETURN_INSTRUCTION}
-            """
-            
-            # Call the LLM with retry logic
-            max_attempts = 3
-            attempts = 0
-            
-            while attempts < max_attempts:
-                try:
-                    llm_insights = call_groq_api(prompt, model_name=language_model)
-                    break
-                except Exception as e:
-                    attempts += 1
-                    if attempts >= max_attempts:
-                        llm_insights = f"Error generating insights: {str(e)}"
-                    # Wait a bit before retrying
-                    import time
-                    time.sleep(2)
+        if model_code_str:
+             # Prepare the prompt
+             prompt = f"""
+             I've performed an ANCOVA (Analysis of Covariance) sensitivity analysis on the following mathematical model:
+             ```python
+             {model_code_str}
+             ```
+             
+             ANCOVA is a specialized variance-based sensitivity analysis method that explicitly accounts for correlations between input variables. It decomposes the total variance into uncorrelated (physical) and correlated components according to:
+             
+             S_i = S_i^U + S_i^C
+             
+             Where:
+             - S_i is the total ANCOVA index for variable i
+             - S_i^U is the uncorrelated part representing the variable's direct influence
+             - S_i^C is the correlated part representing influence due to correlations with other variables
+             
+             The ANCOVA indices from my analysis are:
+             {', '.join([f"{row['Variable']}: S_i = {row['ANCOVA Index']:.4f} (S_i^U = {row['Uncorrelated Index']:.4f}, S_i^C = {row['Correlated Index']:.4f})" for _, row in indices_df.iterrows()])}
+             
+             The correlation structure between inputs is:
+             {', '.join([f"{variable_names[i]}-{variable_names[j]}: {correlation_matrix[i, j]:.4f}" for i in range(dimension) for j in range(i+1, dimension) if abs(correlation_matrix[i, j]) > 0.1])}
+             
+             Please provide a rigorous scientific analysis addressing:
+             
+             1. Variable influence hierarchy: Identify the dominant variables and quantify their relative contributions to output uncertainty. Explain how the ANCOVA indices reveal the mechanistic relationships in the model.
+             
+             2. Correlation effects: Analyze how much of each variable's influence is due to correlations with other inputs. For variables with significant S_i^C values, explain the implications for uncertainty propagation.
+             
+             3. Uncertainty reduction strategies: Based on the ANCOVA decomposition, recommend specific approaches for reducing output uncertainty. Discuss whether focusing on reducing individual parameter uncertainties or addressing correlation structures would be more effective.
+             
+             4. Model simplification potential: Evaluate whether any variables could be fixed at nominal values without significantly affecting output uncertainty, based on their ANCOVA indices.
+             
+             Use precise mathematical language and quantitative statements. Include specific numerical values from the analysis to support your conclusions.
+             
+             {RETURN_INSTRUCTION}
+             """
+             # Determine model name (use default if unspecified or 'groq')
+             model_name = language_model
+             if not language_model or language_model == 'groq':
+                 model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
+             # Call the LLM with retry logic
+             max_attempts = 3
+             attempts = 0
+             while attempts < max_attempts:
+                 try:
+                     llm_insights = call_groq_api(prompt, model_name=model_name)
+                     break
+                 except Exception as e:
+                     attempts += 1
+                     if attempts >= max_attempts:
+                         llm_insights = f"Error generating insights: {str(e)}"
+                     import time; time.sleep(2)
         
         # Return all results
         return {
@@ -442,7 +441,7 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
         String representation of the model code, by default None
     """
     # Results Section
-    with st.expander("Results", expanded=True):
+    with st.container():
         # Overview
         st.subheader("ANCOVA Sensitivity Analysis Overview")
         st.markdown("""
@@ -553,13 +552,34 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
             """)
     
     # AI Insights Section
-    if ancova_results['llm_insights'] and language_model:
-        with st.expander("AI Insights", expanded=True):
-            # Store the insights in session state for reuse in the global chat
-            if 'ancova_analysis_response_markdown' not in st.session_state:
-                st.session_state['ancova_analysis_response_markdown'] = ancova_results['llm_insights']
-            
-            st.markdown(ancova_results['llm_insights'])
+    if ancova_results['llm_insights']:
+        st.subheader("AI-Generated Expert Analysis")
+        st.markdown(ancova_results['llm_insights'])
+
+def get_ancova_context_for_chat(ancova_results):
+    """
+    Generate a formatted string containing ANCOVA analysis results for the global chat context.
+    
+    Parameters
+    ----------
+    ancova_results : dict
+        Dictionary containing the results of the ANCOVA analysis
+        
+    Returns
+    -------
+    str
+        Formatted string with ANCOVA analysis results for chat context
+    """
+    context = ""
+    
+    # Extract key information from the results
+    ancova_indices_df = ancova_results.get("indices_df")
+    
+    if ancova_indices_df is not None:
+        context += "\n\n### ANCOVA Sensitivity Analysis Results\n"
+        context += ancova_indices_df.to_markdown(index=False)
+    
+    return context
 
 def ancova_analysis(model, problem, size=2000, model_code_str=None, language_model=None, display_results=True):
     """

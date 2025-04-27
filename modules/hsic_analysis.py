@@ -278,7 +278,7 @@ def run_hsic_analysis(size=200, model=None, problem=None, model_code_str=None, l
         
         # Results Section
         if display_results:
-            with st.expander("Results", expanded=True):
+            with st.container():
                 st.subheader("HSIC Analysis")
                 st.markdown("""
                 HSIC (Hilbert-Schmidt Independence Criterion) analysis is a powerful method for detecting non-linear dependencies 

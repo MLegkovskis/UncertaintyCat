@@ -256,7 +256,7 @@ def compute_sobol_analysis(N, model, problem, model_code_str=None, language_mode
     
     # Generate AI insights if requested
     ai_insights = None
-    if model_code_str and language_model:
+    if model_code_str:
         # Generate prompt for AI insights
         indices_table = "\n".join(
             f"- {row['Variable']}:\n"
@@ -321,8 +321,12 @@ Please provide a comprehensive enterprise-grade analysis that includes:
 Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations that would be valuable for executive decision-makers in an engineering context.
 """
         
+        # Always use the default model if language_model is None or 'groq'
+        model_name = language_model
+        if not language_model or language_model == 'groq':
+            model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
         try:
-            ai_insights = call_groq_api(prompt, model_name=language_model)
+            ai_insights = call_groq_api(prompt, model_name=model_name)
         except Exception as e:
             ai_insights = f"Error generating AI insights: {str(e)}"
     
@@ -392,7 +396,7 @@ def display_sobol_results(results, model_code_str, language_model='groq'):
     st.markdown("## Sobol Sensitivity Analysis")
     
     # RESULTS SECTION
-    with st.expander("Results", expanded=True):
+    with st.container():
         # Display sensitivity indices bar chart
         st.subheader("Sensitivity Indices")
         st.plotly_chart(fig_bar, use_container_width=True)
@@ -476,75 +480,40 @@ def display_sobol_results(results, model_code_str, language_model='groq'):
         st.dataframe(dist_df, use_container_width=True)
     
     # AI INSIGHTS SECTION
-    if language_model and 'sobol_analysis_response_markdown' in st.session_state:
-        with st.expander("AI Insights", expanded=True):
-            st.markdown(st.session_state.sobol_analysis_response_markdown)
-    elif language_model:
-        with st.expander("AI Insights", expanded=True):
-            with st.spinner("Generating expert analysis..."):
-                response_key = 'sobol_analysis_response_markdown'
-                
-                if response_key not in st.session_state:
-                    # Create prompt for the language model
-                    prompt = f"""
-{RETURN_INSTRUCTION}
+    if ai_insights:
+        st.subheader("AI-Generated Expert Analysis")
+        st.markdown(ai_insights)
 
-Analyze these Sobol sensitivity analysis results for an enterprise-grade engineering model:
-
-```python
-{model_code_str}
-```
-
-Input Distributions:
-{dist_df.to_markdown(index=False)}
-
-Sobol Indices:
-{indices_df.to_markdown(index=False)}
-
-Sum of First-Order Indices: {sum_first_order:.4f}
-Sum of Total-Order Indices: {sum_total_order:.4f}
-Interaction Effect: {interaction_effect:.4f}
-
-Please provide a comprehensive enterprise-grade analysis that includes:
-
-1. Executive Summary
-   - Key findings and their business implications
-   - Most influential parameters and their significance
-   - Overall assessment of model robustness
-
-2. Technical Analysis
-   - Detailed interpretation of first-order and total-order indices
-   - Analysis of confidence intervals and statistical significance
-   - Evaluation of interaction effects and their implications
-
-3. Risk Assessment
-   - Identification of critical variables for risk management
-   - Quantification of uncertainty propagation through the model
-   - Potential failure modes based on sensitivity patterns
-
-4. Optimization Opportunities
-   - Variables that offer the greatest potential for system improvement
-   - Cost-benefit analysis of reducing uncertainty in specific inputs
-   - Recommendations for model simplification if appropriate
-
-5. Decision Support
-   - Specific actionable recommendations for stakeholders
-   - Prioritized list of variables for further investigation
-   - Guidance for monitoring and control strategies
-
-Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations that would be valuable for executive decision-makers in an engineering context.
-"""
-                    
-                    # Call the language model API
-                    try:
-                        response = call_groq_api(prompt, model_name=language_model)
-                        st.session_state[response_key] = response
-                    except Exception as e:
-                        st.error(f"Error generating AI insights: {str(e)}")
-                        st.session_state[response_key] = "Error generating insights. Please try again later."
-                
-                # Display the generated insights
-                st.markdown(st.session_state[response_key])
+def get_sobol_context_for_chat(sobol_results):
+    """
+    Generate a formatted string containing Sobol analysis results for the global chat context.
+    
+    Parameters
+    ----------
+    sobol_results : dict
+        Dictionary containing the results of the Sobol analysis
+        
+    Returns
+    -------
+    str
+        Formatted string with Sobol analysis results for chat context
+    """
+    context = ""
+    
+    # Extract key information from the results
+    indices_df = sobol_results.get("indices_df")
+    sum_first_order = sobol_results.get("sum_first_order")
+    sum_total_order = sobol_results.get("sum_total_order")
+    interaction_effect = sobol_results.get("interaction_effect")
+    
+    if indices_df is not None:
+        context += "\n\n### Sobol Sensitivity Analysis Results\n"
+        context += indices_df.to_markdown(index=False)
+        context += f"\n\n- **Sum of First-Order Indices:** {sum_first_order:.4f}"
+        context += f"\n- **Sum of Total-Order Indices:** {sum_total_order:.4f}"
+        context += f"\n- **Interaction Effect:** {interaction_effect:.4f}"
+    
+    return context
 
 def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq', display_results=True):
     """Perform enterprise-grade Sobol sensitivity analysis.

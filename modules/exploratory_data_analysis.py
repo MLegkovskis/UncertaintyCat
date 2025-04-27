@@ -375,9 +375,7 @@ def compute_exploratory_data_analysis(data, N, model, problem, model_code_str):
                             labelfont=dict(size=12, color='white')
                         ),
                         colorbar=dict(
-                            title="Output",
-                            titleside="right",
-                            titlefont=dict(size=14)
+                            title="Output"
                         )
                     )
                 )
@@ -405,6 +403,49 @@ def compute_exploratory_data_analysis(data, N, model, problem, model_code_str):
         'regression_data': regression_data,
         'cross_cuts_2d': cross_cuts_2d
     }
+
+def get_eda_context_for_chat(eda_results):
+    """
+    Generate a formatted string containing exploratory data analysis results for the global chat context.
+    
+    Parameters
+    ----------
+    eda_results : dict
+        Dictionary containing the results of the exploratory data analysis
+        
+    Returns
+    -------
+    str
+        Formatted string with exploratory data analysis results for chat context
+    """
+    context = ""
+    
+    # Correlation matrix
+    corr_matrix = eda_results.get("display_corr")
+    if corr_matrix is not None:
+        context += "\n\n### Exploratory Data Analysis: Correlation Matrix\n"
+        try:
+            context += corr_matrix.to_markdown(index=True)
+        except Exception:
+            pass
+    
+    # Regression results
+    if "regression_data" in eda_results:
+        regression_data = eda_results["regression_data"]
+        if isinstance(regression_data, list) and regression_data:
+            reg_df = pd.DataFrame(regression_data)
+            context += "\n\n### Input-Output Regression Summary\n"
+            context += reg_df.to_markdown(index=False)
+    
+    # AI insights
+    ai_insights = eda_results.get("ai_insights")
+    if ai_insights:
+        context += f"\n#### AI Insights\n{ai_insights}\n"
+    
+    # Brief summary of available visualizations
+    context += "\n- Cross cuts and regression plots are available for each input-output pair.\n- 2D cross cuts and contour plots visualize interactions between pairs of parameters.\n"
+    
+    return context
 
 def generate_ai_insights(analysis_results, language_model='groq'):
     """Generate AI insights for exploratory data analysis results.
@@ -578,7 +619,7 @@ def display_exploratory_data_analysis_results(analysis_results, language_model='
     st.markdown("## Exploratory Data Analysis")
     
     # RESULTS SECTION
-    with st.expander("Results", expanded=True):
+    with st.container():
         # Display correlation matrix
         st.subheader("Correlation Analysis")
         st.plotly_chart(analysis_results['fig_corr'], use_container_width=True)
@@ -629,9 +670,8 @@ def display_exploratory_data_analysis_results(analysis_results, language_model='
     
     # AI INSIGHTS SECTION
     if 'ai_insights' in analysis_results and analysis_results['ai_insights']:
-        with st.expander("AI Insights", expanded=True):
-            # Store the insights in session state for reuse in the global chat
-            if 'exploratory_data_analysis_response_markdown' not in st.session_state:
-                st.session_state['exploratory_data_analysis_response_markdown'] = analysis_results['ai_insights']
-            
-            st.markdown(analysis_results['ai_insights'])
+        st.subheader("AI Insights")
+        # Store the insights in session state for reuse in the global chat
+        if 'exploratory_data_analysis_response_markdown' not in st.session_state:
+            st.session_state['exploratory_data_analysis_response_markdown'] = analysis_results['ai_insights']
+        st.markdown(analysis_results['ai_insights'])

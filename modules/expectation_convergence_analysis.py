@@ -760,30 +760,14 @@ def dimension_{i+1}_model(X):
         return None
 
 def display_expectation_convergence_results(analysis_results, language_model='groq'):
-    """Display enterprise-grade expectation convergence analysis results.
-    
-    This function creates and displays interactive visualizations and insights
-    for the expectation convergence analysis results.
-    
-    Parameters
-    ----------
-    analysis_results : dict
-        Dictionary containing all convergence analysis results from compute_expectation_convergence_analysis
-    language_model : str, optional
-        Language model to use for AI insights ('groq' or 'openai')
+    """
+    Display enterprise-grade expectation convergence analysis results.
+    This function creates and displays interactive visualizations and insights for the expectation convergence analysis results.
     """
     if not analysis_results:
         st.error("No analysis results to display. Please run the analysis first.")
         return
-    
-    # Extract results
-    sample_sizes = analysis_results['sample_sizes']
-    mean_estimates = analysis_results['mean_estimates']
-    lower_bounds = analysis_results['lower_bounds']
-    upper_bounds = analysis_results['upper_bounds']
-    std_dev_estimates = analysis_results['std_dev_estimates']
-    Y_values = analysis_results['Y_values']
-    
+
     # Display convergence analysis results
     with st.container():
         st.markdown("## Expectation Convergence Analysis Results")
@@ -791,112 +775,147 @@ def display_expectation_convergence_results(analysis_results, language_model='gr
         This analysis examines how the mean and standard deviation estimates converge as the number of Monte Carlo samples increases.
         The convergence plots help determine if enough samples have been used for reliable estimates.
         """)
-        
-        # Combined Convergence Visualization
-        st.subheader("Mean Convergence Analysis")
-        
-        # Display the mean convergence figure
-        st.plotly_chart(analysis_results['mean_convergence_fig'], use_container_width=True)
-        
-        # Standard Deviation Convergence
-        st.subheader("Standard Deviation Convergence Analysis")
-        st.markdown("The standard deviation convergence shows how the estimate of output variability stabilizes with increasing sample size.")
-        
-        # Display the standard deviation convergence figure
-        st.plotly_chart(analysis_results['std_convergence_fig'], use_container_width=True)
-        
-        # Output Distribution Analysis
-        st.subheader("Output Distribution Analysis")
-        st.markdown("""
-        This analysis examines the probability distribution of the model output, including histogram, best-fit distribution, and normality assessment via Q-Q plot.
-        """)
-        
-        # Display the distribution figure
-        st.plotly_chart(analysis_results['distribution_fig'], use_container_width=True)
-        
-        # Display distribution fitting results if available
+
+        # Mean convergence visualization
+        if 'mean_convergence_fig' in analysis_results:
+            st.write("##### Mean Convergence Analysis")
+            st.plotly_chart(analysis_results['mean_convergence_fig'], use_container_width=True)
+
+        # Standard deviation convergence visualization
+        if 'std_convergence_fig' in analysis_results:
+            st.write("##### Standard Deviation Convergence Analysis")
+            st.plotly_chart(analysis_results['std_convergence_fig'], use_container_width=True)
+
+        # Output distribution visualization
+        if 'distribution_fig' in analysis_results:
+            st.write("##### Output Distribution Analysis")
+            st.plotly_chart(analysis_results['distribution_fig'], use_container_width=True)
+
+        # Distribution fitting results
         if 'fit_df' in analysis_results and not analysis_results['fit_df'].empty:
-            st.subheader("Best Distribution Fitting Result")
-            
-            # Create a display dataframe with just the key metrics
+            st.write("##### Distribution Fitting Results")
             try:
                 display_df = analysis_results['fit_df'][['Distribution', 'AIC', 'BIC', 'KS_Statistic', 'KS_pvalue']].copy()
-                
-                # Format the numeric columns
                 display_df['AIC'] = display_df['AIC'].map('{:.2f}'.format)
                 display_df['BIC'] = display_df['BIC'].map('{:.2f}'.format)
                 display_df['KS_Statistic'] = display_df['KS_Statistic'].map('{:.4f}'.format)
                 display_df['KS_pvalue'] = display_df['KS_pvalue'].map('{:.4f}'.format)
-                
-                # Rename columns for display
                 display_df = display_df.rename(columns={
                     'KS_Statistic': 'KS Statistic',
                     'KS_pvalue': 'KS p-value'
                 })
-                
-                # Sort by AIC (best fit first)
                 display_df = display_df.sort_values('AIC')
-                
-                # Only show top 1 distribution
                 display_df = display_df.head(1)
-                
-                # Display the dataframe
-                st.dataframe(display_df, hide_index=True)
-                
-                # Highlight the best distribution
+                if 'display_name' in analysis_results and analysis_results['display_name']:
+                    st.markdown(f"**Best Fit: {analysis_results['display_name']}**")
+                st.dataframe(display_df, hide_index=True, use_container_width=True)
                 if 'best_distribution_name' in analysis_results and analysis_results['best_distribution_name'] != "None":
-                    # Get the OpenTURNS distribution type if available
                     ot_dist_type = analysis_results.get('ot_distribution_type', analysis_results['best_distribution_name'])
-                    
-                    # Display the distribution name in OpenTURNS format
-                    st.success(f"**Best Fit Distribution:** {ot_dist_type}")
-                    
-                    # If we have parameters, display them
                     if 'best_params' in analysis_results and analysis_results['best_params']:
                         param_str = ", ".join([f"{p:.4f}" for p in analysis_results['best_params']])
-                        st.info(f"**Parameters:** [{param_str}]")
             except Exception as e:
-                # If there's an error formatting the dataframe, just display the original
                 st.warning(f"Error formatting distribution fitting results: {str(e)}")
                 st.dataframe(analysis_results['fit_df'], use_container_width=True)
         else:
             st.info("No distribution fitting results available. This may happen if none of the standard distributions provided a good fit to the data.")
-        
-        # Display distribution statistics
-        st.subheader("Distribution Statistics")
-        
-        # Create two columns
+
+        # Two columns for statistics tables
         col1, col2 = st.columns(2)
-        
-        # Display convergence summary in first column
-        with col1:
-            st.markdown("**Convergence Statistics**")
-            st.dataframe(analysis_results['summary_df'], hide_index=True)
-        
-        # Display distribution statistics in second column
-        with col2:
-            st.markdown("**Distribution Statistics**")
-            st.dataframe(analysis_results['dist_stats_df'], hide_index=True)
-        
-        # Display quantiles
-        st.subheader("Output Quantiles")
-        st.markdown("These quantiles provide key thresholds for the output distribution, useful for risk assessment and decision-making.")
-        st.dataframe(analysis_results['quantiles_df'], hide_index=True)
-        
-        # AI Insights
-        st.subheader("AI-Generated Insights")
-        
-        # Generate AI insights if not already in results
-        if 'ai_insights' not in analysis_results or not analysis_results['ai_insights']:
-            with st.spinner("Generating AI insights..."):
-                insights = generate_ai_insights(analysis_results, language_model)
-                analysis_results['ai_insights'] = insights
-        
-        # Display insights
-        if analysis_results['ai_insights']:
+        if 'summary_df' in analysis_results:
+            with col1:
+                st.write("##### Convergence Statistics")
+                st.dataframe(analysis_results['summary_df'], hide_index=True, use_container_width=True)
+        if 'dist_stats_df' in analysis_results:
+            with col2:
+                st.write("##### Distribution Statistics")
+                st.dataframe(analysis_results['dist_stats_df'], hide_index=True, use_container_width=True)
+
+        # Quantiles
+        if 'quantiles_df' in analysis_results:
+            st.write("##### Output Quantiles")
+            st.dataframe(analysis_results['quantiles_df'], hide_index=True, use_container_width=True)
+
+        # AI insights
+        if 'ai_insights' in analysis_results:
+            st.write("##### AI-Generated Insights")
             st.markdown(analysis_results['ai_insights'])
-        else:
-            st.warning("AI insights could not be generated. Please check your API connection.")
+
+        # Display any other available results
+        for key, value in analysis_results.items():
+            if key not in ['mean_convergence_fig', 'std_convergence_fig', 'distribution_fig', 
+                        'summary_df', 'dist_stats_df', 'quantiles_df', 'fit_df', 'ai_insights',
+                        'inputs_df', 'Y_values', 'sample_sizes', 'mean_estimates', 'lower_bounds', 
+                        'upper_bounds', 'std_dev_estimates', 'final_std_dev', 'convergence_sample_size', 
+                        'mean_Y', 'std_Y', 'conf_int', 'skewness', 'kurtosis', 'q1', 'q3', 'iqr', 
+                        'best_distribution', 'best_params', 'best_distribution_name', 'input_parameters',
+                        'ot_distribution_type', 'display_name']:
+                if hasattr(value, 'to_html'):
+                    st.write(f"##### {key.replace('_', ' ').title()}")
+                    st.dataframe(value, use_container_width=True)
+                elif isinstance(value, (str, int, float)):
+                    st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+
+def get_expectation_convergence_context_for_chat(exp_results):
+    """
+    Generate a formatted string containing expectation convergence analysis results for the global chat context.
+    
+    Parameters
+    ----------
+    exp_results : dict
+        Dictionary containing the results of the expectation convergence analysis
+        
+    Returns
+    -------
+    str
+        Formatted string with expectation convergence analysis results for chat context
+    """
+    context = ""
+    
+    # Main statistics
+    mean_Y = exp_results.get("mean_Y")
+    std_Y = exp_results.get("std_Y")
+    conf_int = exp_results.get("conf_int")
+    skewness = exp_results.get("skewness")
+    kurtosis = exp_results.get("kurtosis")
+    quantiles = exp_results.get("quantiles") if "quantiles" in exp_results else None
+    best_distribution = exp_results.get("best_distribution_name")
+    best_params = exp_results.get("best_params")
+    prob_exceedance = exp_results.get("prob_exceedance") if "prob_exceedance" in exp_results else None
+    ai_insights = exp_results.get("ai_insights")
+    
+    context += "\n\n### Expectation Convergence Analysis Results\n"
+    if mean_Y is not None and std_Y is not None:
+        context += f"- **Estimated Mean Output:** {mean_Y:.4f}\n"
+        context += f"- **Estimated Std Dev:** {std_Y:.4f}\n"
+    if conf_int is not None:
+        context += f"- **95% Confidence Interval:** [{conf_int[0]:.4f}, {conf_int[1]:.4f}]\n"
+    if skewness is not None:
+        context += f"- **Skewness:** {skewness:.4f}\n"
+    if kurtosis is not None:
+        context += f"- **Kurtosis:** {kurtosis:.4f}\n"
+    if quantiles is not None:
+        context += "- **Quantiles:**\n"
+        for q, v in quantiles.items():
+            context += f"    - {q}: {v:.4f}\n"
+    if best_distribution is not None:
+        context += f"- **Best Fit Distribution:** {best_distribution}\n"
+    if best_params is not None:
+        context += f"- **Best Fit Parameters:** {best_params}\n"
+    if prob_exceedance is not None:
+        context += f"- **Probability of Exceeding Threshold:** {prob_exceedance}\n"
+    if ai_insights is not None:
+        context += f"\n#### AI Insights\n{ai_insights}\n"
+    
+    # Add output distribution table if available
+    if "fit_df" in exp_results and exp_results["fit_df"] is not None:
+        fit_df = exp_results["fit_df"]
+        try:
+            context += "\n**Distribution Fit Results:**\n"
+            context += fit_df.to_markdown(index=False)
+        except Exception:
+            pass
+    
+    return context
 
 def generate_ai_insights(analysis_results, language_model='groq'):
     """Generate AI-powered insights for expectation convergence analysis.

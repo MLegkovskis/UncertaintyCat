@@ -155,7 +155,7 @@ def compute_fast_sensitivity_analysis(model, problem, size=400, model_code_str=N
     # Generate LLM insights and explanation if requested
     llm_insights = None
     explanation = None
-    if language_model and model_code_str:
+    if model_code_str:
         # Prepare the prompt for insights
         insights_prompt = f"""
         I've performed a FAST sensitivity analysis on the following model:
@@ -200,26 +200,25 @@ def compute_fast_sensitivity_analysis(model, problem, size=400, model_code_str=N
         - D_i is the portion of variance from the i-th input
         - D_{-i} is the variance due to all inputs except the i-th
         
-        Based on this information, please explain in simple terms:
-        1. What the FAST method is and how it works conceptually
-        2. What first order indices represent and how to interpret them
-        3. What total order indices represent and how they differ from first order
-        4. What interaction effects mean in this context
-        5. The advantages and limitations of the FAST method
-        
-        Format your response in markdown with appropriate headers and bullet points.
-        Keep it educational but accessible to non-experts.
+        Format your response in markdown with appropriate headers and bullet points. Keep it educational but accessible to non-experts.
         
         {RETURN_INSTRUCTION}
         """
         
-        # Call the LLM for insights
-        llm_insights = call_groq_api(insights_prompt, model_name=language_model)
-        
-        # Call the LLM for explanation
-        explanation = call_groq_api(explanation_prompt, model_name=language_model)
+        # Always use the default model if language_model is None or 'groq'
+        model_name = language_model
+        if not language_model or language_model == 'groq':
+            model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
+        try:
+            llm_insights = call_groq_api(insights_prompt, model_name=model_name)
+        except Exception as e:
+            llm_insights = f"Error generating AI insights: {str(e)}"
+        try:
+            explanation = call_groq_api(explanation_prompt, model_name=model_name)
+        except Exception as e:
+            explanation = f"Error generating explanation: {str(e)}"
     else:
-        # Provide a minimal explanation if no LLM is available
+        # Provide a minimal explanation if no model code is available
         explanation = """
         ### FAST Sensitivity Analysis
         
@@ -250,7 +249,7 @@ def display_fast_results(fast_results, language_model=None, model_code_str=None)
         String representation of the model code, by default None
     """
     # Results Section
-    with st.expander("Results", expanded=True):
+    with st.container():
         # Display the explanation
         st.markdown(fast_results['explanation'])
         
@@ -318,13 +317,10 @@ def display_fast_results(fast_results, language_model=None, model_code_str=None)
             """)
     
     # AI Insights Section
-    if fast_results['llm_insights'] and language_model:
-        with st.expander("AI Insights", expanded=True):
-            # Store the insights in session state for reuse in the global chat
-            if 'fast_analysis_response_markdown' not in st.session_state:
-                st.session_state['fast_analysis_response_markdown'] = fast_results['llm_insights']
-            
-            st.markdown(fast_results['llm_insights'])
+    # AI-Generated Expert Analysis
+    if fast_results['llm_insights']:
+        st.subheader("AI-Generated Expert Analysis")
+        st.markdown(fast_results['llm_insights'])
 
 def fast_sensitivity_analysis(size=400, model=None, problem=None, model_code_str=None, language_model=None, display_results=True):
     """Perform enterprise-grade FAST sensitivity analysis.
@@ -374,6 +370,31 @@ def fast_sensitivity_analysis(size=400, model=None, problem=None, model_code_str
         if display_results:
             st.error(f"Error in FAST sensitivity analysis: {str(e)}")
         raise e
+
+def get_fast_context_for_chat(fast_results):
+    """
+    Generate a formatted string containing FAST analysis results for the global chat context.
+    
+    Parameters
+    ----------
+    fast_results : dict
+        Dictionary containing the results of the FAST analysis
+        
+    Returns
+    -------
+    str
+        Formatted string with FAST analysis results for chat context
+    """
+    context = ""
+    
+    # Extract key information from the results
+    fast_indices_df = fast_results.get("indices_df")
+    
+    if fast_indices_df is not None:
+        context += "\n\n### FAST Sensitivity Analysis Results\n"
+        context += fast_indices_df.to_markdown(index=False)
+    
+    return context
 
 def fast_analysis(model, problem, size=400, model_code_str=None, language_model=None, display_results=True):
     """

@@ -610,20 +610,31 @@ Format your response with clear section headings and bullet points where appropr
 Focus on actionable insights that would be valuable for decision-makers.
 """
                 
-                # Call the AI API with retry logic
-                try:
-                    ai_insights = call_groq_api(prompt, model_name=language_model)
-                    results['ai_insights'] = ai_insights
-                except Exception as e:
-                    results['ai_insights'] = f"Error generating AI insights: {str(e)}"
+                # Call the AI API with retry logic and always use 'llm_insights' as the key for consistency
+                max_retries = 3
+                retry_count = 0
+                ai_insights = None
+                while ai_insights is None and retry_count < max_retries:
+                    try:
+                        ai_insights = call_groq_api(prompt, model_name=language_model)
+                        results['llm_insights'] = ai_insights
+                    except Exception as e:
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            ai_insights = f"""
+                            ## Error Generating Insights
+                            There was an error connecting to the language model API: {str(e)}
+                            Please try again later or check your API key/model configuration.
+                            """
+                            results['llm_insights'] = ai_insights
             
             # Display results if requested
             if display_results:
                 display_correlation_results(results, language_model)
             
             # Clean up results to remove unnecessary data
-            # Remove raw data and technical details that shouldn't be displayed in the report
-            keys_to_remove = ['sample_X', 'sample_Y', 'all_correlation_results']
+            # Only remove large raw data, not summary keys needed for display
+            keys_to_remove = ['sample_X', 'sample_Y']
             for key in keys_to_remove:
                 if key in results:
                     del results[key]

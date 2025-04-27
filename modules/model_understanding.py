@@ -228,7 +228,7 @@ def display_model_understanding(analysis_results, language_model='groq'):
         st.session_state['model_understanding_response_markdown'] = explanation
     
     # Display the AI-generated explanation
-    with st.expander("Model Explanation", expanded=True):
+    with st.container():
         st.markdown(explanation)
         
         # Display input distributions
