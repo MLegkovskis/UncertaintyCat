@@ -44,7 +44,7 @@ def compute_ml_analysis(model, problem, size=1000, model_code_str=None, language
     Returns
     -------
     dict
-        Dictionary containing ML analysis results
+        Dictionary containing Shapley Analysis results
     """
     # Ensure problem is an OpenTURNS distribution
     if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
@@ -132,7 +132,7 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
     Parameters
     ----------
     analysis_results : dict
-        Dictionary containing ML analysis results
+        Dictionary containing Shapley Analysis results
     model_code_str : str, optional
         String representation of the model code for documentation, by default None
     language_model : str, optional
@@ -199,7 +199,7 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
             st.markdown(analysis_results["ai_insights"])
     
     except Exception as e:
-        st.error(f"Error in ML analysis display: {str(e)}")
+        st.error(f"Error in Shapley Analysis display: {str(e)}")
         st.code(traceback.format_exc())
 
 def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='groq', display_results=True):
@@ -227,7 +227,7 @@ def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='
     Returns
     -------
     dict
-        Dictionary containing ML analysis results
+        Dictionary containing Shapley Analysis results
     """
     try:
         # Use a context manager to conditionally display results
@@ -245,24 +245,24 @@ def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='
     
     except Exception as e:
         if display_results:
-            st.error(f"Error in ML analysis: {str(e)}")
+            st.error(f"Error in Shapley Analysis: {str(e)}")
             st.code(traceback.format_exc(), language="python")
         return None
 
 # Define a nullcontext class to use when display_results is False
 def get_ml_context_for_chat(ml_results):
     """
-    Generate a formatted string containing ML analysis results for the global chat context.
+    Generate a formatted string containing Shapley Analysis results for the global chat context.
     
     Parameters
     ----------
     ml_results : dict
-        Dictionary containing the results of the ML analysis
+        Dictionary containing the results of the Shapley Analysis
         
     Returns
     -------
     str
-        Formatted string with ML analysis results for chat context
+        Formatted string with Shapley Analysis results for chat context
     """
     context = ""
     
@@ -274,7 +274,7 @@ def get_ml_context_for_chat(ml_results):
         shap_summary_df = ml_results["feature_importance"]
     
     if shap_summary_df is not None:
-        context += "\n\n### ML Analysis: SHAP Feature Importance\n"
+        context += "\n\n### Shapley Analysis: SHAP Feature Importance\n"
         context += shap_summary_df.to_markdown(index=False)
     
     # Model metrics

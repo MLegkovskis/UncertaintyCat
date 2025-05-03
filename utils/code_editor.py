@@ -16,7 +16,8 @@ def render_code_editor(current_code):
             st.subheader("Model Code Editor")
             st.caption("Define your model using Python 3.12. You have access to numpy, scipy, and openturns libraries. Your code must define 'model' (an OpenTURNS Function) and 'problem' (an OpenTURNS Distribution).")
             code_area_value = st.text_area(
-                label="",
+                label=".",  # Non-empty label for accessibility
+                label_visibility="collapsed",  # Hide label from UI
                 value=current_code,
                 height=300
             )

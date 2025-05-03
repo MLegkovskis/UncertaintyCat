@@ -90,7 +90,7 @@ def compute_exploratory_data_analysis(data, N, model, problem, model_code_str):
     for i in range(len(display_corr.columns)):
         for j in range(len(display_corr.index)):
             if i == j:
-                display_corr.iloc[i, j] = ""  # Set diagonal to empty string for no text
+                display_corr.iloc[i, j] = np.nan  # Set diagonal to np.nan for no text
             else:
                 display_corr.iloc[i, j] = round(display_corr.iloc[i, j], 3)
     

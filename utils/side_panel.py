@@ -66,9 +66,9 @@ def sidebar_global_context_generator(prompt, current_code, selected_language_mod
                 context += "\n\n### HSIC Sensitivity Analysis Results\n"
                 context += hsic_df.to_markdown(index=False)
 
-        # Add ML Analysis results summary if available and relevant
-        if "ML Analysis" in st.session_state.all_results:
-            ml_results = st.session_state.all_results["ML Analysis"]
+        # Add Shapley Analysis results summary if available and relevant
+        if "Shapley Analysis" in st.session_state.all_results:
+            ml_results = st.session_state.all_results["Shapley Analysis"]
             context += get_ml_context_for_chat(ml_results)
 
         # Add Expectation Convergence Analysis results summary if available and relevant

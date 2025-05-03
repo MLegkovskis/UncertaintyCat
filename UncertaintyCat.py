@@ -189,9 +189,9 @@ def run_all_analyses(model, problem, current_code, selected_language_model):
         )
         pause_between_analyses()
 
-        # ML Analysis
-        update_progress("ML Analysis")
-        st.session_state.all_results["ML Analysis"] = ml_analysis(
+        # Shapley Analysis
+        update_progress("Shapley Analysis")
+        st.session_state.all_results["Shapley Analysis"] = ml_analysis(
             model, problem, size=1000, model_code_str=current_code,
             language_model=selected_language_model, display_results=False
         )
@@ -344,7 +344,7 @@ if "📊 UQ Dashboard" in selected_page:
                                         display_hsic_results(results)
 
                                     
-                                    elif module_name == "ML Analysis":
+                                    elif module_name == "Shapley Analysis":
                                         from modules.ml_analysis import display_ml_results
                                         display_ml_results(results)
                         

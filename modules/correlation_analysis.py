@@ -445,7 +445,7 @@ def display_single_output_results(corr_df, output_name, viz_results):
     # Check for consistency across methods
     consistency_df = corr_df.copy()
     # Get the sign of each correlation
-    sign_df = consistency_df.applymap(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    sign_df = consistency_df.apply(np.sign)  # Use np.sign for elementwise sign calculation
     # Check if all methods agree on the sign for each variable
     consistent_signs = sign_df.apply(lambda row: row.nunique() == 1, axis=1)
     

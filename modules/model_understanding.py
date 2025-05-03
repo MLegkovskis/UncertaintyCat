@@ -80,14 +80,16 @@ def compute_model_understanding(model, problem, model_code_str, is_pce_used=Fals
             'params': dist_params
         })
         
-        inputs_df = pd.concat([inputs_df, pd.DataFrame({
+        new_row = pd.DataFrame({
             "Variable": [input_names[i]],
             "Distribution": [dist_type],
             "Parameters": [dist_params],
             "Bounds": [bounds],
             "Mean": [mean],
             "Std": [std]
-        })], ignore_index=True)
+        })
+        if not new_row.empty and not new_row.isna().all(axis=None):
+            inputs_df = pd.concat([inputs_df, new_row], ignore_index=True)
     
     # Format the model code for inclusion in the prompt
     model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
