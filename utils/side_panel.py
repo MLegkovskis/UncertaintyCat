@@ -87,9 +87,9 @@ def sidebar_global_context_generator(prompt, current_code, selected_language_mod
     return context
 
 def render_sidebar_chat(current_code, selected_language_model):
-    st.sidebar.header("Global Chat")
+    st.sidebar.header("Chat about Results")
     if st.session_state.analyses_ran and 'all_results' in st.session_state:
-        st.sidebar.info("Ask questions about any part of the analysis report here.")
+        st.sidebar.info("Ask questions about your analysis results here.")
         if "sidebar_global_chat_messages" not in st.session_state:
             st.session_state.sidebar_global_chat_messages = []
         # Display existing chat messages in the sidebar
@@ -97,7 +97,7 @@ def render_sidebar_chat(current_code, selected_language_model):
             with st.sidebar.chat_message(message["role"]):
                 st.sidebar.write(message["content"])
         # Get user input in the sidebar
-        sidebar_prompt = st.sidebar.chat_input("Ask a question about any analysis...", key="sidebar_chat_input")
+        sidebar_prompt = st.sidebar.chat_input("Ask about your analysis results...", key="sidebar_chat_input")
         if sidebar_prompt:
             st.session_state.sidebar_global_chat_messages.append({"role": "user", "content": sidebar_prompt})
             context = sidebar_global_context_generator(sidebar_prompt, current_code, selected_language_model)
@@ -125,4 +125,4 @@ def render_sidebar_chat(current_code, selected_language_model):
             st.session_state.sidebar_global_chat_messages.append({"role": "assistant", "content": response_text})
             st.rerun()
     else:
-        st.sidebar.warning("Chat will be available after you run the Main Analysis.")
+        st.sidebar.warning("Chat will be available after you run UQ.")

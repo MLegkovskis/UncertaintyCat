@@ -64,7 +64,7 @@ def streamlit_app_start():
 
     # Create pages with icons
     pages = {
-        "📊 Main Analysis": "Comprehensive uncertainty quantification and sensitivity analysis",
+        "📊 UQ Dashboard": "Comprehensive uncertainty quantification and sensitivity analysis",
         "📉 Dimensionality Reduction": "Reduce model complexity by identifying non-influential variables",
         "📈 Distribution Fitting": "Fit probability distributions to your data for UQ analysis"
     }

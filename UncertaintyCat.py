@@ -195,7 +195,6 @@ def run_all_analyses(model, problem, current_code, selected_language_model):
             model, problem, size=1000, model_code_str=current_code,
             language_model=selected_language_model, display_results=False
         )
-        
         # Set overall flag that all analyses have been run
         st.session_state.analyses_ran = True
         
@@ -249,8 +248,8 @@ current_code = render_code_editor(current_code)
 ###############################################################################
 # 7) PAGE-SPECIFIC CONTENT
 ###############################################################################
-if "📊 Main Analysis" in selected_page:
-    st.subheader("Uncertainty Analysis Dashboard")
+if "📊 UQ Dashboard" in selected_page:
+    st.subheader("UQ Dashboard")
     
     # Check if we have a model
     if not current_code:
@@ -282,10 +281,10 @@ if "📊 Main Analysis" in selected_page:
                         st.session_state.simulation_data = data
                     
                     # Add a "Run All Analyses" button
-                    st.subheader("Run All Analyses")
-                    st.write("Click the button below to run all analyses sequentially. This may take some time depending on the complexity of your model.")
+                    st.subheader("Run UQ")
+                    st.write("Click the button below to run Uncertainty Quantification (UQ) analyses. This may take some time depending on the complexity of your model.")
                     
-                    if st.button("🚀 Run All Analyses", key="run_all_analyses", help="This will run all analyses sequentially and generate a comprehensive report."):
+                    if st.button("🚀 Run UQ", key="run_all_analyses", help="Runs all UQ analyses and generates a comprehensive report."):
                         run_all_analyses(model, problem, current_code, selected_language_model)
                     
                     # Display the comprehensive report if analyses have been run
@@ -351,7 +350,7 @@ if "📊 Main Analysis" in selected_page:
                         
                         # No need for the chat interface in the main page as it's now in the sidebar
                     else:
-                        st.info("Please run all analyses first by clicking the 'Run All Analyses' button.")
+                        st.info("Please run UQ first by clicking the '🚀 Run UQ' button.")
                         
             except Exception as e:
                 st.error(f"Error evaluating model code: {e}")
