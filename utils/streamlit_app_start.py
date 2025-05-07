@@ -64,10 +64,12 @@ def streamlit_app_start():
 
     # Create pages with icons
     pages = {
-        "📊 UQ Dashboard": "Comprehensive uncertainty quantification and sensitivity analysis",
+        "📊 UQ Dashboard":           "Comprehensive uncertainty quantification and sensitivity analysis",
         "📉 Dimensionality Reduction": "Reduce model complexity by identifying non-influential variables",
-        "📈 Distribution Fitting": "Fit probability distributions to your data for UQ analysis"
+        "📐 PCE Least-Squares":      "Generate a PCE surrogate via least-squares and inspect Sobol indices",
+        "📈 Distribution Fitting":   "Fit probability distributions to your data for UQ analysis"
     }
+
     selected_page = st.sidebar.radio("", list(pages.keys()))
     st.sidebar.caption(pages[selected_page.strip()])
 

@@ -28,6 +28,7 @@ from modules.morris_analysis import morris_analysis, dimensionality_reduction_pa
 from modules.fast_analysis import fast_analysis, fast_sensitivity_analysis, display_fast_results
 from modules.ancova_analysis import ancova_analysis, display_ancova_results
 from modules.distribution_fitting import distribution_fitting_page, run_distribution_fitting_analysis
+from modules.pce_least_squares import pce_least_squares_analysis, display_pce_results
 
 # Import utils
 from utils.core_utils import (
@@ -379,3 +380,52 @@ elif "📉 Dimensionality Reduction" in selected_page:
 elif "📈 Distribution Fitting" in selected_page:
     # Use the distribution fitting page function
     distribution_fitting_page()
+
+elif "📐 PCE Least-Squares" in selected_page:
+    # ------------------------------------------------------------------ #
+    #  PCE surrogate-model generation & inspection                       #
+    # ------------------------------------------------------------------ #
+    is_safe, safety_message = check_code_safety(current_code)
+
+    if not is_safe:
+        st.error(f"Security Error: {safety_message}")
+    else:
+        try:
+            # Execute the user-supplied model code
+            eval_globals = {}
+            exec(current_code, eval_globals)
+            model   = eval_globals.get("model")
+            problem = eval_globals.get("problem")
+
+            if not model or not problem:
+                st.error("Model code must define 'model' and 'problem' variables.")
+            else:
+                # UI parameters ------------------------------------------------
+                st.subheader("PCE configuration")
+                N_train           = st.number_input("Training sample size",    200,  10000, 1000, 200)
+                N_validate        = st.number_input("Validation sample size",  200,  10000, 1000, 200)
+                basis_size_factor = st.slider("Basis size factor", 0.05, 1.0, 0.5, 0.05)
+                use_model_sel     = st.checkbox("Use LARS model-selection", False)
+
+
+                if st.button("🚀 Build PCE surrogate"):
+                    results = pce_least_squares_analysis(
+                        model,
+                        problem,
+                        current_code,
+                        N_train           = N_train,
+                        N_validate        = N_validate,
+                        basis_size_factor = basis_size_factor,
+                        use_model_selection = use_model_sel,
+                        language_model    = selected_language_model,
+                        display_results   = False,          # <── change here
+                    )
+                    st.session_state.all_results["PCE Least-Squares"] = results
+
+                # Show previously-computed results (only one set of charts)
+                if "PCE Least-Squares" in st.session_state.all_results:
+                    st.markdown("---")
+                    display_pce_results(st.session_state.all_results["PCE Least-Squares"])
+
+        except Exception as e:
+            st.error(f"Error evaluating model code: {e}")
