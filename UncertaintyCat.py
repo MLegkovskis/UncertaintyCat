@@ -249,7 +249,6 @@ current_code = render_code_editor(current_code)
 # 7) PAGE-SPECIFIC CONTENT
 ###############################################################################
 if "📊 UQ Dashboard" in selected_page:
-    st.subheader("UQ Dashboard")
     
     # Check if we have a model
     if not current_code:
@@ -280,10 +279,7 @@ if "📊 UQ Dashboard" in selected_page:
                         data = monte_carlo_simulation(model, problem, N)
                         st.session_state.simulation_data = data
                     
-                    # Add a "Run All Analyses" button
-                    st.subheader("Run UQ")
-                    st.write("Click the button below to run Uncertainty Quantification (UQ) analyses. This may take some time depending on the complexity of your model.")
-                    
+
                     if st.button("🚀 Run UQ", key="run_all_analyses", help="Runs all UQ analyses and generates a comprehensive report."):
                         run_all_analyses(model, problem, current_code, selected_language_model)
                     

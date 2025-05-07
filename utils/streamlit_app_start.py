@@ -75,7 +75,6 @@ def streamlit_app_start():
     st.sidebar.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
     # Model select/upload
-    st.sidebar.header("Model Configuration")
     dropdown_items = ["(Select or define your own model)"] + get_model_options()
     current_code = ""
     simulation_results = None
@@ -97,7 +96,6 @@ def streamlit_app_start():
             current_code = file_contents
 
     # LLM model selection in sidebar
-    st.sidebar.header("AI Configuration")
     groq_model_options = [
         "meta-llama/llama-4-scout-17b-16e-instruct",
         "llama-3.3-70b-versatile",
