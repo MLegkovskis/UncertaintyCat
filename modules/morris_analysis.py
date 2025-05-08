@@ -123,73 +123,89 @@ def plot_morris_results_plotly(results):
     })
     
     # Sort by mean absolute effects for the bar chart (descending order)
-    df_sorted = df.sort_values('Mean Absolute Effects', ascending=True)  # Reverse order for horizontal bar chart
-    
+    df_sorted = df.sort_values('Mean Absolute Effects', ascending=False)  # Most influential at top
+
     # Create bar plot for mean absolute effects using Plotly
     fig1 = px.bar(
         df_sorted, 
         x='Mean Absolute Effects', 
         y='Variable', 
         orientation='h',
-        labels={'Mean Absolute Effects': 'Mean Absolute Effects', 'Variable': 'Input Variables'},
-        title='Morris Mean Absolute Elementary Effects',
+        labels={'Mean Absolute Effects': 'Mean Absolute Effects (μ*)', 'Variable': 'Input Variable'},
+        title='Morris Mean Absolute Elementary Effects (Most to Least Influential)',
         color='Mean Absolute Effects',
-        color_continuous_scale='Blues'
+        color_continuous_scale='Blues',
+        hover_data={
+            'Mean Absolute Effects': ':.4f',
+            'Variable': True
+        }
     )
-    
+
     fig1.update_layout(
-        font=dict(size=14),
+        font=dict(size=15),
         height=500,
-        margin=dict(l=20, r=20, t=50, b=20),
+        margin=dict(l=60, r=20, t=60, b=40),
         plot_bgcolor='white',
-        xaxis=dict(showgrid=True, gridcolor='lightgray'),
-        yaxis=dict(showgrid=True, gridcolor='lightgray', autorange="reversed")  # Reverse y-axis to put highest at top
+        xaxis=dict(showgrid=True, gridcolor='lightgray', title='Mean Absolute Effects (μ*)'),
+        yaxis=dict(showgrid=True, gridcolor='lightgray', autorange="reversed", title='Input Variable'),
+        coloraxis_colorbar=dict(title='Influence (μ*)')
     )
-    
-    # Create scatter plot (μ* vs σ) using Plotly - without text labels on points
+
+    fig1.update_traces(
+        hovertemplate='<b>%{y}</b><br>Mean Abs Effect: %{x:.4f}<extra></extra>'
+    )
+
+    # Sort for μ* vs σ plot as well (most to least influential)
+    df_scatter = df.sort_values('Mean Absolute Effects', ascending=False).reset_index(drop=True)
+
+    # Create scatter plot (μ* vs σ) using Plotly - most influential left to right
     fig2 = px.scatter(
-        df, 
-        x='Mean Absolute Effects', 
+        df_scatter,
+        x='Mean Absolute Effects',
         y='Standard Deviation',
         labels={
-            'Mean Absolute Effects': 'Mean Absolute Effects (μ*)', 
+            'Mean Absolute Effects': 'Mean Absolute Effects (μ*)',
             'Standard Deviation': 'Standard Deviation of Effects (σ)'
         },
-        title='Morris Analysis: μ* vs σ',
+        title='Morris Analysis: μ* vs σ (Most to Least Influential)',
         color='Mean Absolute Effects',
-        size=[30] * len(df),  # Slightly larger point size
-        hover_name='Variable',  # Use variable name in hover
-        color_continuous_scale='Viridis'
+        size=[30] * len(df_scatter),
+        hover_name='Variable',
+        color_continuous_scale='Viridis',
+        text='Variable'
     )
-    
+
     # Add reference line
-    max_val = max(df['Mean Absolute Effects'].max(), df['Standard Deviation'].max()) * 1.1
+    max_val = max(df_scatter['Mean Absolute Effects'].max(), df_scatter['Standard Deviation'].max()) * 1.1
     fig2.add_trace(
         go.Scatter(
-            x=[0, max_val], 
-            y=[0, max_val], 
-            mode='lines', 
+            x=[0, max_val],
+            y=[0, max_val],
+            mode='lines',
             line=dict(color='red', dash='dash', width=1),
             name='μ* = σ',
             hoverinfo='none'
         )
     )
-    
-    # Improve hover information
+
+    # Improve hover information and show variable name
     fig2.update_traces(
-        hovertemplate='<b>%{hovertext}</b><br>Mean Abs Effect: %{x:.4f}<br>Std Dev: %{y:.4f}<extra></extra>'
+        hovertemplate='<b>%{hovertext}</b><br>μ*: %{x:.4f}<br>σ: %{y:.4f}<extra></extra>',
+        marker=dict(line=dict(width=1, color='DarkSlateGrey')),
+        textposition='top center'
     )
-    
+
     fig2.update_layout(
-        font=dict(size=14),
+        font=dict(size=15),
         height=600,
-        width=700,
-        margin=dict(l=20, r=20, t=50, b=20),
+        width=800,
+        margin=dict(l=60, r=20, t=60, b=40),
         plot_bgcolor='white',
-        xaxis=dict(showgrid=True, gridcolor='lightgray', zeroline=True, zerolinecolor='lightgray'),
-        yaxis=dict(showgrid=True, gridcolor='lightgray', zeroline=True, zerolinecolor='lightgray')
+        xaxis=dict(showgrid=True, gridcolor='lightgray', zeroline=True, zerolinecolor='lightgray', title='Mean Absolute Effects (μ*)'),
+        yaxis=dict(showgrid=True, gridcolor='lightgray', zeroline=True, zerolinecolor='lightgray', title='Std Dev of Effects (σ)'),
+        coloraxis_colorbar=dict(title='Influence (μ*)')
     )
-    
+
     return fig1, fig2
 
 def identify_non_influential_variables(results, threshold_percentage=5):
@@ -359,51 +375,55 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                     
                     # Create a horizontal bar chart with Plotly for the non-influential variables
                     fig_non_infl = px.bar(
-                        enhanced_df.sort_values('Effect Value', ascending=True), 
+                        enhanced_df.sort_values('Effect Value', ascending=False),  # Most influential non-influential at top
                         x='Effect Value',
                         y='Variable',
                         orientation='h',
                         text='Relative Effect (%)',
                         color='Effect Value',
                         color_continuous_scale='Blues',
-                        labels={'Effect Value': 'Morris Effect', 'Variable': 'Input Variables'},
-                        title='Relative Influence of Non-influential Variables'
+                        labels={'Effect Value': 'Morris Effect (μ*)', 'Variable': 'Input Variable'},
+                        title='Relative Influence of Non-influential Variables (Most to Least)'
                     )
                     
                     # Improve the layout
                     fig_non_infl.update_traces(
                         texttemplate='%{text}%',
                         textposition='outside',
-                        hovertemplate='<b>%{y}</b><br>Effect: %{x:.6f}<br>Relative: %{text}%<extra></extra>'
+                        hovertemplate='<b>%{y}</b><br>Effect (μ*): %{x:.6f}<br>Relative: %{text}%<extra></extra>'
                     )
                     
                     fig_non_infl.update_layout(
-                        font=dict(size=12),
+                        font=dict(size=13),
                         height=max(300, len(non_influential) * 50),  # Dynamic height based on number of variables
-                        margin=dict(l=20, r=20, t=50, b=20),
+                        margin=dict(l=60, r=20, t=60, b=40),
                         plot_bgcolor='white',
-                        xaxis=dict(showgrid=True, gridcolor='lightgray'),
-                        yaxis=dict(showgrid=True, gridcolor='lightgray', autorange="reversed")
+                        xaxis=dict(showgrid=True, gridcolor='lightgray', title='Morris Effect (μ*)'),
+                        yaxis=dict(showgrid=True, gridcolor='lightgray', autorange="reversed", title='Input Variable'),
+                        coloraxis_colorbar=dict(title='Influence (μ*)')
                     )
                     
-                    # Display the chart
+                    # Display the chart with an improved caption
                     st.plotly_chart(fig_non_infl, use_container_width=True)
-                    
+                    st.caption(
+                        """
+                        **Interpretation:** This plot shows the absolute Morris effect (μ*) for each non-influential variable (those below the threshold). 
+                        The higher the bar, the more influence the variable has among the non-influential group, but all are considered candidates for fixing at nominal values to reduce model dimensionality. 
+                        The percentage labels show the effect relative to the most influential variable overall.
+                        """
+                    )
+
                     # Add contextual information
-                    with st.expander("Understanding Morris Effects"):
+                    with st.expander("What does this plot mean?"):
                         st.write("""
-                        ### Interpreting Morris Effects
+                        ### Visual Comparison of Non-influential Variables
                         
-                        **What are Morris Effects?**  
-                        Morris effects measure how much each input variable influences the model output. 
-                        
-                        **How to interpret the values:**
-                        - **Effect Value**: The absolute mean elementary effect, which quantifies the average impact of changing the variable.
+                        This chart helps you quickly identify which variables have the least impact on your model output, according to the Morris method. 
+                        These variables are prime candidates for fixing to nominal values, simplifying your model without significant loss of accuracy.
+                        - **Effect Value (μ*)**: The average influence of the variable on the output.
                         - **Relative Effect (%)**: The effect as a percentage of the maximum effect observed across all variables.
                         
-                        **Decision making:**
-                        - Variables with very low effects (below the threshold) can often be fixed at nominal values without significantly affecting model outputs.
-                        - This simplifies the model by reducing its dimensionality, making it easier to understand and computationally more efficient.
+                        **Tip:** Focus your attention and computational resources on variables with higher μ* values in the main analysis!
                         """)
                     
                     # Get and display recommended fixed values

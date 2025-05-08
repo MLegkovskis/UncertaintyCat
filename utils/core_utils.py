@@ -13,6 +13,30 @@ import traceback
 import re
 from groq import Groq
 
+# ================ Output Suppression Utility ================
+import sys
+import contextlib
+
+@contextlib.contextmanager
+def suppress_output():
+    """
+    Context manager to suppress stdout and stderr (useful for noisy library warnings).
+    Usage:
+        with suppress_output():
+            # code that prints unwanted warnings
+            ...
+    """
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        try:
+            sys.stdout = devnull
+            sys.stderr = devnull
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
 # ================ API Utilities ================
 
 def call_groq_api(prompt, model_name="meta-llama/llama-4-scout-17b-16e-instruct"):
