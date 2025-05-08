@@ -66,7 +66,7 @@ def streamlit_app_start():
     pages = {
         "📊 UQ Dashboard":           "Comprehensive uncertainty quantification and sensitivity analysis",
         "📉 Dimensionality Reduction": "Reduce model complexity by identifying non-influential variables",
-        "📐 PCE Least-Squares":      "Generate a PCE surrogate via least-squares and inspect Sobol indices",
+        # "📐 PCE Least-Squares":      "Generate a PCE surrogate via least-squares and inspect Sobol indices",
         "📈 Distribution Fitting":   "Fit probability distributions to your data for UQ analysis"
     }
 
