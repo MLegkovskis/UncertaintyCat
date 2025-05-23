@@ -750,17 +750,18 @@ def distribution_fitting_page():
                             </div>
                             """, unsafe_allow_html=True)
                             st.session_state.shown_table_explanation = True
-                        
+
                         stat_df = pd.DataFrame([
                             {
-                                "Distribution": f"Distribution{i+1}",
+                                "Distribution": get_distribution_code_string(fit_results["distributions"][i]),
                                 "BIC": round(stats.get("BIC", float('inf')), 3),
                                 "AIC": round(stats.get("AIC", float('inf')), 3),
                                 "KS p-value": round(stats.get("KS p-value", 0), 3)
                             }
-                            for i, (name, stats) in enumerate(zip(fit_results["names"], fit_results["statistics"]))
+                            for i, stats in enumerate(fit_results["statistics"])
                         ])
-                        
+
+
                         # Color code the table
                         def highlight_best(s):
                             if s.name == 'BIC' or s.name == 'AIC':
@@ -802,8 +803,8 @@ def distribution_fitting_page():
                         default_selection = 0
                         selected_idx = st.selectbox(
                             f"Select distribution for {var}",
-                            range(len(fit_results["names"])),
-                            format_func=lambda i: f"Distribution{i+1}",
+                            range(len(fit_results["distributions"])),
+                            format_func=lambda i: get_distribution_code_string(fit_results["distributions"][i]),
                             index=default_selection
                         )
                         
