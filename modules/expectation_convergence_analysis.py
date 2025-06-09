@@ -2,1066 +2,640 @@ import numpy as np
 import pandas as pd
 import openturns as ot
 import streamlit as st
-from utils.constants import RETURN_INSTRUCTION
-from utils.core_utils import call_groq_api, create_chat_interface
-from utils.model_utils import get_ot_model
+from utils.constants import RETURN_INSTRUCTION # Assuming this is correctly defined
+from utils.core_utils import call_groq_api # Assuming this is correctly defined
+from utils.model_utils import get_ot_model # Assuming this is correctly defined
 from scipy import stats
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-import uuid
-import json
-import os
-from groq import Groq
 
-def get_distribution_code_string(dist):
+# --- Helper Functions ---
+def get_distribution_code_string(dist: ot.Distribution) -> str:
     """
-    Generate a string representing the distribution code.
-    
-    Parameters
-    ----------
-    dist : ot.Distribution
-        OpenTURNS distribution
-        
-    Returns
-    -------
-    str
-        Distribution code string
+    Generate a string representing the OpenTURNS distribution code.
     """
-    # Try to get the actual OpenTURNS class name
     try:
         ot_class_name = dist.getName()
+        if not ot_class_name or ot_class_name == "Distribution": # Fallback
+            ot_class_name = dist.getClassName().replace("Implementation", "").replace("Factory", "")
     except Exception:
-        try:
-            ot_class_name = dist.getClassName()
-            if ot_class_name.endswith("Implementation"):
-                ot_class_name = ot_class_name[:-14]  # Remove "Implementation"
-        except Exception:
-            ot_class_name = dist.getClassName().replace("Factory", "")
+        ot_class_name = dist.getClassName().replace("Implementation", "").replace("Factory", "")
     
-    # Format with full precision
     params = dist.getParameter()
-    param_str = ", ".join([str(p) for p in params])
+    param_str = ", ".join([repr(p) for p in params])
     formula_str = f"ot.{ot_class_name}({param_str})"
-    
     return formula_str
 
-def compute_expectation_convergence_analysis(model, problem, model_code_str=None, N_samples=10000):
-    """Perform enterprise-grade expectation convergence analysis calculations without UI display.
-    
-    This function computes all the necessary data for convergence analysis, including
-    mean and standard deviation convergence, distribution analysis, and statistical tests.
-    
-    Parameters
-    ----------
-    model : callable
-        The model function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution object defining the problem
-    model_code_str : str, optional
-        String representation of the model code
-    N_samples : int, optional
-        Maximum number of samples for convergence analysis
-        
-    Returns
-    -------
-    dict
-        Dictionary containing all convergence analysis results
+# --- Core Computation Function ---
+def compute_expectation_convergence_analysis(model: callable, problem: ot.Distribution, 
+                                             model_code_str: str = None, 
+                                             N_samples: int = 10000) -> dict:
     """
-    # Ensure problem is an OpenTURNS distribution
+    Perform expectation convergence analysis calculations for a univariate model output.
+    Includes Q-Q plot summary statistics.
+    """
     if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
-        raise ValueError("Problem must be an OpenTURNS distribution")
+        raise ValueError("Input 'problem' must be an OpenTURNS Distribution object.")
     
-    # Use the distribution directly
-    distribution = problem
-
-    # Create OpenTURNS model if needed
-    ot_model = get_ot_model(model)
-
-    # Define the input random vector and the output random vector
-    input_random_vector = ot.RandomVector(distribution)
+    ot_model = get_ot_model(model) 
+    input_random_vector = ot.RandomVector(problem)
     output_random_vector = ot.CompositeRandomVector(ot_model, input_random_vector)
 
-    # Run expectation simulation algorithm
+    if output_random_vector.getDimension() != 1:
+        raise ValueError(
+            f"The model for expectation analysis must be univariate (single output). "
+            f"Detected output dimension: {output_random_vector.getDimension()}."
+        )
+
     expectation_algo = ot.ExpectationSimulationAlgorithm(output_random_vector)
     expectation_algo.setMaximumOuterSampling(N_samples)
-    expectation_algo.setBlockSize(1)
-    expectation_algo.setCoefficientOfVariationCriterionType("NONE")
-
+    expectation_algo.setBlockSize(1) 
+    expectation_algo.setCoefficientOfVariationCriterionType("NONE") 
+    
     expectation_algo.run()
     result = expectation_algo.getResult()
 
-    # Extract convergence data
-    graph = expectation_algo.drawExpectationConvergence()
-    data = graph.getDrawable(0).getData()
+    graph_mean_conv = expectation_algo.drawExpectationConvergence()
+    data_mean_conv = graph_mean_conv.getDrawable(0).getData()
+    
+    sample_sizes_algo = np.array([s[0] for s in data_mean_conv[:, 0]])
+    mean_estimates_algo = np.array([m[0] for m in data_mean_conv[:, 1]])
 
-    # Convert OpenTURNS Samples to numpy arrays
-    sample_sizes = np.array([s[0] for s in data[:, 0]])
-    mean_estimates = np.array([m[0] for m in data[:, 1]])
+    std_error_of_final_mean_algo = result.getStandardDeviation()[0] if result.getStandardDeviation() else np.nan
+    N_final_samples_algo = sample_sizes_algo[-1] if sample_sizes_algo.size > 0 else 0
+    
+    standard_errors_at_k = np.full_like(sample_sizes_algo, np.nan, dtype=float)
+    if N_final_samples_algo > 0 and np.all(sample_sizes_algo > 0) and not np.isnan(std_error_of_final_mean_algo):
+        standard_errors_at_k = std_error_of_final_mean_algo * np.sqrt(N_final_samples_algo / sample_sizes_algo)
 
-    # Calculate 95% confidence intervals using the final standard deviation
-    final_std_dev = result.getStandardDeviation()[0]
-    initial_sample_size = sample_sizes[-1]
-    standard_errors = final_std_dev * np.sqrt(initial_sample_size / sample_sizes)
-    z_value = 1.96  # 95% confidence
-    lower_bounds = mean_estimates - z_value * standard_errors
-    upper_bounds = mean_estimates + z_value * standard_errors
+    z_value = 1.96
+    lower_bounds_mean_algo = mean_estimates_algo - z_value * standard_errors_at_k
+    upper_bounds_mean_algo = mean_estimates_algo + z_value * standard_errors_at_k
     
-    # Use the required sample size from convergence analysis for distribution analysis
-    convergence_sample_size = int(initial_sample_size)
+    actual_samples_run_by_algo = int(N_final_samples_algo) 
     
-    # Generate samples for distribution analysis
-    input_sample = distribution.getSample(convergence_sample_size)
-    output_sample = ot_model(input_sample)
-    Y_values = np.array(output_sample).flatten()
+    Y_values = np.array([])
+    if actual_samples_run_by_algo > 0:
+        input_sample_dist_analysis = problem.getSample(actual_samples_run_by_algo)
+        output_sample_ot_dist_analysis = ot_model(input_sample_dist_analysis)
+        Y_values = np.array(output_sample_ot_dist_analysis).flatten()
+
+    mean_Y_sample, std_Y_sample, se_Y_sample_mean, skewness_Y_sample, kurtosis_Y_sample, q1, q3, iqr_Y_sample = [np.nan] * 8
+    conf_int_Y_sample = [np.nan, np.nan]
+
+    if len(Y_values) > 0:
+        mean_Y_sample = np.mean(Y_values)
+        if len(Y_values) >= 2:
+            std_Y_sample = np.std(Y_values, ddof=1)
+            se_Y_sample_mean = std_Y_sample / np.sqrt(len(Y_values))
+            conf_int_Y_sample = [mean_Y_sample - z_value * se_Y_sample_mean, mean_Y_sample + z_value * se_Y_sample_mean]
+        skewness_Y_sample = stats.skew(Y_values)
+        kurtosis_Y_sample = stats.kurtosis(Y_values, fisher=True)
+        q1, q3 = np.percentile(Y_values, [25, 75])
+        iqr_Y_sample = q3 - q1
     
-    # Calculate statistics for distribution analysis
-    mean_Y = np.mean(Y_values)
-    std_Y = np.std(Y_values)
-    conf_int = [mean_Y - 1.96 * std_Y, mean_Y + 1.96 * std_Y]
-    skewness = stats.skew(Y_values)
-    kurtosis = stats.kurtosis(Y_values)
-    q1, q3 = np.percentile(Y_values, [25, 75])
-    iqr = q3 - q1
+    std_dev_estimates_cumulative = np.full_like(sample_sizes_algo, np.nan, dtype=float)
+    min_samples_for_std = 2
+    if len(Y_values) > 0:
+        for i, n_k_from_algo in enumerate(sample_sizes_algo):
+            n_k_int = min(int(n_k_from_algo), len(Y_values))
+            if n_k_int >= min_samples_for_std:
+                std_dev_estimates_cumulative[i] = np.std(Y_values[:n_k_int], ddof=1)
+            elif i > 0 and not np.isnan(std_dev_estimates_cumulative[i-1]):
+                std_dev_estimates_cumulative[i] = std_dev_estimates_cumulative[i-1]
     
-    # Calculate standard deviation convergence
-    std_dev_estimates = []
-    
-    # Compute running standard deviation for each sample size
-    for i, size in enumerate(sample_sizes):
-        if i == 0:
-            # For the first point, use the standard deviation from the first sample
-            std_dev_estimates.append(np.std(Y_values[:int(size)]))
-        else:
-            # For subsequent points, compute standard deviation based on accumulated samples
-            std_dev_estimates.append(np.std(Y_values[:int(size)]))
-    
-    std_dev_estimates = np.array(std_dev_estimates)
-    
-    # Try to fit distributions to the output data using the distribution_fitting module
     fit_df = pd.DataFrame()
-    best_distribution = None
-    best_params = None
-    best_distribution_name = "None"
-    ot_distribution_type = "None"
-    
-    try:
-        # Import functionality from distribution_fitting module
-        from modules.distribution_fitting import get_distribution_factories, fit_distribution
-        
-        # Get distribution factories for continuous univariate distributions
-        factories = get_distribution_factories()["Continuous Univariate"]
-        
-        # Prepare data for fitting - ensure we have enough samples
-        Y_values_for_fitting = Y_values
-        
-        # If we have fewer than 1000 samples, generate more using the model
-        if len(Y_values_for_fitting) < 1000:
-            try:
-                # Generate additional samples if needed
-                additional_samples_needed = max(0, 1000 - len(Y_values_for_fitting))
-                if additional_samples_needed > 0:
-                    additional_sample = ot.LHSExperiment(problem, additional_samples_needed).generate()
-                    additional_Y = np.array(ot_model(additional_sample))
-                    if additional_Y.ndim > 1 and additional_Y.shape[1] > 1:
-                        additional_Y = additional_Y[:, 0]  # Take first output if multivariate
-                    Y_values_for_fitting = np.concatenate([Y_values_for_fitting, additional_Y])
-            except Exception as e:
-                # If additional sampling fails, continue with what we have
-                st.warning(f"Could not generate additional samples for distribution fitting: {str(e)}")
-        
-        # Fit distributions and collect results
-        results = []
-        
-        # Try to fit all available distributions
-        for factory in factories:
-            try:
-                # Get factory name
-                factory_name = factory.getClassName().replace("Factory", "")
-                
-                # Fit distribution
-                fitted_dist, fitted_stats = fit_distribution(Y_values_for_fitting, factory)
-                
-                if fitted_dist is not None and fitted_stats:
-                    # Store results
-                    results.append({
-                        'Distribution': factory_name,
-                        'Parameters': list(fitted_dist.getParameter()),
-                        'AIC': fitted_stats.get("AIC", float('inf')),
-                        'BIC': fitted_stats.get("BIC", float('inf')),
-                        'KS_Statistic': 1.0 - fitted_stats.get("KS p-value", 0),  # Convert p-value to statistic
-                        'KS_pvalue': fitted_stats.get("KS p-value", 0),
-                        'LogLikelihood': -fitted_stats.get("AIC", 0) / 2 + len(fitted_dist.getParameter()),  # Approximate
-                        'OT_Distribution': fitted_dist
-                    })
-            except Exception as e:
-                # Skip distributions that fail to fit
-                continue
-        
-        # Create DataFrame from results
-        if results:
-            fit_df = pd.DataFrame(results)
-            
-            # Find best distribution based on AIC
-            if not fit_df.empty:
-                best_idx = fit_df['AIC'].idxmin()
-                best_distribution_name = fit_df.loc[best_idx, 'Distribution']
-                ot_distribution_type = get_distribution_code_string(fit_df.loc[best_idx, 'OT_Distribution'])
-                best_distribution = fit_df.loc[best_idx, 'OT_Distribution']
-                best_params = fit_df.loc[best_idx, 'Parameters']
-        
-    except Exception as e:
-        # If fitting fails, just continue without distribution fitting
-        st.warning(f"Distribution fitting failed: {str(e)}")
-    
-    # Create input distributions info for the prompt
-    dimension = distribution.getDimension()
-    input_parameters = []
-    for i in range(dimension):
-        marginal = distribution.getMarginal(i)
-        name = marginal.getDescription()[0] if marginal.getDescription()[0] != "" else f"X{i+1}"
-        input_parameters.append({
-            'Variable': name,
-            'Distribution': marginal.__class__.__name__,
-            'Parameters': list(marginal.getParameter())
-        })
-    inputs_df = pd.DataFrame(input_parameters)
-    
-    # Create mean convergence visualization
-    fig_mean_convergence = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=(
-            "<b>Mean Convergence (Linear Scale)</b>", 
-            "<b>Mean Convergence (Log Scale)</b>"
-        ),
-        horizontal_spacing=0.15  # Increase spacing between subplots
-    )
-    
-    # --- Mean Estimate Convergence Plot (Linear Scale) ---
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=mean_estimates,
-            mode='lines',
-            name='Mean Estimate',
-            line=dict(color='#1f77b4', width=2)
-        ),
-        row=1, col=1
-    )
-    
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=upper_bounds,
-            mode='lines',
-            name='95% CI Upper',
-            line=dict(width=0),
-            showlegend=False
-        ),
-        row=1, col=1
-    )
-    
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=lower_bounds,
-            mode='lines',
-            name='95% Confidence Interval',
-            line=dict(width=0),
-            fill='tonexty',
-            fillcolor='rgba(31, 119, 180, 0.2)'
-        ),
-        row=1, col=1
-    )
-    
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=[sample_sizes[-1]],
-            y=[mean_estimates[-1]],
-            mode='markers',
-            name='Final Mean',
-            marker=dict(color='red', size=10)
-        ),
-        row=1, col=1
-    )
-    
-    # --- Mean Estimate Convergence Plot (Log Scale) ---
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=mean_estimates,
-            mode='lines',
-            name='Mean Estimate',
-            line=dict(color='#1f77b4', width=2),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=upper_bounds,
-            mode='lines',
-            name='95% CI Upper',
-            line=dict(width=0),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=lower_bounds,
-            mode='lines',
-            name='95% CI Lower',
-            line=dict(width=0),
-            fill='tonexty',
-            fillcolor='rgba(31, 119, 180, 0.2)',
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    fig_mean_convergence.add_trace(
-        go.Scatter(
-            x=[sample_sizes[-1]],
-            y=[mean_estimates[-1]],
-            mode='markers',
-            name='Final Mean',
-            marker=dict(color='red', size=10),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    # Update layout and axes
-    fig_mean_convergence.update_layout(
-        height=500,
-        width=900,  # Increase overall width
-        title_text="Monte Carlo Mean Convergence Analysis",
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.2,  # Position below the plot
-            xanchor="center",
-            x=0.5    # Center horizontally
-        ),
-        template="plotly_white",
-        margin=dict(l=50, r=50, t=80, b=100)  # Increase bottom margin for legend
-    )
-    
-    # Set log scale for right column plots
-    fig_mean_convergence.update_xaxes(type="log", row=1, col=2)
-    
-    # Update axis labels
-    fig_mean_convergence.update_xaxes(title_text="Number of Samples", row=1, col=1)
-    fig_mean_convergence.update_xaxes(title_text="Number of Samples (Log Scale)", row=1, col=2)
-    fig_mean_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=1)
-    fig_mean_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=2)
-    
-    # Create standard deviation convergence visualization
-    fig_std_convergence = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=(
-            "<b>Standard Deviation Convergence (Linear Scale)</b>",
-            "<b>Standard Deviation Convergence (Log Scale)</b>"
-        ),
-        horizontal_spacing=0.15  # Increase spacing between subplots
-    )
-    
-    # --- Standard Deviation Convergence Plot (Linear Scale) ---
-    fig_std_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=std_dev_estimates,
-            mode='lines',
-            name='Std Dev Estimate',
-            line=dict(color='#ff7f0e', width=2)
-        ),
-        row=1, col=1
-    )
-    
-    fig_std_convergence.add_trace(
-        go.Scatter(
-            x=[sample_sizes[-1]],
-            y=[std_dev_estimates[-1]],
-            mode='markers',
-            name='Final Std Dev',
-            marker=dict(color='red', size=10)
-        ),
-        row=1, col=1
-    )
-    
-    # --- Standard Deviation Convergence Plot (Log Scale) ---
-    fig_std_convergence.add_trace(
-        go.Scatter(
-            x=sample_sizes,
-            y=std_dev_estimates,
-            mode='lines',
-            name='Std Dev Estimate',
-            line=dict(color='#ff7f0e', width=2),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    fig_std_convergence.add_trace(
-        go.Scatter(
-            x=[sample_sizes[-1]],
-            y=[std_dev_estimates[-1]],
-            mode='markers',
-            name='Final Std Dev',
-            marker=dict(color='red', size=10),
-            showlegend=False
-        ),
-        row=1, col=2
-    )
-    
-    # Update layout and axes
-    fig_std_convergence.update_layout(
-        height=500,
-        width=900,  # Increase overall width
-        title_text="Monte Carlo Standard Deviation Convergence Analysis",
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.2,  # Position below the plot
-            xanchor="center",
-            x=0.5    # Center horizontally
-        ),
-        template="plotly_white",
-        margin=dict(l=50, r=50, t=80, b=100)  # Increase bottom margin for legend
-    )
-    
-    # Set log scale for right column plots
-    fig_std_convergence.update_xaxes(type="log", row=1, col=2)
-    
-    # Update axis labels
-    fig_std_convergence.update_xaxes(title_text="Number of Samples", row=1, col=1)
-    fig_std_convergence.update_xaxes(title_text="Number of Samples (Log Scale)", row=1, col=2)
-    fig_std_convergence.update_yaxes(title_text="Standard Deviation", row=1, col=1)
-    fig_std_convergence.update_yaxes(title_text="Standard Deviation", row=1, col=2)
-    
-    # Create distribution visualization
-    fig_dist = make_subplots(rows=1, cols=2, subplot_titles=["Output Distribution", "Q-Q Plot"])
-    
-    # Add histogram trace
-    fig_dist.add_trace(
-        go.Histogram(
-            x=Y_values,
-            histnorm='probability density',
-            name='Output Distribution',
-            marker_color='lightblue',
-            opacity=0.7
-        ),
-        row=1, col=1
-    )
-    
-    # Add KDE trace if we have a best fit distribution
-    display_name = "No distribution fitted"
-    ot_distribution_type = "None"
-    if best_distribution is not None:
-        # Use the get_distribution_code_string function to get the proper distribution code
-        ot_distribution_type = get_distribution_code_string(best_distribution)
-        
-        # Use the OpenTURNS distribution type for display
-        display_name = ot_distribution_type
-        
-        # Generate points for the fitted distribution
-        x_range = np.linspace(min(Y_values), max(Y_values), 1000)
-        
+    best_fitted_distribution_obj = None
+    best_distribution_name_fitted = "None"
+    ot_code_best_distribution = "None"
+    best_params_fitted = []
+
+    if len(Y_values) >= min_samples_for_std :
         try:
-            # Use OpenTURNS to calculate PDF values
-            x_sample = ot.Sample(x_range.reshape(-1, 1))
-            pdf_values = np.array([best_distribution.computePDF(ot.Point([x])) for x in x_range])
+            from modules.distribution_fitting import get_distribution_factories, fit_distribution
+            factories = get_distribution_factories().get("Continuous Univariate", [])
+            Y_values_for_fitting = Y_values
+            target_fitting_samples = 1000 
+            if len(Y_values_for_fitting) < target_fitting_samples and len(Y_values_for_fitting) > 0:
+                additional_needed = target_fitting_samples - len(Y_values_for_fitting)
+                try:
+                    additional_input_sample = problem.getSample(additional_needed)
+                    additional_output_sample = ot_model(additional_input_sample)
+                    additional_Y = np.array(additional_output_sample).flatten()
+                    Y_values_for_fitting = np.concatenate([Y_values_for_fitting, additional_Y])
+                except Exception as e_aug:
+                    st.warning(f"Could not augment samples for distribution fitting: {str(e_aug)}.")
             
-            fig_dist.add_trace(
-                go.Scatter(
-                    x=x_range,
-                    y=pdf_values,
-                    mode='lines',
-                    name=f'Best Fit: {display_name}',
-                    line=dict(color='red', width=2)
-                ),
-                row=1, col=1
-            )
-        except Exception as e:
-            # If visualization fails, just continue without the distribution curve
-            pass
-    
-    # Add Q-Q plot
-    # Calculate theoretical quantiles from a normal distribution
-    theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, len(Y_values)))
-    
-    # Sort the output values
-    sorted_Y = np.sort(Y_values)
-    
-    fig_dist.add_trace(
-        go.Scatter(
-            x=theoretical_quantiles,
-            y=sorted_Y,
-            mode='markers',
-            name='Q-Q Plot',
-            marker=dict(color='#1f77b4')
-        ),
-        row=1, col=2
-    )
-    
-    # Add reference line
-    min_val = min(theoretical_quantiles.min(), sorted_Y.min())
-    max_val = max(theoretical_quantiles.max(), sorted_Y.max())
-    
-    fig_dist.add_trace(
-        go.Scatter(
-            x=[min_val, max_val],
-            y=[min_val, max_val],
-            mode='lines',
-            name='Reference Line',
-            line=dict(color='red', dash='dash')
-        ),
-        row=1, col=2
-    )
-    
-    # Update layout
-    fig_dist.update_layout(
-        height=500,
-        width=900,  # Increase overall width
-        title_text="Output Distribution Analysis",
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.2,  # Position below the plot
-            xanchor="center",
-            x=0.5    # Center horizontally
-        ),
-        template="plotly_white",
-        margin=dict(l=50, r=50, t=80, b=100)  # Increase bottom margin for legend
-    )
-    
-    # Update axis labels
-    fig_dist.update_xaxes(title_text="Output Value", row=1, col=1)
-    fig_dist.update_yaxes(title_text="Probability Density", row=1, col=1)
-    fig_dist.update_xaxes(title_text="Theoretical Quantiles", row=1, col=2)
-    fig_dist.update_yaxes(title_text="Sample Quantiles", row=1, col=2)
-    
-    # Create summary table for convergence statistics
-    summary_df = pd.DataFrame({
-        'Metric': [
-            'Final Mean Estimate', 
-            'Standard Deviation', 
-            '95% Confidence Interval', 
-            'Required Sample Size',
-            'Relative Standard Error',
-            'Coefficient of Variation'
-        ],
+            if len(Y_values_for_fitting) >= min_samples_for_std:
+                fitting_results_list = []
+                for factory in factories:
+                    try:
+                        dist_name = factory.getClassName().replace("Factory", "")
+                        fitted_dist, stats_dict = fit_distribution(Y_values_for_fitting, factory)
+                        if fitted_dist and stats_dict:
+                            fitting_results_list.append({
+                                'Distribution': dist_name, 'Parameters': list(fitted_dist.getParameter()),
+                                'AIC': stats_dict.get("AIC", float('inf')), 'BIC': stats_dict.get("BIC", float('inf')),
+                                'KS_Statistic': stats_dict.get("KS_statistic", float('nan')),
+                                'KS_pvalue': stats_dict.get("KS_pvalue", float('nan')),
+                                'OT_Fitted_Distribution': fitted_dist
+                            })
+                    except Exception: continue
+                if fitting_results_list:
+                    fit_df = pd.DataFrame(fitting_results_list)
+                    if not fit_df.empty and 'AIC' in fit_df.columns and fit_df['AIC'].notna().any():
+                        fit_df = fit_df.sort_values('AIC', ascending=True).reset_index(drop=True)
+                        if not fit_df.empty:
+                            best_fit_series = fit_df.iloc[0]
+                            best_distribution_name_fitted = best_fit_series['Distribution']
+                            best_fitted_distribution_obj = best_fit_series['OT_Fitted_Distribution']
+                            ot_code_best_distribution = get_distribution_code_string(best_fitted_distribution_obj)
+                            best_params_fitted = best_fit_series['Parameters']
+        except ImportError: st.warning("Distribution fitting module not found. Skipping.")
+        except Exception as e_fit: st.warning(f"An error occurred during distribution fitting: {str(e_fit)}")
+
+    # --- Q-Q Plot Summary Statistics Calculation ---
+    qq_plot_summary = {
+        'correlation': np.nan,
+        'lower_tail_deviation_avg': np.nan,
+        'middle_section_deviation_avg': np.nan,
+        'upper_tail_deviation_avg': np.nan,
+        'representative_points': [] 
+    }
+    osm_qq, osr_qq = np.array([]), np.array([]) 
+    if len(Y_values) >= 20: 
+        try:
+            osm_qq, osr_qq = stats.probplot(Y_values, dist=stats.norm, fit=False)
+            if len(osm_qq) >= 2 and len(osr_qq) >=2:
+                 qq_plot_summary['correlation'] = np.corrcoef(osm_qq, osr_qq)[0, 1]
+
+            deviations_qq = osr_qq - osm_qq
+            n_qq_pts = len(osr_qq)
+            idx_25_qq = int(n_qq_pts * 0.25)
+            idx_75_qq = int(n_qq_pts * 0.75)
+
+            if idx_25_qq > 0:
+                qq_plot_summary['lower_tail_deviation_avg'] = np.mean(deviations_qq[:idx_25_qq])
+            if (idx_75_qq - idx_25_qq) > 0:
+                qq_plot_summary['middle_section_deviation_avg'] = np.mean(deviations_qq[idx_25_qq:idx_75_qq])
+            if (n_qq_pts - idx_75_qq) > 0:
+                qq_plot_summary['upper_tail_deviation_avg'] = np.mean(deviations_qq[idx_75_qq:])
+            
+            percentiles_to_sample_qq = [0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99]
+            sample_q_values_qq = np.percentile(Y_values, [p * 100 for p in percentiles_to_sample_qq])
+            theoretical_q_values_for_percentiles_qq = stats.norm.ppf(percentiles_to_sample_qq)
+            
+            qq_plot_summary['representative_points'] = [
+                (f"{p*100:.0f}%", float(t_q), float(s_q)) 
+                for p, t_q, s_q in zip(percentiles_to_sample_qq, theoretical_q_values_for_percentiles_qq, sample_q_values_qq)
+            ]
+        except Exception as e_qq_stats:
+            st.warning(f"Could not compute detailed Q-Q statistics: {e_qq_stats}")
+
+    # --- Plotting ---
+    fig_mean_convergence = make_subplots(rows=1, cols=2, subplot_titles=("Mean Convergence (Linear X-axis)", "Mean Convergence (Log X-axis)"), horizontal_spacing=0.15)
+    if sample_sizes_algo.size > 0:
+        fig_mean_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=mean_estimates_algo, mode='lines', name='Mean Estimate', line=dict(color='#1f77b4', width=2)), row=1, col=1)
+        fig_mean_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=upper_bounds_mean_algo, mode='lines', line=dict(width=0), showlegend=False, name='Upper CI'), row=1, col=1)
+        fig_mean_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=lower_bounds_mean_algo, mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(31,119,180,0.2)', name='95% CI'), row=1, col=1)
+        fig_mean_convergence.add_trace(go.Scatter(x=[sample_sizes_algo[-1]], y=[mean_estimates_algo[-1]], mode='markers', name='Final Algo. Mean', marker=dict(color='red', size=8, symbol='x')), row=1, col=1)
+        fig_mean_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=mean_estimates_algo, mode='lines', line=dict(color='#1f77b4', width=2), showlegend=False), row=1, col=2)
+        fig_mean_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=upper_bounds_mean_algo, mode='lines', line=dict(width=0), showlegend=False), row=1, col=2)
+        fig_mean_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=lower_bounds_mean_algo, mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(31,119,180,0.2)', showlegend=False), row=1, col=2)
+        fig_mean_convergence.add_trace(go.Scatter(x=[sample_sizes_algo[-1]], y=[mean_estimates_algo[-1]], mode='markers', marker=dict(color='red', size=8, symbol='x'), showlegend=False), row=1, col=2)
+    fig_mean_convergence.update_layout(title_text="Monte Carlo Convergence of the Mean", height=450, template="plotly_white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), margin=dict(b=50, t=60))
+    fig_mean_convergence.update_xaxes(title_text="Number of Samples", type="linear", row=1, col=1); fig_mean_convergence.update_xaxes(title_text="Number of Samples", type="log", row=1, col=2)
+    fig_mean_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=1); fig_mean_convergence.update_yaxes(title_text="Mean Estimate", row=1, col=2)
+
+    fig_std_convergence = make_subplots(rows=1, cols=2, subplot_titles=("Std Dev Convergence (Linear X-axis)", "Std Dev Convergence (Log X-axis)"), horizontal_spacing=0.15)
+    if sample_sizes_algo.size > 0 and std_dev_estimates_cumulative.size == sample_sizes_algo.size:
+        fig_std_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=std_dev_estimates_cumulative, mode='lines', name='Std Dev Estimate (Cumulative)', line=dict(color='#ff7f0e', width=2)), row=1, col=1)
+        final_std_dev_val = std_dev_estimates_cumulative[-1] if std_dev_estimates_cumulative.size > 0 and not np.isnan(std_dev_estimates_cumulative[-1]) else np.nan
+        fig_std_convergence.add_trace(go.Scatter(x=[sample_sizes_algo[-1]], y=[final_std_dev_val], mode='markers', name='Final Std Dev (Cumulative)', marker=dict(color='darkred', size=8, symbol='x')), row=1, col=1)
+        fig_std_convergence.add_trace(go.Scatter(x=sample_sizes_algo, y=std_dev_estimates_cumulative, mode='lines', line=dict(color='#ff7f0e', width=2), showlegend=False), row=1, col=2)
+        fig_std_convergence.add_trace(go.Scatter(x=[sample_sizes_algo[-1]], y=[final_std_dev_val], mode='markers', marker=dict(color='darkred', size=8, symbol='x'), showlegend=False), row=1, col=2)
+    fig_std_convergence.update_layout(title_text="Monte Carlo Convergence of Standard Deviation (Cumulative from Sample)", height=450, template="plotly_white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), margin=dict(b=50, t=60))
+    fig_std_convergence.update_xaxes(title_text="Number of Samples", type="linear", row=1, col=1); fig_std_convergence.update_xaxes(title_text="Number of Samples", type="log", row=1, col=2)
+    fig_std_convergence.update_yaxes(title_text="Standard Deviation Estimate", row=1, col=1); fig_std_convergence.update_yaxes(title_text="Standard Deviation Estimate", row=1, col=2)
+
+    fig_dist = make_subplots(rows=1, cols=2, subplot_titles=("Output Distribution & Best Fit", "Q-Q Plot (vs. Normal)"))
+    if len(Y_values) > 0: # osm_qq, osr_qq are defined in Q-Q stats section
+        fig_dist.add_trace(go.Histogram(x=Y_values, histnorm='probability density', name='Empirical PDF', marker_color='lightblue', opacity=0.7), row=1, col=1)
+        display_name_for_plot_legend = "None Fitted"
+        if best_fitted_distribution_obj:
+            display_name_for_plot_legend = best_distribution_name_fitted
+            x_pdf_plot = np.linspace(Y_values.min(), Y_values.max(), 200)
+            try:
+                y_pdf_plot = np.array([best_fitted_distribution_obj.computePDF(ot.Point([val])) for val in x_pdf_plot])
+                fig_dist.add_trace(go.Scatter(x=x_pdf_plot, y=y_pdf_plot, mode='lines', name=f'Fit: {display_name_for_plot_legend}', line=dict(color='red', width=2)), row=1, col=1)
+            except Exception: pass
+        
+        if osm_qq.size > 0 and osr_qq.size > 0 : 
+            fig_dist.add_trace(go.Scatter(x=osm_qq, y=osr_qq, mode='markers', name='Data Quantiles', marker_color='blue'), row=1, col=2)
+            min_qq_plot, max_qq_plot = min(osm_qq.min(), osr_qq.min()), max(osm_qq.max(), osr_qq.max())
+            fig_dist.add_trace(go.Scatter(x=[min_qq_plot, max_qq_plot], y=[min_qq_plot, max_qq_plot], mode='lines', name='y=x (Normal Ref.)', line=dict(color='red', dash='dash')), row=1, col=2)
+    fig_dist.update_layout(title_text="Analysis of Output Distribution Shape", height=450, template="plotly_white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), margin=dict(b=50, t=60))
+    fig_dist.update_xaxes(title_text="Output Value", row=1, col=1); fig_dist.update_yaxes(title_text="Density", row=1, col=1)
+    fig_dist.update_xaxes(title_text="Theoretical Quantiles (Normal)", row=1, col=2); fig_dist.update_yaxes(title_text="Sample Quantiles", row=1, col=2)
+
+    final_algo_mean_val = result.getExpectationEstimate()[0] if result.getExpectationEstimate() else np.nan
+    expectation_dist_algo = result.getExpectationDistribution()
+    final_algo_ci_lower = expectation_dist_algo.computeQuantile(0.025)[0] if expectation_dist_algo else np.nan
+    final_algo_ci_upper = expectation_dist_algo.computeQuantile(0.975)[0] if expectation_dist_algo else np.nan
+    variance_estimate_algo = result.getVarianceEstimate()[0] if result.getVarianceEstimate() else np.nan
+    estimated_output_std_dev_algo = np.sqrt(variance_estimate_algo) if not np.isnan(variance_estimate_algo) else np.nan
+
+    summary_convergence_df = pd.DataFrame({
+        'Metric': ['Final Mean Estimate (Algo.)', 'Std Err of Mean (Algo.)', '95% CI for Mean (Algo.)', 'Samples Run by Algo', 'Est. Output Std Dev (σY_hat Algo.)'],
         'Value': [
-            f"{mean_estimates[-1]:.6f}",
-            f"{final_std_dev:.6f}",
-            f"[{lower_bounds[-1]:.6f}, {upper_bounds[-1]:.6f}]",
-            f"{convergence_sample_size}",
-            f"{(final_std_dev / mean_estimates[-1]):.4%}",
-            f"{(final_std_dev / np.abs(mean_estimates[-1])):.4%}"
-        ]
-    })
-    
-    # Create summary table for distribution statistics
-    dist_stats_df = pd.DataFrame({
-        'Statistic': [
-            'Mean', 
-            'Standard Deviation', 
-            '95% Confidence Interval', 
-            'Skewness',
-            'Kurtosis',
-            'Interquartile Range (IQR)',
-            'Best Fit Distribution'
-        ],
+            f"{final_algo_mean_val:.5g}", f"{std_error_of_final_mean_algo:.5g}",
+            f"[{final_algo_ci_lower:.5g}, {final_algo_ci_upper:.5g}]",
+            f"{actual_samples_run_by_algo}", f"{estimated_output_std_dev_algo:.5g}"
+        ]})
+    summary_distribution_df = pd.DataFrame({
+        'Statistic': ['Mean (Sample)', 'Std Dev (Sample, ddof=1)', '95% CI (Sample Mean)', 'Skewness (Sample)', 'Kurtosis (Fisher, Sample)', 'IQR (Sample)', 'Best Fit (AIC)'],
         'Value': [
-            f"{mean_Y:.6f}",
-            f"{std_Y:.6f}",
-            f"[{conf_int[0]:.6f}, {conf_int[1]:.6f}]",
-            f"{skewness:.4f} ({'Positively Skewed' if skewness > 0 else 'Negatively Skewed' if skewness < 0 else 'Symmetric'})",
-            f"{kurtosis:.4f} ({'Leptokurtic (heavy-tailed)' if kurtosis > 0 else 'Platykurtic (light-tailed)' if kurtosis < 0 else 'Mesokurtic (normal-like)'})",
-            f"{iqr:.6f}",
-            f"{best_distribution_name if best_distribution_name else 'None'}"
-        ]
-    })
-    
-    # Create quantile information
-    quantiles = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
-    quantile_values = np.quantile(Y_values, quantiles)
-    
-    quantiles_df = pd.DataFrame({
-        'Quantile': [f"{q*100}%" for q in quantiles],
-        'Value': quantile_values
-    })
-    
-    # Return all results
+            f"{mean_Y_sample:.5g}" if not np.isnan(mean_Y_sample) else "N/A", 
+            f"{std_Y_sample:.5g}" if not np.isnan(std_Y_sample) else "N/A", 
+            f"[{conf_int_Y_sample[0]:.5g}, {conf_int_Y_sample[1]:.5g}]" if not np.isnan(conf_int_Y_sample[0]) else "N/A",
+            f"{skewness_Y_sample:.3f}" if not np.isnan(skewness_Y_sample) else "N/A", 
+            f"{kurtosis_Y_sample:.3f}" if not np.isnan(kurtosis_Y_sample) else "N/A", 
+            f"{iqr_Y_sample:.5g}" if not np.isnan(iqr_Y_sample) else "N/A",
+            f"{best_distribution_name_fitted if best_distribution_name_fitted != 'None' else 'Not fitted'}"
+        ]})
+    quantiles_list_summary = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+    quantile_values_summary = np.quantile(Y_values, quantiles_list_summary) if len(Y_values) > 0 else [np.nan]*len(quantiles_list_summary)
+    quantiles_df_summary = pd.DataFrame({'Quantile': [f"{q*100:.0f}%" for q in quantiles_list_summary], 'Value': [f"{val:.5g}" if not np.isnan(val) else "N/A" for val in quantile_values_summary]})
+
+    input_params_list_summary = []
+    if problem:
+        for i in range(problem.getDimension()):
+            marginal = problem.getMarginal(i)
+            desc = marginal.getDescription()
+            var_name = desc[0] if desc and desc[0] else f"X{i+1}"
+            input_params_list_summary.append({
+                'Variable': var_name, 'Distribution': marginal.getClassName().replace("Implementation",""), 
+                'Parameters': [f"{p:.4g}" for p in marginal.getParameter()]
+            })
+    inputs_summary_df_prompt = pd.DataFrame(input_params_list_summary)
+
     return {
-        'Y_values': Y_values,
-        'sample_sizes': sample_sizes,
-        'mean_estimates': mean_estimates,
-        'lower_bounds': lower_bounds,
-        'upper_bounds': upper_bounds,
-        'std_dev_estimates': std_dev_estimates,
-        'final_mean': mean_estimates[-1],
-        'final_std_dev': std_dev_estimates[-1],
-        'skewness': skewness,
-        'kurtosis': kurtosis,
-        'convergence_sample_size': convergence_sample_size,
-        'best_distribution_name': best_distribution_name,
-        'ot_distribution_type': ot_distribution_type,
-        'best_distribution': best_distribution,
-        'best_params': best_params,
-        'fit_df': fit_df,
-        'inputs_df': inputs_df,
-        'mean_convergence_fig': fig_mean_convergence,
-        'std_convergence_fig': fig_std_convergence,
-        'distribution_fig': fig_dist,
-        'summary_df': summary_df,
-        'dist_stats_df': dist_stats_df,
-        'quantiles_df': quantiles_df,
-        'display_name': display_name
+        'model_code_str': model_code_str, 
+        'Y_values': Y_values, 'sample_sizes_algo': sample_sizes_algo, 'mean_estimates_algo': mean_estimates_algo,
+        'lower_bounds_mean_algo': lower_bounds_mean_algo, 'upper_bounds_mean_algo': upper_bounds_mean_algo,
+        'std_dev_estimates_cumulative': std_dev_estimates_cumulative,
+        'final_algo_mean': final_algo_mean_val,
+        'final_algo_std_error_of_mean': std_error_of_final_mean_algo,
+        'final_algo_ci_mean': [final_algo_ci_lower, final_algo_ci_upper],
+        'estimated_output_std_dev_algo': estimated_output_std_dev_algo,
+        'samples_run_by_algo': actual_samples_run_by_algo,
+        'output_sample_mean': mean_Y_sample, 'output_sample_std_dev': std_Y_sample,
+        'output_sample_skewness': skewness_Y_sample, 'output_sample_kurtosis': kurtosis_Y_sample,
+        'qq_plot_summary_stats': qq_plot_summary,
+        'best_fit_distribution_name': best_distribution_name_fitted,
+        'best_fit_distribution_code': ot_code_best_distribution,
+        'best_fit_distribution_object': best_fitted_distribution_obj,
+        'best_fit_params': best_params_fitted,
+        'distribution_fit_results_df': fit_df,
+        'inputs_summary_df': inputs_summary_df_prompt,
+        'fig_mean_convergence': fig_mean_convergence, 'fig_std_dev_convergence': fig_std_convergence,
+        'fig_output_distribution': fig_dist,
+        'summary_convergence_df': summary_convergence_df,
+        'summary_distribution_df': summary_distribution_df,
+        'summary_quantiles_df': quantiles_df_summary,
     }
 
-def expectation_convergence_analysis(model, problem, model_code_str=None, N_samples=10000, language_model='groq', display_results=True):
-    """Perform enterprise-grade expectation convergence analysis.
-    
-    This function analyzes how the mean and standard deviation of a model output
-    converge as the number of Monte Carlo samples increases. It also examines
-    the output distribution characteristics and provides AI-driven insights.
-    
-    Parameters
-    ----------
-    model : callable
-        The model function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution object defining the problem
-    model_code_str : str, optional
-        String representation of the model code
-    N_samples : int, optional
-        Maximum number of samples for convergence analysis
-    language_model : str, optional
-        Language model to use for AI insights ('groq' or 'openai')
-    display_results : bool, optional
-        Whether to display results in the Streamlit interface
-        
-    Returns
-    -------
-    dict
-        Dictionary containing all convergence analysis results
+# --- AI Insight Generation Function (Signature changed, retrieves model_code_str from analysis_data) ---
+def generate_ai_insights(analysis_data: dict, # model_code_str is NOT in signature here
+                         language_model: str = 'groq') -> str: 
+    """
+    Generate AI-powered insights for expectation convergence analysis.
+    model_code_str is now expected to be within analysis_data.
     """
     try:
-        # Compute the expectation convergence analysis
-        analysis_results = compute_expectation_convergence_analysis(model, problem, model_code_str, N_samples)
-        
-        # Generate AI insights
-        if 'ai_insights' not in analysis_results or not analysis_results['ai_insights']:
-            with st.spinner("Generating AI insights..."):
-                insights = generate_ai_insights(analysis_results, language_model)
-                analysis_results['ai_insights'] = insights
-        
-        # Display results if requested
-        if display_results:
-            display_expectation_convergence_analysis(analysis_results, language_model)
-        
-        return analysis_results
-    
-    except Exception as e:
-        st.error(f"Error in expectation convergence analysis: {str(e)}")
-        return None
+        model_code_str = analysis_data.get('model_code_str') # Retrieve model_code_str
+        if not model_code_str: # Essential for the prompt
+            return "AI insights cannot be generated: Model code string was not found in the analysis data."
 
-def expectation_convergence_analysis_joint(model, problem, model_code_str=None, N_samples=10000, language_model='groq', display_results=True):
-    """Perform enterprise-grade expectation convergence analysis for joint outputs.
-    
-    This function handles models with multiple outputs, running separate convergence
-    analyses for each output dimension and combining the results.
-    
-    Parameters
-    ----------
-    model : callable
-        The model function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution object defining the problem
-    model_code_str : str, optional
-        String representation of the model code
-    N_samples : int, optional
-        Maximum number of samples for convergence analysis
-    language_model : str, optional
-        Language model to use for AI insights ('groq' or 'openai')
-    display_results : bool, optional
-        Whether to display results in the Streamlit interface
+        final_mean_prompt = analysis_data.get('final_algo_mean', 'N/A')
+        std_err_mean_algo_prompt_val = analysis_data.get('final_algo_std_error_of_mean', 'N/A')
+        ci_mean_algo_list_prompt_val = analysis_data.get('final_algo_ci_mean', ['N/A', 'N/A'])
+        ci_mean_algo_lower_prompt_val = ci_mean_algo_list_prompt_val[0] if isinstance(ci_mean_algo_list_prompt_val, list) and len(ci_mean_algo_list_prompt_val) > 0 else 'N/A'
+        ci_mean_algo_upper_prompt_val = ci_mean_algo_list_prompt_val[1] if isinstance(ci_mean_algo_list_prompt_val, list) and len(ci_mean_algo_list_prompt_val) > 1 else 'N/A'
         
-    Returns
-    -------
-    dict
-        Dictionary containing all convergence analysis results for each output dimension
-    """
-    try:
-        # Create a wrapper function for each output dimension
-        ot_model = get_ot_model(model)
+        output_std_dev_algo_prompt_val = analysis_data.get('estimated_output_std_dev_algo', 'N/A')
+        samples_run_prompt_val = analysis_data.get('samples_run_by_algo', 'N/A')
         
-        # Get the output dimension
-        input_random_vector = ot.RandomVector(problem)
-        output_random_vector = ot.CompositeRandomVector(ot_model, input_random_vector)
-        output_dimension = output_random_vector.getDimension()
+        skew_sample_prompt_val = analysis_data.get('output_sample_skewness', 'N/A')
+        kurt_sample_prompt_val = analysis_data.get('output_sample_kurtosis', 'N/A')
         
-        # If output is scalar, just use the regular analysis
-        if output_dimension == 1:
-            return expectation_convergence_analysis(model, problem, model_code_str, N_samples, language_model, display_results)
+        best_fit_name_prompt_val = analysis_data.get('best_fit_distribution_name', 'None')
+        best_fit_code_prompt_val = analysis_data.get('best_fit_distribution_code', 'N/A')
         
-        # For multidimensional outputs, create a separate analysis for each dimension
-        all_results = {}
-        
-        for i in range(output_dimension):
-            # Create a wrapper function that extracts the i-th output
-            def wrapper_model_i(X):
-                Y = model(X)
-                if isinstance(Y, (list, tuple, np.ndarray)):
-                    return Y[i]
-                else:
-                    return Y
-            
-            # Add dimension info to the model code
-            dimension_model_code = f"""# Dimension {i+1} of the original model
-{model_code_str}
+        inputs_df_prompt_val = analysis_data.get('inputs_summary_df')
+        inputs_md_prompt_val = inputs_df_prompt_val.to_markdown(index=False, floatfmt=".4g") if inputs_df_prompt_val is not None and not inputs_df_prompt_val.empty else "Input distribution data not available."
 
-# Extracting dimension {i+1}
-def dimension_{i+1}_model(X):
-    Y = model(X)
-    return Y[{i}]
-"""
-            
-            # Run analysis for this dimension
-            st.markdown(f"### Analyzing Output Dimension {i+1}")
-            
-            # Compute results for this dimension
-            results_i = compute_expectation_convergence_analysis(wrapper_model_i, problem, dimension_model_code, N_samples)
-            
-            # Generate AI insights for this dimension
-            if language_model:
-                with st.spinner(f"Generating insights for dimension {i+1}..."):
-                    insights = generate_ai_insights(results_i, language_model)
-                    results_i['ai_insights'] = insights
-            
-            # Display results for this dimension if requested
-            if display_results:
-                st.markdown(f"## Results for Output Dimension {i+1}")
-                display_expectation_convergence_analysis(results_i, language_model)
-            
-            # Store results for this dimension
-            all_results[f"dimension_{i+1}"] = results_i
-        
-        return all_results
-    
-    except Exception as e:
-        st.error(f"Error in joint expectation convergence analysis: {str(e)}")
-        return None
+        model_code_formatted_prompt_val = f"```python\n{model_code_str.strip()}\n```"
 
-def display_expectation_convergence_results(analysis_results, language_model='groq'):
-    """
-    Display enterprise-grade expectation convergence analysis results.
-    This function creates and displays interactive visualizations and insights for the expectation convergence analysis results.
-    """
-    if not analysis_results:
-        st.error("No analysis results to display. Please run the analysis first.")
-        return
+        # --- Enhanced Q-Q Plot Information for LLM ---
+        qq_summary = analysis_data.get('qq_plot_summary_stats', {})
+        qq_correlation_prompt = qq_summary.get('correlation', np.nan)
+        qq_lower_dev_prompt = qq_summary.get('lower_tail_deviation_avg', np.nan)
+        qq_mid_dev_prompt = qq_summary.get('middle_section_deviation_avg', np.nan)
+        qq_upper_dev_prompt = qq_summary.get('upper_tail_deviation_avg', np.nan)
+        qq_points_prompt = qq_summary.get('representative_points', [])
 
-    # Display convergence analysis results
-    with st.container():
-        st.markdown("## Expectation Convergence Analysis Results")
-        st.markdown("""
-        This analysis examines how the mean and standard deviation estimates converge as the number of Monte Carlo samples increases.
-        The convergence plots help determine if enough samples have been used for reliable estimates.
-        """)
-
-        # Mean convergence visualization
-        if 'mean_convergence_fig' in analysis_results:
-            st.write("##### Mean Convergence Analysis")
-            st.plotly_chart(analysis_results['mean_convergence_fig'], use_container_width=True)
-
-        # Standard deviation convergence visualization
-        if 'std_convergence_fig' in analysis_results:
-            st.write("##### Standard Deviation Convergence Analysis")
-            st.plotly_chart(analysis_results['std_convergence_fig'], use_container_width=True)
-
-        # Output distribution visualization
-        if 'distribution_fig' in analysis_results:
-            st.write("##### Output Distribution Analysis")
-            st.plotly_chart(analysis_results['distribution_fig'], use_container_width=True)
-
-        # Distribution fitting results
-        if 'fit_df' in analysis_results and not analysis_results['fit_df'].empty:
-            st.write("##### Distribution Fitting Results")
-            try:
-                display_df = analysis_results['fit_df'][['Distribution', 'AIC', 'BIC', 'KS_Statistic', 'KS_pvalue']].copy()
-                display_df['AIC'] = display_df['AIC'].map('{:.2f}'.format)
-                display_df['BIC'] = display_df['BIC'].map('{:.2f}'.format)
-                display_df['KS_Statistic'] = display_df['KS_Statistic'].map('{:.4f}'.format)
-                display_df['KS_pvalue'] = display_df['KS_pvalue'].map('{:.4f}'.format)
-                display_df = display_df.rename(columns={
-                    'KS_Statistic': 'KS Statistic',
-                    'KS_pvalue': 'KS p-value'
-                })
-                display_df = display_df.sort_values('AIC')
-                display_df = display_df.head(1)
-                if 'display_name' in analysis_results and analysis_results['display_name']:
-                    st.markdown(f"**Best Fit: {analysis_results['display_name']}**")
-                st.dataframe(display_df, hide_index=True, use_container_width=True)
-                if 'best_distribution_name' in analysis_results and analysis_results['best_distribution_name'] != "None":
-                    ot_dist_type = analysis_results.get('ot_distribution_type', analysis_results['best_distribution_name'])
-                    if 'best_params' in analysis_results and analysis_results['best_params']:
-                        param_str = ", ".join([f"{p:.4f}" for p in analysis_results['best_params']])
-            except Exception as e:
-                st.warning(f"Error formatting distribution fitting results: {str(e)}")
-                st.dataframe(analysis_results['fit_df'], use_container_width=True)
+        qq_interpretation_prompt = "Q-Q Plot Summary (vs. Normal Distribution):\n"
+        if not np.isnan(qq_correlation_prompt):
+            qq_interpretation_prompt += f"- Linearity (Correlation of Q-Q points): {qq_correlation_prompt:.3f} (A value of 1.0 suggests perfect linear alignment of points on the Q-Q plot. Deviations from 1 indicate non-linearity in the Q-Q plot, suggesting non-normal features).\n"
         else:
-            st.info("No distribution fitting results available. This may happen if none of the standard distributions provided a good fit to the data.")
+             qq_interpretation_prompt += "- Linearity (Correlation of Q-Q points): Not available.\n"
 
-        # Two columns for statistics tables
-        col1, col2 = st.columns(2)
-        if 'summary_df' in analysis_results:
-            with col1:
-                st.write("##### Convergence Statistics")
-                st.dataframe(analysis_results['summary_df'], hide_index=True, use_container_width=True)
-        if 'dist_stats_df' in analysis_results:
-            with col2:
-                st.write("##### Distribution Statistics")
-                st.dataframe(analysis_results['dist_stats_df'], hide_index=True, use_container_width=True)
+        if not np.isnan(qq_lower_dev_prompt):
+            qq_interpretation_prompt += f"- Lower Tail (approx. bottom 25%): Sample quantiles are on average {abs(qq_lower_dev_prompt):.3f} units {'above' if qq_lower_dev_prompt > 0 else 'below'} theoretical normal quantiles. This suggests the sample's lower tail is {'heavier' if qq_lower_dev_prompt > 0 else 'lighter'} than a normal distribution's lower tail.\n"
+        else:
+            qq_interpretation_prompt += "- Lower Tail deviation: Not available.\n"
 
-        # Quantiles
-        if 'quantiles_df' in analysis_results:
-            st.write("##### Output Quantiles")
-            st.dataframe(analysis_results['quantiles_df'], hide_index=True, use_container_width=True)
+        if not np.isnan(qq_mid_dev_prompt):
+            qq_interpretation_prompt += f"- Middle Section (approx. middle 50%): Sample quantiles are on average {abs(qq_mid_dev_prompt):.3f} units {'above' if qq_mid_dev_prompt > 0 else 'below'} theoretical normal quantiles. This reflects how the body of the distribution compares to normal.\n"
+        else:
+            qq_interpretation_prompt += "- Middle Section deviation: Not available.\n"
 
-        # AI insights
-        if 'ai_insights' in analysis_results:
-            st.write("##### AI-Generated Insights")
-            st.markdown(analysis_results['ai_insights'])
-
-        # Display any other available results
-        for key, value in analysis_results.items():
-            if key not in ['mean_convergence_fig', 'std_convergence_fig', 'distribution_fig', 
-                        'summary_df', 'dist_stats_df', 'quantiles_df', 'fit_df', 'ai_insights',
-                        'inputs_df', 'Y_values', 'sample_sizes', 'mean_estimates', 'lower_bounds', 
-                        'upper_bounds', 'std_dev_estimates', 'final_std_dev', 'convergence_sample_size', 
-                        'mean_Y', 'std_Y', 'conf_int', 'skewness', 'kurtosis', 'q1', 'q3', 'iqr', 
-                        'best_distribution', 'best_params', 'best_distribution_name', 'input_parameters',
-                        'ot_distribution_type', 'display_name']:
-                if hasattr(value, 'to_html'):
-                    st.write(f"##### {key.replace('_', ' ').title()}")
-                    st.dataframe(value, use_container_width=True)
-                elif isinstance(value, (str, int, float)):
-                    st.write(f"**{key.replace('_', ' ').title()}:** {value}")
-
-def get_expectation_convergence_context_for_chat(exp_results):
-    """
-    Generate a formatted string containing expectation convergence analysis results for the global chat context.
-    
-    Parameters
-    ----------
-    exp_results : dict
-        Dictionary containing the results of the expectation convergence analysis
+        if not np.isnan(qq_upper_dev_prompt):
+            qq_interpretation_prompt += f"- Upper Tail (approx. top 25%): Sample quantiles are on average {abs(qq_upper_dev_prompt):.3f} units {'above' if qq_upper_dev_prompt > 0 else 'below'} theoretical normal quantiles. This suggests the sample's upper tail is {'heavier' if qq_upper_dev_prompt > 0 else 'lighter'} than a normal distribution's upper tail.\n"
+        else:
+            qq_interpretation_prompt += "- Upper Tail deviation: Not available.\n"
         
-    Returns
-    -------
-    str
-        Formatted string with expectation convergence analysis results for chat context
-    """
-    context = ""
-    
-    # Main statistics
-    mean_Y = exp_results.get("mean_Y")
-    std_Y = exp_results.get("std_Y")
-    conf_int = exp_results.get("conf_int")
-    skewness = exp_results.get("skewness")
-    kurtosis = exp_results.get("kurtosis")
-    quantiles = exp_results.get("quantiles") if "quantiles" in exp_results else None
-    best_distribution = exp_results.get("best_distribution_name")
-    best_params = exp_results.get("best_params")
-    prob_exceedance = exp_results.get("prob_exceedance") if "prob_exceedance" in exp_results else None
-    ai_insights = exp_results.get("ai_insights")
-    
-    context += "\n\n### Expectation Convergence Analysis Results\n"
-    if mean_Y is not None and std_Y is not None:
-        context += f"- **Estimated Mean Output:** {mean_Y:.4f}\n"
-        context += f"- **Estimated Std Dev:** {std_Y:.4f}\n"
-    if conf_int is not None:
-        context += f"- **95% Confidence Interval:** [{conf_int[0]:.4f}, {conf_int[1]:.4f}]\n"
-    if skewness is not None:
-        context += f"- **Skewness:** {skewness:.4f}\n"
-    if kurtosis is not None:
-        context += f"- **Kurtosis:** {kurtosis:.4f}\n"
-    if quantiles is not None:
-        context += "- **Quantiles:**\n"
-        for q, v in quantiles.items():
-            context += f"    - {q}: {v:.4f}\n"
-    if best_distribution is not None:
-        context += f"- **Best Fit Distribution:** {best_distribution}\n"
-    if best_params is not None:
-        context += f"- **Best Fit Parameters:** {best_params}\n"
-    if prob_exceedance is not None:
-        context += f"- **Probability of Exceeding Threshold:** {prob_exceedance}\n"
-    if ai_insights is not None:
-        context += f"\n#### AI Insights\n{ai_insights}\n"
-    
-    # Add output distribution table if available
-    if "fit_df" in exp_results and exp_results["fit_df"] is not None:
-        fit_df = exp_results["fit_df"]
-        try:
-            context += "\n**Distribution Fit Results:**\n"
-            context += fit_df.to_markdown(index=False)
-        except Exception:
-            pass
-    
-    return context
+        if qq_points_prompt:
+            qq_interpretation_prompt += "- Representative Q-Q Points (Theoretical Normal vs. Sample Quantiles):\n"
+            for perc_str, t_q, s_q in qq_points_prompt:
+                qq_interpretation_prompt += f"  - {perc_str}: Theoretical={t_q:.3f}, Sample={s_q:.3f} (Difference: {s_q - t_q:.3f})\n"
+        else:
+            qq_interpretation_prompt += "- Detailed Q-Q representative point data not available.\n"
+        qq_interpretation_prompt += "Based on these Q-Q characteristics, describe the output distribution's shape relative to a normal distribution (e.g., overall fit, skewness, tail weight/behavior)."
 
-def generate_ai_insights(analysis_results, language_model='groq'):
-    """Generate AI-powered insights for expectation convergence analysis.
-    
-    This function uses a language model to generate insights about the
-    convergence analysis results, focusing on statistical significance,
-    distribution characteristics, and recommendations.
-    
-    Parameters
-    ----------
-    analysis_results : dict
-        Dictionary containing all convergence analysis results
-    language_model : str, optional
-        Language model to use for insights ('groq' or 'openai')
-        
-    Returns
-    -------
-    str
-        AI-generated insights in markdown format
-    """
-    try:
-        # Extract key information
-        mean_estimate = analysis_results.get('final_mean', 'N/A')
-        std_dev = analysis_results.get('final_std_dev', 'N/A')
-        convergence_sample_size = analysis_results.get('convergence_sample_size', 'N/A')
-        skewness = analysis_results.get('skewness', 'N/A')
-        kurtosis = analysis_results.get('kurtosis', 'N/A')
-        
-        # Get distribution information if available
-        best_distribution_name = analysis_results.get('best_distribution_name', 'None')
-        best_params = analysis_results.get('best_params', [])
-        
-        # Get the detailed distribution name if available
-        display_name = analysis_results.get('display_name', best_distribution_name)
-        
-        # Analyze Q-Q plot data if available
-        qq_plot_description = "Not available"
-        try:
-            if 'Y_values' in analysis_results:
-                Y_values = analysis_results['Y_values']
-                # Calculate theoretical quantiles from a normal distribution
-                from scipy import stats
-                import numpy as np
-                
-                theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, len(Y_values)))
-                sorted_Y = np.sort(Y_values)
-                
-                # Calculate correlation between theoretical and empirical quantiles
-                qq_correlation = np.corrcoef(theoretical_quantiles, sorted_Y)[0, 1]
-                
-                # Analyze deviations from the reference line
-                # Compare first quarter, middle, and last quarter of points
-                n = len(sorted_Y)
-                first_quarter = int(n * 0.25)
-                third_quarter = int(n * 0.75)
-                
-                # Calculate average deviation in each section
-                lower_deviation = np.mean(sorted_Y[:first_quarter] - stats.norm.ppf(np.linspace(0.01, 0.25, first_quarter)))
-                middle_deviation = np.mean(sorted_Y[first_quarter:third_quarter] - stats.norm.ppf(np.linspace(0.25, 0.75, third_quarter-first_quarter)))
-                upper_deviation = np.mean(sorted_Y[third_quarter:] - stats.norm.ppf(np.linspace(0.75, 0.99, n-third_quarter)))
-                
-                # Create a description of the Q-Q plot
-                qq_plot_description = f"""
-                Q-Q Plot Analysis:
-                - Correlation between theoretical and empirical quantiles: {qq_correlation:.4f} (1.0 would be perfect normal)
-                - Lower tail (bottom 25% of points): {'Above' if lower_deviation > 0 else 'Below'} the reference line by average of {abs(lower_deviation):.4f}
-                - Middle section (middle 50% of points): {'Above' if middle_deviation > 0 else 'Below'} the reference line by average of {abs(middle_deviation):.4f}
-                - Upper tail (top 25% of points): {'Above' if upper_deviation > 0 else 'Below'} the reference line by average of {abs(upper_deviation):.4f}
-                """
-                
-                # Add interpretation hints
-                if lower_deviation < 0 and upper_deviation > 0:
-                    qq_plot_description += "- Pattern suggests: S-shaped curve (right-skewed distribution)"
-                elif lower_deviation > 0 and upper_deviation < 0:
-                    qq_plot_description += "- Pattern suggests: Reverse S-shaped curve (left-skewed distribution)"
-                elif lower_deviation > 0 and upper_deviation > 0:
-                    qq_plot_description += "- Pattern suggests: Points generally above the line (heavier tails than normal)"
-                elif lower_deviation < 0 and upper_deviation < 0:
-                    qq_plot_description += "- Pattern suggests: Points generally below the line (lighter tails than normal)"
-                else:
-                    qq_plot_description += "- Pattern suggests: Close to normal distribution"
-        except Exception as e:
-            qq_plot_description = f"Q-Q Plot Analysis: Error analyzing Q-Q plot data: {str(e)}"
-        
-        # Create a prompt for the AI
-        prompt = f"""
-You are an expert in uncertainty quantification and statistical analysis. Based on the following Monte Carlo convergence analysis results, provide insights about the model's behavior, convergence characteristics, and output distribution.
+        prompt = f"""{RETURN_INSTRUCTION}
+You are an expert in uncertainty quantification and statistical simulation. I have performed a Monte Carlo Expectation Convergence Analysis for a computational model with a single output. Please provide a detailed interpretation of the results.
 
-Key results:
-- Mean estimate: {mean_estimate}
-- Standard deviation: {std_dev}
-- Sample size for convergence: {convergence_sample_size}
-- Skewness: {skewness} (positive means right-skewed, negative means left-skewed)
-- Kurtosis: {kurtosis} (positive means heavier tails than normal, negative means lighter tails)
-- Best-fit distribution: {display_name}
+**Computational Model Code:**
+{model_code_formatted_prompt_val}
 
-{qq_plot_description}
+**Input Variable Distributions Summary:**
+{inputs_md_prompt_val}
 
-Please provide insights on:
-1. The convergence behavior of the model (how quickly it converges, whether more samples might be needed)
-2. The uncertainty in the model output (what the standard deviation tells us about the model's variability)
-3. The distribution of the model output (what the shape of the distribution means in practical terms)
-4. Q-Q plot interpretation: Based on the Q-Q plot data provided, explain what this tells us about the distribution compared to a normal distribution
-5. What the best-fit distribution ({display_name}) tells us about the underlying process
-6. How this distribution could be used for risk assessment or decision-making
-7. Any recommendations for further analysis or model improvement
+**Key Results from ExpectationSimulationAlgorithm (OpenTURNS):**
+- Final Estimated Mean of Output: {final_mean_prompt:.5g}
+- Final Estimated Standard Error of the Sample Mean: {std_err_mean_algo_prompt_val:.5g}
+- 95% Confidence Interval for the Mean: [{ci_mean_algo_lower_prompt_val:.5g}, {ci_mean_algo_upper_prompt_val:.5g}]
+- Total Samples Used by Algorithm (N_samples * BlockSize, as COV criterion was 'NONE'): {samples_run_prompt_val}
 
-Keep your response concise but informative, focusing on practical implications rather than theoretical details.
+**Characteristics of the Output Sample (based on {samples_run_prompt_val} model evaluations):**
+- Estimated Standard Deviation of Output (σY_hat from Algo): {output_std_dev_algo_prompt_val:.5g}
+- Skewness (Sample): {skew_sample_prompt_val:.3f}
+- Kurtosis (Fisher, normal=0, Sample): {kurt_sample_prompt_val:.3f}
+- Best-Fit Distribution (by AIC, if available): {best_fit_name_prompt_val} (OpenTURNS Code: `{best_fit_code_prompt_val}`)
+
+**Q-Q Plot Summary & Interpretation Guidance (vs. Normal Distribution):**
+{qq_interpretation_prompt}
+
+**Analysis Request:**
+Please provide insights on the following, using precise scientific language:
+
+1.  **Convergence Quality & Sufficiency of Samples:**
+    * Comment on the stability of the mean estimate as seen in its convergence plot (not shown to you, but infer from CI). Based on the 95% CI width ([{ci_mean_algo_lower_prompt_val:.5g}, {ci_mean_algo_upper_prompt_val:.5g}]) relative to the mean ({final_mean_prompt:.5g}), how precise is this estimate?
+    * Similarly, discuss the convergence of the standard deviation estimate (plot not shown, infer general stability if possible).
+    * Is the number of samples ({samples_run_prompt_val}) likely sufficient for reliable estimates of these moments, given the model's nature (if inferable) and output variability?
+
+2.  **Output Uncertainty & Variability:**
+    * Interpret the final estimated mean ({final_mean_prompt:.5g}).
+    * What does the estimated standard deviation of the output (σY_hat ≈ {output_std_dev_algo_prompt_val:.5g}) indicate about the inherent variability or spread of the model's output?
+
+3.  **Output Distribution Shape & Characteristics:**
+    * Based on the provided Q-Q plot summary statistics (linearity correlation, tail deviations, representative points), describe how the output distribution deviates from a normal distribution.
+    * Discuss the implications of the output sample's skewness ({skew_sample_prompt_val:.3f}) and kurtosis ({kurt_sample_prompt_val:.3f}), and how these align with the Q-Q plot findings.
+    * If a best-fit distribution ({best_fit_name_prompt_val}) was identified, what does this specific type of distribution typically imply about underlying processes? How does its shape (e.g., parameters in `{best_fit_code_prompt_val}`) align with the observed skewness, kurtosis, and Q-Q characteristics?
+
+4.  **Practical Implications & Recommendations:**
+    * What are the key takeaways from this analysis for someone using this model's output for decision-making or risk assessment?
+    * Are there any particular cautions if, for example, the distribution is heavily skewed or has extreme tails (as might be indicated by the Q-Q summary and kurtosis)?
+    * Suggest potential next steps: Should more samples be run? Is the current precision adequate? Could the fitted distribution be used in further analyses (e.g., reliability studies)?
+
+Structure your response clearly. Refer to the provided numerical values. The algorithm was run with `CoefficientOfVariationCriterionType = 'NONE'`, meaning it likely completed all `MaximumOuterSampling` iterations.
 """
-        
-        # Use the call_groq_api utility function
-        from utils.core_utils import call_groq_api
-        
-        # Add a retry mechanism
-        max_retries = 3
-        retry_count = 0
-        insights = None
-        
-        while insights is None and retry_count < max_retries:
-            try:
-                insights = call_groq_api(prompt, model_name=language_model)
-            except Exception as e:
-                retry_count += 1
-                if retry_count >= max_retries:
-                    st.error(f"Error generating AI insights after {max_retries} attempts: {str(e)}")
-                    insights = f"""
-                    ## Error Generating Insights
-                    
-                    There was an error connecting to the language model API: {str(e)}
-                    
-                    Please check the analysis results manually:
-                    - Mean estimate: {mean_estimate}
-                    - Standard deviation: {std_dev}
-                    - Distribution shape: {'Positively Skewed' if analysis_results['skewness'] > 0 else 'Negatively Skewed' if analysis_results['skewness'] < 0 else 'Symmetric'}
-                    """
-                import time
-                time.sleep(2)  # Wait before retrying
-        
+        model_name_for_api = language_model
+        if not language_model or language_model.lower() == 'groq':
+            model_name_for_api = "llama3-70b-8192" 
+
+        insights = call_groq_api(prompt, model_name=model_name_for_api)
         return insights
         
     except Exception as e:
-        st.error(f"Error generating AI insights: {str(e)}")
-        return f"""
-        ## Error Generating Insights
+        st.error(f"Error in generate_ai_insights: {str(e)}")
+        return "Error: AI insights could not be generated due to an internal error."
+
+# --- Main Entry Point (if your app calls this directly) ---
+def expectation_convergence_analysis(model: callable, problem: ot.Distribution, model_code_str: str = None, 
+                                     N_samples: int = 10000, language_model: str = 'groq', 
+                                     display_results: bool = True) -> dict:
+    """
+    Perform and display expectation convergence analysis for a univariate model.
+    This function is the primary wrapper if your main_app calls a single function for this module.
+    """
+    results_placeholder = None
+    if display_results:
+        results_placeholder = st.empty()
+        with results_placeholder.container():
+             st.info("🚀 Starting Expectation Convergence Analysis...")
+    
+    analysis_data = {}
+    try:
+        # Pass model_code_str to compute_... so it's in analysis_data
+        analysis_data = compute_expectation_convergence_analysis(
+            model, problem, model_code_str, N_samples
+        )
         
-        There was an error preparing the analysis for AI insights: {str(e)}
+        llm_insights = None
+        # generate_ai_insights will retrieve model_code_str from analysis_data dictionary
+        # It's crucial that model_code_str was passed to compute_... and stored in analysis_data
+        if language_model and analysis_data.get('model_code_str') and analysis_data.get('final_algo_mean') is not None:
+            if display_results:
+                with results_placeholder.container():
+                    st.info("🧠 Generating AI insights... This may take a moment.")
+            
+            llm_insights = generate_ai_insights(analysis_data, language_model=language_model) 
         
-        Please examine the analysis results manually.
-        """
+        analysis_data['ai_insights'] = llm_insights
+
+        if display_results and results_placeholder:
+            with results_placeholder.container():
+                st.success("✅ Expectation Convergence Analysis Completed!")
+            
+        st.session_state.expectation_convergence_results = analysis_data
+        
+        if display_results:
+            display_expectation_convergence_results(analysis_data)
+            
+        return analysis_data
+    
+    except Exception as e:
+        error_message = f"Critical error in expectation_convergence_analysis wrapper: {str(e)}"
+        if display_results:
+            if results_placeholder: 
+                with results_placeholder.container(): st.error(error_message)
+            else: st.error(error_message)
+        else:
+            print(error_message) # Log if not displaying
+        
+        analysis_data['error'] = error_message
+        analysis_data['ai_insights'] = "AI insights skipped due to critical analysis error."
+        return analysis_data
+
+# --- Display Function ---
+def display_expectation_convergence_results(analysis_data: dict):
+    """
+    Display expectation convergence analysis results in the Streamlit interface.
+    """
+    if not analysis_data:
+        st.error("Analysis data is missing, cannot display results.")
+        return
+    # Check if the analysis itself had an error, but still try to display what we can
+    if 'error' in analysis_data and analysis_data['error'] and not analysis_data.get('fig_mean_convergence'):
+        st.error(f"Analysis Error: {analysis_data.get('error')}")
+        # Display AI insights if they contain an error message from AI generation step
+        if 'ai_insights' in analysis_data and "Error" in str(analysis_data['ai_insights']):
+             st.subheader("🧠 AI-Generated Insights & Interpretation")
+             st.warning(analysis_data['ai_insights'])
+        return
+
+    st.header("📈 Expectation Convergence Analysis")
+    st.markdown("""
+    This analysis examines how the estimated mean and standard deviation of the model output 
+    converge as the number of Monte Carlo samples increases. It also characterizes 
+    the output distribution. This helps assess the reliability of these statistical estimates.
+    """)
+
+    st.subheader("Convergence Plots")
+    # Check if figures are actual Plotly Figure objects and have data
+    mean_fig = analysis_data.get('fig_mean_convergence')
+    if isinstance(mean_fig, go.Figure) and mean_fig.data:
+        st.plotly_chart(mean_fig, use_container_width=True)
+    else: st.warning("Mean convergence plot data is unavailable or empty.")
+
+    std_fig = analysis_data.get('fig_std_dev_convergence')
+    if isinstance(std_fig, go.Figure) and std_fig.data:
+        st.plotly_chart(std_fig, use_container_width=True)
+    else: st.warning("Standard deviation convergence plot data is unavailable or empty.")
+
+    st.subheader("Output Distribution Analysis")
+    dist_fig = analysis_data.get('fig_output_distribution')
+    if isinstance(dist_fig, go.Figure) and dist_fig.data:
+        st.plotly_chart(dist_fig, use_container_width=True)
+    else: st.warning("Output distribution plot data is unavailable or empty.")
+
+    st.subheader("Summary Statistics")
+    col1, col2 = st.columns(2)
+    with col1:
+        df_conv_summary = analysis_data.get('summary_convergence_df')
+        if isinstance(df_conv_summary, pd.DataFrame) and not df_conv_summary.empty:
+            st.markdown("##### Algorithm Convergence Summary")
+            st.dataframe(df_conv_summary, hide_index=True, use_container_width=True)
+        else: st.markdown("Algorithm convergence summary not available.")
+    with col2:
+        df_dist_summary = analysis_data.get('summary_distribution_df')
+        if isinstance(df_dist_summary, pd.DataFrame) and not df_dist_summary.empty:
+            st.markdown("##### Output Sample Statistics")
+            st.dataframe(df_dist_summary, hide_index=True, use_container_width=True)
+        else: st.markdown("Output sample statistics not available.")
+    
+    df_quantiles = analysis_data.get('summary_quantiles_df')
+    if isinstance(df_quantiles, pd.DataFrame) and not df_quantiles.empty:
+        st.markdown("##### Output Sample Quantiles")
+        st.dataframe(df_quantiles, hide_index=True, use_container_width=True)
+    else: st.markdown("Output sample quantiles not available.")
+
+    st.subheader("Distribution Fitting")
+    fit_df_display = analysis_data.get('distribution_fit_results_df')
+    if isinstance(fit_df_display, pd.DataFrame) and not fit_df_display.empty:
+        best_fit_code_display_val = analysis_data.get('best_fit_distribution_code', 'N/A')
+        st.markdown(f"**Best Fit (by AIC): {analysis_data.get('best_fit_distribution_name', 'N/A')}**")
+        st.markdown(f"OpenTURNS Code: `{best_fit_code_display_val}`")
+        
+        cols_to_show_fit_display = ['Distribution', 'AIC', 'BIC', 'KS_Statistic', 'KS_pvalue']
+        actual_cols_fit_display = [col for col in cols_to_show_fit_display if col in fit_df_display.columns]
+        display_fit_df_st_val = fit_df_display[actual_cols_fit_display].copy()
+
+        for col_format_fit_val in ['AIC', 'BIC']:
+            if col_format_fit_val in display_fit_df_st_val: 
+                try: display_fit_df_st_val[col_format_fit_val] = pd.to_numeric(display_fit_df_st_val[col_format_fit_val], errors='coerce').map('{:.2f}'.format)
+                except: pass # Ignore formatting errors if conversion fails
+        for col_format_fit_val in ['KS_Statistic', 'KS_pvalue']:
+             if col_format_fit_val in display_fit_df_st_val: 
+                 try: display_fit_df_st_val[col_format_fit_val] = pd.to_numeric(display_fit_df_st_val[col_format_fit_val], errors='coerce').map('{:.4f}'.format)
+                 except: pass
+        
+        st.dataframe(display_fit_df_st_val.head(), hide_index=True, use_container_width=True)
+    else:
+        st.info("No distribution fitting performed or no distributions provided a suitable fit.")
+
+    ai_insights_text_display_val = analysis_data.get('ai_insights')
+    if ai_insights_text_display_val:
+        st.subheader("🧠 AI-Generated Insights & Interpretation")
+        st.markdown(ai_insights_text_display_val)
+    elif analysis_data.get("model_code_str") is None and analysis_data.get("language_model") and not ai_insights_text_display_val and not ('error' in analysis_data and analysis_data['error']):
+         st.warning("AI insights could not be generated because the model code was not available to the insight generation step.")
+    elif analysis_data.get("language_model") and not ai_insights_text_display_val and not ('error' in analysis_data and analysis_data['error']):
+         st.warning("AI insights were expected but not generated. This might be due to an API error or other issue during insight generation.")
+
+
+# --- Chat Context Function ---
+def get_expectation_convergence_context_for_chat(analysis_data: dict) -> str:
+    """
+    Generate a formatted string of key expectation convergence results for chat context.
+    """
+    if not analysis_data or ('error' in analysis_data and analysis_data['error']):
+        return f"Expectation convergence analysis results are not available or an error occurred: {analysis_data.get('error', 'Unknown error')}"
+
+    context = "\n\n### Expectation Convergence Analysis Summary:\n"
+    context += f"- Final Mean Estimate (Algo): {analysis_data.get('final_algo_mean', 'N/A'):.4g}\n"
+    context += f"- Est. Output Std Dev (Algo σY_hat): {analysis_data.get('estimated_output_std_dev_algo', 'N/A'):.4g}\n"
+    ci_mean_chat_val = analysis_data.get('final_algo_ci_mean', ['N/A', 'N/A'])
+    # Ensure ci_mean_chat_val is a list with at least two elements before indexing
+    ci_lower_chat = ci_mean_chat_val[0] if isinstance(ci_mean_chat_val, list) and len(ci_mean_chat_val) > 0 else 'N/A'
+    ci_upper_chat = ci_mean_chat_val[1] if isinstance(ci_mean_chat_val, list) and len(ci_mean_chat_val) > 1 else 'N/A'
+    context += f"- 95% CI for Mean (Algo): [{ci_lower_chat:.4g}, {ci_upper_chat:.4g}]\n"
+    
+    context += f"- Samples Run by Algo: {analysis_data.get('samples_run_by_algo', 'N/A')}\n"
+    context += f"- Output Sample Skewness: {analysis_data.get('output_sample_skewness', 'N/A'):.3f}\n"
+    context += f"- Output Sample Kurtosis: {analysis_data.get('output_sample_kurtosis', 'N/A'):.3f}\n"
+    context += f"- Best Fit Dist. (AIC): {analysis_data.get('best_fit_distribution_name', 'None')}\n"
+    
+    qq_summary_chat = analysis_data.get('qq_plot_summary_stats', {})
+    qq_corr_chat = qq_summary_chat.get('correlation', np.nan)
+    if not np.isnan(qq_corr_chat):
+        context += f"- Q-Q Plot (vs Normal) Correlation: {qq_corr_chat:.3f}\n"
+            
+    ai_insights_chat_val = analysis_data.get('ai_insights')
+    if ai_insights_chat_val and isinstance(ai_insights_chat_val, str):
+        # Create a more targeted snippet for chat
+        insight_lines_chat_val = ai_insights_chat_val.split('\n')
+        executive_summary_lines = [line for line in insight_lines_chat_val if "executive summary" in line.lower() or "key findings" in line.lower()]
+        if executive_summary_lines:
+            # Try to find the start of the summary and take a few lines
+            try:
+                start_index = insight_lines_chat_val.index(executive_summary_lines[0])
+                snippet = "\n".join(insight_lines_chat_val[start_index : min(len(insight_lines_chat_val), start_index + 4)])
+                context += f"\n**AI Insights Snippet:**\n{snippet}...\n"
+            except ValueError: # Should not happen if executive_summary_lines is populated
+                context += f"\n**AI Insights Snippet:**\n{ai_insights_chat_val[:250]}...\n"
+        elif len(insight_lines_chat_val) > 2 :
+             non_header_lines_chat = [line.strip() for line in insight_lines_chat_val if line.strip() and not line.strip().startswith("#")]
+             if len(non_header_lines_chat) >=1:
+                 context += f"\n**AI Insights Snippet:**\n{non_header_lines_chat[0]}"
+                 if len(non_header_lines_chat) >=2: context += f"\n{non_header_lines_chat[1]}"
+                 context += "...\n"
+        else: 
+            context += f"\n**AI Insights Snippet:**\n{ai_insights_chat_val[:250]}...\n"
+        context += "(Refer to full analysis for complete AI interpretation)\n"
+    
+    return context

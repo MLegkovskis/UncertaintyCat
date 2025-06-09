@@ -4,643 +4,423 @@ import openturns as ot
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
-from plotly.subplots import make_subplots
-from utils.core_utils import call_groq_api
-from utils.constants import RETURN_INSTRUCTION
+# from plotly.subplots import make_subplots # Not used, can be removed if not planned
+from utils.core_utils import call_groq_api # Assuming this is correctly defined elsewhere
+from utils.constants import RETURN_INSTRUCTION # Assuming this is correctly defined elsewhere
 
-def compute_correlation_analysis(model, problem, size=1000):
+def compute_correlation_analysis_univariate(model, problem, size=1000):
     """
-    Perform comprehensive correlation analysis calculations without UI display.
+    Perform correlation analysis calculations for a univariate model output.
     
-    This function calculates various correlation coefficients between input variables
-    and model outputs, including Pearson, Spearman, PCC, PRCC, SRC, and SRRC.
+    Calculates Pearson, Spearman, PCC, PRCC, SRC, and SRRC between
+    input variables and the single model output.
     
     Parameters
     ----------
     model : callable
-        The model function to analyze
+        The model function (e.g., ot.Function or Python callable returning a single output).
     problem : ot.Distribution
-        OpenTURNS distribution representing the input uncertainty
+        OpenTURNS distribution for input uncertainty.
     size : int, optional
-        Number of samples for correlation analysis (default is 1000)
+        Number of samples for analysis (default is 1000).
         
     Returns
     -------
     dict
-        Dictionary containing correlation analysis results
+        Contains the correlation DataFrame, input/output names, raw samples, and size.
     """
-    # Ensure problem is an OpenTURNS distribution
     if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
-        raise ValueError("Problem must be an OpenTURNS distribution")
+        raise ValueError("Problem must be an OpenTURNS distribution object.")
     
-    # Get input names and dimension
     dimension = problem.getDimension()
     input_names = []
     for i in range(dimension):
         marginal = problem.getMarginal(i)
-        name = marginal.getDescription()[0]
-        input_names.append(name if name != "" else f"X{i+1}")
+        desc = marginal.getDescription()
+        name = desc[0] if desc and desc[0] else f"X{i+1}"
+        input_names.append(name)
     
-    # Generate samples
     sample_X = problem.getSample(size)
-    sample_Y = model(sample_X)
+    raw_output_values = model(sample_X)
+
+    # Process and validate model output to ensure it's a univariate (N x 1) ot.Sample
+    if isinstance(raw_output_values, ot.Sample):
+        if raw_output_values.getDimension() != 1:
+            raise ValueError(
+                f"Model output (ot.Sample) must be univariate. "
+                f"Detected dimension: {raw_output_values.getDimension()}"
+            )
+        sample_Y = raw_output_values
+    else:  # Attempt to convert from Python list/numpy array
+        try:
+            np_Y = np.asarray(raw_output_values, dtype=float) # Ensure numeric
+            if np_Y.ndim == 1:  # If it's a 1D array (N,)
+                np_Y = np_Y.reshape(-1, 1)  # Reshape to (N,1)
+            elif np_Y.ndim == 0:  # scalar for a single sample run (should not happen with size > 1)
+                np_Y = np.array([[np_Y]]) # Reshape to (1,1)
+            
+            if np_Y.shape[0] != size:
+                if np_Y.shape[0] == 1 and np_Y.shape[1] == size: # Check for (1, N)
+                    np_Y = np_Y.T
+                else:
+                    raise ValueError(
+                        f"Model output sample size ({np_Y.shape[0]}) "
+                        f"does not match input sample size ({size})."
+                    )
+            if np_Y.shape[1] != 1:
+                raise ValueError(
+                    f"Model output must be univariate (single column/value per input sample). "
+                    f"Detected columns: {np_Y.shape[1]}"
+                )
+            sample_Y = ot.Sample(np_Y)
+        except Exception as e:
+            raise TypeError(
+                f"Failed to process model output into a univariate ot.Sample. "
+                f"Original output type: {type(raw_output_values)}. Error: {e}"
+            )
+
+    # Determine the single output name
+    output_desc = sample_Y.getDescription()
+    output_name = output_desc[0] if output_desc and output_desc[0] else "Y"
+        
+    corr_analysis_engine = ot.CorrelationAnalysis(sample_X, sample_Y)
     
-    # Check if output is multivariate
-    if isinstance(sample_Y, ot.Sample) and sample_Y.getDimension() > 1:
-        is_multivariate = True
-        output_dimension = sample_Y.getDimension()
-        output_names = sample_Y.getDescription()
-        # If output names are empty, create default names
-        if not output_names or all(name == "" for name in output_names):
-            output_names = [f"Y{i+1}" for i in range(output_dimension)]
-    else:
-        is_multivariate = False
-        output_dimension = 1
-        output_names = ["Y"]
+    methods_coeffs = {
+        "Pearson": list(corr_analysis_engine.computeLinearCorrelation()),
+        "Spearman": list(corr_analysis_engine.computeSpearmanCorrelation()),
+        "PCC": list(corr_analysis_engine.computePCC()),
+        "PRCC": list(corr_analysis_engine.computePRCC()),
+        "SRC": list(corr_analysis_engine.computeSRC()),
+        "SRRC": list(corr_analysis_engine.computeSRRC())
+    }
     
-    # Process each output
-    all_correlation_results = {}
+    corr_df = pd.DataFrame(methods_coeffs, index=input_names)
+    # Sort by absolute Pearson correlation for consistent display
+    corr_df['abs_Pearson_Sort'] = corr_df['Pearson'].abs()
+    corr_df = corr_df.sort_values('abs_Pearson_Sort', ascending=False).drop('abs_Pearson_Sort', axis=1)
     
-    for output_idx in range(output_dimension):
-        # Get the current output name
-        output_name = output_names[output_idx]
-        
-        # Extract current output data
-        if is_multivariate:
-            current_output = ot.Sample(size, 1)
-            for i in range(size):
-                current_output[i, 0] = sample_Y[i, output_idx]
-            current_output.setDescription([output_name])
-        else:
-            current_output = sample_Y
-        
-        # Use OpenTURNS CorrelationAnalysis for robust calculations
-        corr_analysis = ot.CorrelationAnalysis(sample_X, current_output)
-        
-        # Calculate all correlation methods
-        methods = {
-            "Pearson": list(corr_analysis.computeLinearCorrelation()),
-            "Spearman": list(corr_analysis.computeSpearmanCorrelation()),
-            "PCC": list(corr_analysis.computePCC()),
-            "PRCC": list(corr_analysis.computePRCC()),
-            "SRC": list(corr_analysis.computeSRC()),
-            "SRRC": list(corr_analysis.computeSRRC())
-        }
-        
-        # Create DataFrame for correlation results
-        corr_df = pd.DataFrame(methods, index=input_names)
-        
-        # Sort by absolute Pearson correlation for better visualization
-        corr_df['abs_pearson'] = corr_df['Pearson'].abs()
-        corr_df = corr_df.sort_values('abs_pearson', ascending=False)
-        corr_df = corr_df.drop('abs_pearson', axis=1)
-        
-        # Store results for this output
-        all_correlation_results[output_name] = corr_df
-    
-    # Return all results
     return {
-        'all_correlation_results': all_correlation_results,
+        'correlation_df': corr_df,
         'input_names': input_names,
-        'output_names': output_names,
-        'output_dimension': output_dimension,
-        'is_multivariate': is_multivariate,
+        'output_name': output_name, # Singular output name
         'sample_X': sample_X,
         'sample_Y': sample_Y,
         'size': size
     }
 
-def create_correlation_visualizations(corr_df, output_name):
+def create_correlation_visualizations_univariate(corr_df, output_name):
     """
-    Create visualizations for correlation analysis results.
-    
-    Parameters
-    ----------
-    corr_df : pd.DataFrame
-        DataFrame containing correlation results
-    output_name : str
-        Name of the output variable
-        
-    Returns
-    -------
-    dict
-        Dictionary containing visualization figures
+    Create Plotly visualizations for correlation analysis results of the single output.
+    The 'Correlation Heatmap' is removed. The 'Pearson vs. Spearman' scatter plot
+    is prepared for full-width display by the calling Streamlit function.
+    A minor adjustment is made to text annotations on the scatter plot.
     """
-    # Find strongest positive and negative correlations
-    strongest_pos = corr_df['Pearson'].max()
-    strongest_pos_var = corr_df['Pearson'].idxmax()
-    strongest_neg = corr_df['Pearson'].min()
-    strongest_neg_var = corr_df['Pearson'].idxmin()
+    # Determine strongest correlations from Pearson
+    strongest_pos_val = corr_df['Pearson'].max()
+    strongest_pos_var = corr_df['Pearson'].idxmax() if not pd.isna(strongest_pos_val) else "N/A"
+    strongest_neg_val = corr_df['Pearson'].min()
+    strongest_neg_var = corr_df['Pearson'].idxmin() if not pd.isna(strongest_neg_val) else "N/A"
     
-    # Find strongest absolute correlation (regardless of sign)
-    strongest_abs = corr_df['Pearson'].abs().max()
-    strongest_abs_var = corr_df['Pearson'].abs().idxmax()
-    strongest_abs_sign = "positive" if corr_df.loc[strongest_abs_var, 'Pearson'] > 0 else "negative"
+    strongest_abs_val = corr_df['Pearson'].abs().max()
+    strongest_abs_var = corr_df['Pearson'].abs().idxmax() if not pd.isna(strongest_abs_val) else "N/A"
     
-    # Create a comprehensive correlation visualization
+    strongest_abs_sign = "neutral"
+    if strongest_abs_var != "N/A":
+        pearson_val_for_abs = corr_df.loc[strongest_abs_var, 'Pearson']
+        if pearson_val_for_abs > 1e-6: # Threshold for positive
+            strongest_abs_sign = "positive"
+        elif pearson_val_for_abs < -1e-6: # Threshold for negative
+            strongest_abs_sign = "negative"
+
+    # Combined Bar Chart for all methods
     fig_combined = go.Figure()
-    
-    # Add all correlation methods as grouped bars
     methods = ['Pearson', 'Spearman', 'PCC', 'PRCC', 'SRC', 'SRRC']
-    colors = ['rgba(31, 119, 180, 0.8)', 'rgba(255, 127, 14, 0.8)', 'rgba(44, 160, 44, 0.8)', 
-              'rgba(214, 39, 40, 0.8)', 'rgba(148, 103, 189, 0.8)', 'rgba(140, 86, 75, 0.8)']
-    
+    # Using a distinct color sequence
+    colors = px.colors.qualitative.Vivid 
+
     for i, method in enumerate(methods):
         fig_combined.add_trace(go.Bar(
-            x=corr_df.index,
-            y=corr_df[method],
-            name=f"{method}",
-            marker_color=colors[i],
-            hovertemplate='%{x}: %{y:.4f}<extra></extra>'
+            x=corr_df.index, y=corr_df[method], name=method,
+            marker_color=colors[i % len(colors)],
+            hovertemplate=f"<b>{method}</b><br>Input: %{{x}}<br>Coefficient: %{{y:.3f}}<extra></extra>"
         ))
-    
-    # Add zero line
-    fig_combined.add_shape(
-        type="line",
-        x0=-0.5,
-        y0=0,
-        x1=len(corr_df.index) - 0.5,
-        y1=0,
-        line=dict(color="black", width=1, dash="dash")
-    )
-    
-    # Update layout
+    fig_combined.add_hline(y=0, line=dict(color="black", width=1, dash="dash"))
     fig_combined.update_layout(
-        title=f'Correlation Analysis',
-        xaxis_title='Input Variables',
-        yaxis_title='Correlation Coefficient',
-        template='plotly_white',
-        height=600,
-        barmode='group',
-        bargap=0.15,
-        bargroupgap=0.1,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=120, r=20, b=80, l=80)
+        title_text=f'Correlation Coefficients for Output: {output_name}',
+        xaxis_title='Input Variables', yaxis_title='Correlation Coefficient Value',
+        template='plotly_white', height=500, barmode='group',
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=80) # Adjusted top margin for title
     )
-    
-    # Create heatmap visualization
-    fig_heatmap = go.Figure(data=go.Heatmap(
-        z=corr_df.values,
-        x=methods,
-        y=corr_df.index,
-        colorscale='RdBu_r',
-        zmid=0,
-        text=np.round(corr_df.values, 4),
-        texttemplate="%{text:.4f}",
-        hovertemplate='%{y} - %{x}: %{z:.4f}<extra></extra>'
-    ))
-    
-    fig_heatmap.update_layout(
-        title='Correlation Coefficients Heatmap',
-        xaxis_title='Correlation Method',
-        yaxis_title='Input Variables',
-        template='plotly_white',
-        height=500,
-        margin=dict(t=80, r=20, b=50, l=80)
-    )
-    
-    # Create a comparison plot for linear vs. rank methods
+
+    # Pearson vs. Spearman Scatter Plot
     fig_comparison = go.Figure()
-    
-    # Add scatter points for Pearson vs Spearman
     fig_comparison.add_trace(go.Scatter(
-        x=corr_df['Pearson'],
-        y=corr_df['Spearman'],
-        mode='markers+text',
-        marker=dict(
-            size=12,
-            color='rgba(31, 119, 180, 0.8)',
-            line=dict(width=1, color='black')
+        x=corr_df['Pearson'], y=corr_df['Spearman'], mode='markers+text',
+        marker=dict(size=10, color=colors[0 % len(colors)]), 
+        text=corr_df.index, 
+        textposition="top right",
+        textfont=dict(
+            size=9  # Slightly reduced font size for annotations
         ),
-        text=corr_df.index,
-        textposition="top center",
-        name='Pearson vs Spearman'
+        name='Variables', 
+        hovertemplate="<b>%{text}</b><br>Pearson: %{x:.3f}<br>Spearman: %{y:.3f}<extra></extra>"
     ))
-    
-    # Add diagonal line (y=x)
-    max_abs = max(
-        abs(corr_df['Pearson'].max()), 
-        abs(corr_df['Pearson'].min()),
-        abs(corr_df['Spearman'].max()), 
-        abs(corr_df['Spearman'].min())
-    )
-    max_abs = max(max_abs, 0.1) * 1.1  # Add some margin
-    
-    fig_comparison.add_shape(
-        type="line",
-        x0=-max_abs,
-        y0=-max_abs,
-        x1=max_abs,
-        y1=max_abs,
-        line=dict(color="gray", width=1, dash="dash")
-    )
-    
-    # Add zero lines
-    fig_comparison.add_shape(
-        type="line",
-        x0=-max_abs,
-        y0=0,
-        x1=max_abs,
-        y1=0,
-        line=dict(color="black", width=1, dash="dash")
-    )
-    
-    fig_comparison.add_shape(
-        type="line",
-        x0=0,
-        y0=-max_abs,
-        x1=0,
-        y1=max_abs,
-        line=dict(color="black", width=1, dash="dash")
-    )
-    
-    # Update layout
+    max_val = 1.05  # Range for axes [-1.05, 1.05]
+    fig_comparison.add_shape(type="line", x0=-max_val, y0=-max_val, x1=max_val, y1=max_val,
+                            line=dict(color="grey", dash="dash", width=1))
+    fig_comparison.add_hline(y=0, line=dict(color="black", width=0.5, dash="dot"))
+    fig_comparison.add_vline(x=0, line=dict(color="black", width=0.5, dash="dot"))
     fig_comparison.update_layout(
-        title='Linear vs. Rank Correlation (Pearson vs. Spearman)',
-        xaxis_title='Pearson Correlation',
-        yaxis_title='Spearman Correlation',
-        template='plotly_white',
-        height=500,
-        xaxis=dict(range=[-max_abs, max_abs]),
-        yaxis=dict(range=[-max_abs, max_abs]),
-        margin=dict(t=80, r=20, b=50, l=80)
+        title_text=f'Pearson (Linear) vs. Spearman (Monotonic) for Output: {output_name}',
+        xaxis_title='Pearson Coefficient', yaxis_title='Spearman Coefficient',
+        template='plotly_white', height=500,  # You can adjust height as needed
+        xaxis=dict(range=[-max_val, max_val], zeroline=False, gridcolor='rgba(200,200,200,0.3)'), 
+        yaxis=dict(range=[-max_val, max_val], zeroline=False, gridcolor='rgba(200,200,200,0.3)'),
+        margin=dict(t=80),
+        # ── added to minimise text overlap ──
+        uniformtext_minsize=9,
+        uniformtext_mode='hide'
     )
-    
-    # Add annotations to explain the quadrants
-    quadrant_explanations = [
-        {"x": max_abs*0.7, "y": max_abs*0.7, "text": "Strong positive\nlinear & monotonic", "align": "right"},
-        {"x": -max_abs*0.7, "y": max_abs*0.7, "text": "Strong positive monotonic\nweak/negative linear", "align": "left"},
-        {"x": -max_abs*0.7, "y": -max_abs*0.7, "text": "Strong negative\nlinear & monotonic", "align": "left"},
-        {"x": max_abs*0.7, "y": -max_abs*0.7, "text": "Strong negative monotonic\nweak/positive linear", "align": "right"}
-    ]
-    
-    for exp in quadrant_explanations:
-        fig_comparison.add_annotation(
-            x=exp["x"],
-            y=exp["y"],
-            text=exp["text"],
-            showarrow=False,
-            font=dict(size=10, color="gray"),
-            align=exp["align"]
-        )
-    
-    # Return all figures
+    fig_comparison.add_annotation(x=0.5, y=0.97, xref="paper", yref="paper",
+                                text="Points on diagonal: Linear relationship strength matches monotonic strength.",
+                                showarrow=False, font_size=10)
+    fig_comparison.add_annotation(x=0.5, y=0.03, xref="paper", yref="paper",
+                                text="Points off diagonal: Indicate non-linear monotonic relationships or outliers.",
+                                showarrow=False, font_size=10)
+
     return {
-        'fig_combined': fig_combined,
-        'fig_heatmap': fig_heatmap,
-        'fig_comparison': fig_comparison,
-        'strongest_pos': strongest_pos,
-        'strongest_pos_var': strongest_pos_var,
-        'strongest_neg': strongest_neg,
-        'strongest_neg_var': strongest_neg_var,
-        'strongest_abs': strongest_abs,
-        'strongest_abs_var': strongest_abs_var,
+        'fig_combined_bars': fig_combined, 
+        'fig_pearson_spearman_scatter': fig_comparison,
+        'strongest_pos_val': strongest_pos_val, 'strongest_pos_var': strongest_pos_var,
+        'strongest_neg_val': strongest_neg_val, 'strongest_neg_var': strongest_neg_var,
+        'strongest_abs_val': strongest_abs_val, 'strongest_abs_var': strongest_abs_var,
         'strongest_abs_sign': strongest_abs_sign
     }
 
-def display_correlation_results(analysis_results, language_model=None):
-    """
-    Display correlation analysis results in the Streamlit interface.
-    
-    Parameters
-    ----------
-    analysis_results : dict
-        Dictionary containing correlation analysis results
-    language_model : str, optional
-        Language model to use for AI insights, by default None
-    """
-    try:
-        # Extract results
-        all_correlation_results = analysis_results['all_correlation_results']
-        input_names = analysis_results['input_names']
-        output_names = analysis_results['output_names']
-        output_dimension = analysis_results['output_dimension']
-        is_multivariate = analysis_results['is_multivariate']
-        
-        # Display basic information
-        st.markdown(f"""
-        ### Correlation Analysis Results
-        """)
-        
-        # For each output, create a tab
-        if is_multivariate and output_dimension > 1:
-            tabs = st.tabs(output_names)
-            for i, tab in enumerate(tabs):
-                with tab:
-                    output_name = output_names[i]
-                    corr_df = all_correlation_results[output_name]
-                    
-                    # Create visualizations for this output
-                    viz_results = create_correlation_visualizations(corr_df, output_name)
-                    
-                    # Display visualizations and results
-                    display_single_output_results(corr_df, output_name, viz_results)
-        else:
-            # Single output case - no tabs needed
-            main_output = output_names[0]
-            main_corr_df = all_correlation_results[main_output]
-            
-            # Create visualizations
-            viz_results = create_correlation_visualizations(main_corr_df, main_output)
-            
-            # Display visualizations and results
-            display_single_output_results(main_corr_df, main_output, viz_results)
-        
-        # Display AI insights if available
-        if 'llm_insights' in analysis_results:
-            st.markdown("### AI Insights")
-            st.markdown(analysis_results['llm_insights'])
-        # If not available but language model is provided, this means we're in display mode
-        # and insights were not pre-generated (should not happen with our new implementation)
-        elif language_model:
-            st.warning("AI insights were not pre-generated. This is unusual and may indicate an issue with the analysis.")
-            
-    except Exception as e:
-        st.error(f"Error displaying correlation results: {str(e)}")
 
-def display_single_output_results(corr_df, output_name, viz_results):
+def display_correlation_results(analysis_results_dict):
     """
-    Display correlation results for a single output.
-    
-    Parameters
-    ----------
-    corr_df : pd.DataFrame
-        DataFrame containing correlation results
-    output_name : str
-        Name of the output variable
-    viz_results : dict
-        Dictionary containing visualization figures
+    Display correlation analysis results for the single univariate output.
     """
-    # Extract visualization results
-    strongest_pos = viz_results['strongest_pos']
-    strongest_pos_var = viz_results['strongest_pos_var']
-    strongest_neg = viz_results['strongest_neg']
-    strongest_neg_var = viz_results['strongest_neg_var']
-    strongest_abs = viz_results['strongest_abs']
-    strongest_abs_var = viz_results['strongest_abs_var']
-    strongest_abs_sign = viz_results['strongest_abs_sign']
-    
+    st.header("📊 Correlation Analysis Results")
+
+    # Extract data from the results dictionary
+    corr_df = analysis_results_dict['correlation_df']
+    output_name = analysis_results_dict['output_name']
+    viz_bundle = analysis_results_dict['visualizations'] # This now holds the dict from create_correlation_visualizations
+
     # Display summary metrics
+    st.subheader(f"Key Correlation Metrics for Output: {output_name}")
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(
-            "Most Influential Variable", 
-            strongest_abs_var,
-            f"Pearson: {strongest_abs:.4f} ({strongest_abs_sign})"
-        )
-    with col2:
-        st.metric(
-            "Strongest Positive", 
-            strongest_pos_var,
-            f"Pearson: {strongest_pos:.4f}"
-        )
-    with col3:
-        st.metric(
-            "Strongest Negative", 
-            strongest_neg_var,
-            f"Pearson: {strongest_neg:.4f}"
-        )
+    col1.metric(
+        "Most Correlated (Abs Pearson)", 
+        f"{viz_bundle['strongest_abs_var']}",
+        f"{viz_bundle['strongest_abs_val']:.3f} ({viz_bundle['strongest_abs_sign']})"
+    )
+    col2.metric(
+        "Strongest Positive Pearson", 
+        f"{viz_bundle['strongest_pos_var']}",
+        f"{viz_bundle['strongest_pos_val']:.3f}"
+    )
+    col3.metric(
+        "Strongest Negative Pearson", 
+        f"{viz_bundle['strongest_neg_var']}",
+        f"{viz_bundle['strongest_neg_val']:.3f}"
+    )
     
-    # Display the combined figure
-    st.markdown("#### Correlation Coefficients")
-    st.markdown("""
-    This grouped bar chart shows all correlation coefficients for each input variable.
-    Positive values indicate that the output increases as the input increases,
-    while negative values indicate that the output decreases as the input increases.
-    """)
-    st.plotly_chart(viz_results['fig_combined'], use_container_width=True)
-    
-    # Display the heatmap and comparison plot in two columns
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### Correlation Heatmap")
-        st.markdown("""
-        This heatmap shows all correlation coefficients with color coding.
-        Red indicates positive correlation, blue indicates negative correlation.
-        """)
-        st.plotly_chart(viz_results['fig_heatmap'], use_container_width=True)
-    
-    with col2:
-        st.markdown("#### Linear vs. Rank Correlation")
-        st.markdown("""
-        This scatter plot compares Pearson (linear) and Spearman (rank) correlations.
-        Points far from the diagonal indicate nonlinear relationships.
-        """)
-        st.plotly_chart(viz_results['fig_comparison'], use_container_width=True)
+    # Display plots
+    st.subheader("Visualizations")
+    st.markdown("##### All Correlation Coefficients (Bar Chart)")
+    st.markdown("Compares different correlation coefficients for each input variable. Values range from -1 (perfect negative correlation) to +1 (perfect positive correlation). A value near 0 indicates a weak correlation of that type.")
+    st.plotly_chart(viz_bundle['fig_combined_bars'], use_container_width=True)
     
     # Display correlation table
     st.subheader("Correlation Coefficients Table")
-    st.dataframe(corr_df.style.format("{:.4f}"), use_container_width=True)
-    
-    # Display interpretation
-    st.subheader("Interpretation")
-    
-    # Check for consistency across methods
-    consistency_df = corr_df.copy()
-    # Get the sign of each correlation
-    sign_df = consistency_df.apply(np.sign)  # Use np.sign for elementwise sign calculation
-    # Check if all methods agree on the sign for each variable
-    consistent_signs = sign_df.apply(lambda row: row.nunique() == 1, axis=1)
-    
-    # Display key insights
-    st.markdown(f"""
-    **Key Insights:**
-    
-    - **Strongest overall influence**: {strongest_abs_var} ({strongest_abs:.4f} absolute Pearson, {strongest_abs_sign} correlation)
-    - **Strongest positive correlation**: {strongest_pos_var} ({strongest_pos:.4f} Pearson)
-      - As {strongest_pos_var} increases, {output_name} tends to increase
-    - **Strongest negative correlation**: {strongest_neg_var} ({strongest_neg:.4f} Pearson)
-      - As {strongest_neg_var} increases, {output_name} tends to decrease
-    - **Consistency across methods**: {consistent_signs.mean()*100:.1f}% of variables show consistent direction
-    """)
-    
-    # Add method comparison
+    st.dataframe(corr_df.style.format("{:.4f}").background_gradient(cmap='RdBu_r', axis=None, vmin=-1, vmax=1), use_container_width=True)
+
+    st.subheader("Pearson vs. Spearman Coefficients") # Using subheader
     st.markdown("""
-    **Method Comparison:**
+    This scatter plot compares Pearson (linear) and Spearman (monotonic) correlation coefficients for each input variable against a specific output or between pairs.
     
-    - **Linear vs. Rank-based**: Differences between Pearson and Spearman indicate nonlinear relationships
-    - **Direct vs. Partial**: Differences between PCC and Pearson indicate indirect effects through other variables
-    - **Regression vs. Correlation**: SRC and SRRC provide standardized sensitivity measures
-    
-    **Understanding Negative Correlations:**
-    
-    Negative correlations are equally important as positive ones and indicate an inverse relationship between the input and output. 
-    They show that as the input variable increases, the output tends to decrease. This can be crucial for understanding system 
-    behavior and for controlling the output by adjusting inputs in the appropriate direction.
+    * **Diagonal Line (y=x)**: Points lying close to this line suggest the relationship is well-captured by a linear model.
+    * **Deviations**:
+        * Points significantly off the diagonal but where both coefficients are strong indicate a non-linear monotonic relationship.
+        * Points where Spearman is strong but Pearson is weak are classic indicators of such non-linear monotonic trends.
     """)
+    st.plotly_chart(viz_bundle['fig_pearson_spearman_scatter'], use_container_width=True)
+
+    # Enhanced Interpretation Section
+    st.subheader("Interpreting Correlation Coefficients")
+    st.markdown(f"""
+    Correlation analysis helps quantify the strength and direction of association between each input variable and the model output ('{output_name}').
+    
+    - **Pearson Coefficient ($R$ or $\\rho$):** Measures **linear** relationship.
+        - Range: -1 to +1.
+        - Sensitive to outliers.
+        - $\\rho = 0$ implies no linear correlation, but a non-linear relationship might still exist.
+    
+    - **Spearman Rank Coefficient ($\\rho_S$):** Measures **monotonic** relationship (how well the relationship can be described by a monotonic function).
+        - Calculated on the ranks of the data, making it robust to outliers and non-normally distributed data.
+        - Range: -1 to +1.
+        - $\\rho_S = 1$ means as one variable increases, the other always increases (not necessarily linearly).
+        - If $|\\rho_S| > |R|$, this often suggests a monotonic, non-linear relationship.
+
+    - **Partial Correlation Coefficient (PCC):** Measures the **linear** correlation between an input $X_i$ and the output $Y$, after removing the linear effects of all *other* input variables $X_j (j \\neq i)$ from both $X_i$ and $Y$.
+        - Useful when inputs are correlated among themselves, as it isolates the direct linear association.
+        - Example: If $X_1$ correlates with $Y$ only because $X_1$ correlates with $X_2$, and $X_2$ truly drives $Y$, PCC($X_1, Y | X_2$) would be low.
+
+    - **Partial Rank Correlation Coefficient (PRCC):** Similar to PCC, but calculated on the **ranks** of the data.
+        - Measures monotonic relationship between $X_i$ and $Y$, accounting for the monotonic effects of other inputs.
+        - Robust to non-linear monotonic relationships and outliers when assessing partial correlations.
+
+    - **Standard Regression Coefficient (SRC):** Derived from a linear regression model $Y = \\beta_0 + \\sum \\beta_i X_i + \\epsilon$.
+        - $SRC_i = \\beta_i \\frac{{\sigma_{{X_i}}}}{{\sigma_Y}}$.
+        - Represents the change in $Y$ (in standard deviations) for a one standard deviation change in $X_i$, assuming a linear model and *independent inputs*.
+        - $SRC_i^2$ can be interpreted as the proportion of $Y$'s variance explained by $X_i$ if the model is linear and inputs are uncorrelated (equivalent to first-order Sobol' index).
+        - **Caution:** If inputs are correlated or the model is non-linear, SRCs can be misleading.
+
+    - **Standard Rank Regression Coefficient (SRRC):** SRCs calculated on the **ranks** of the inputs and output.
+        - Linearizes monotonic relationships before applying regression.
+        - More reliable than SRCs if the underlying relationship is monotonic but non-linear. Still assumes ranked inputs are somewhat linearly related to ranked output.
+    
+    **General Guidance:**
+    - Compare Pearson/PCC with Spearman/PRCC. Large differences suggest non-linearity.
+    - If inputs are known to be significantly correlated, PCC/PRCC are generally more reliable than Pearson/Spearman for assessing direct influence.
+    - SRC/SRRC are useful for linear/monotonic sensitivity but their sum of squares does not necessarily sum to 1 if inputs are correlated.
+    """)
+
+    # Display AI insights if available
+    if 'llm_insights' in analysis_results_dict and analysis_results_dict['llm_insights']:
+        st.subheader("🤖 AI-Powered Insights & Interpretation")
+        st.markdown(analysis_results_dict['llm_insights'])
 
 def correlation_analysis(model, problem, model_code_str=None, size=1000, language_model="groq", display_results=True):
     """
-    Perform comprehensive correlation analysis with enterprise-grade visualizations.
-    
-    This function calculates various correlation coefficients between input variables
-    and model outputs, including Pearson, Spearman, PCC, PRCC, SRC, and SRRC.
-    
-    Parameters
-    ----------
-    model : callable
-        The model function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution representing the input uncertainty
-    model_code_str : str, optional
-        String representation of the model code for documentation
-    size : int, optional
-        Number of samples for correlation analysis (default is 1000)
-    language_model : str, optional
-        Language model to use for analysis, by default "groq"
-    display_results : bool, optional
-        Whether to display results using Streamlit UI (default: True)
-        Set to False when running in batch mode or "Run All Analyses"
-        
-    Returns
-    -------
-    dict
-        Dictionary containing correlation analysis results
+    Main function to perform and display correlation analysis for a univariate model.
     """
+    results_placeholder = None
+    if display_results:
+        results_placeholder = st.empty()
+        results_placeholder.info("🚀 Starting Correlation Analysis...")
+
     try:
-        with st.spinner("Running Correlation Analysis..."):
-            # Compute all correlation analysis results
-            results = compute_correlation_analysis(model, problem, size=size)
+        # 1. Compute all correlation analysis results
+        computed_data = compute_correlation_analysis_univariate(model, problem, size=size)
+        
+        # 2. Create visualizations (for the single output)
+        viz_bundle = create_correlation_visualizations_univariate(
+            computed_data['correlation_df'], 
+            computed_data['output_name']
+        )
+        
+        # 3. Consolidate results for display and LLM
+        analysis_results_dict = {
+            **computed_data, # Includes correlation_df, input_names, output_name, size
+            'visualizations': viz_bundle, # Contains all figures and strongest_xx stats
+            'llm_insights': None # Initialize
+        }
+        
+        # 4. Generate AI insights if model and code are provided
+        if language_model and model_code_str:
+            correlation_md_table = computed_data['correlation_df'].to_markdown(index=True, floatfmt=".3f")
             
-            # Create visualizations for each output
-            all_viz_results = {}
-            for output_name, corr_df in results['all_correlation_results'].items():
-                all_viz_results[output_name] = create_correlation_visualizations(corr_df, output_name)
-            
-            # Add visualizations to results
-            main_output = results['output_names'][0]  # Use first output for main visualizations
-            main_corr_df = results['all_correlation_results'][main_output]
-            main_viz = all_viz_results[main_output]
-            
-            # Add main visualizations to results
-            results['fig_bar'] = main_viz['fig_combined']
-            results['fig_heatmap'] = main_viz['fig_heatmap']
-            results['fig_comparison'] = main_viz['fig_comparison']
-            
-            # Create a clean correlation dataframe for display
-            results['correlation_df'] = main_corr_df.copy()
-            
-            # Generate AI insights if a language model is provided
-            if language_model and model_code_str:
-                # Create a markdown table of the correlation results
-                correlation_md_table = main_corr_df.to_markdown(index=True, floatfmt=".4f")
-                
-                # Find strongest correlations
-                strongest_pearson_var = main_corr_df['Pearson'].abs().idxmax()
-                strongest_pearson = main_corr_df.loc[strongest_pearson_var, 'Pearson']
-                strongest_spearman_var = main_corr_df['Spearman'].abs().idxmax()
-                strongest_spearman = main_corr_df.loc[strongest_spearman_var, 'Spearman']
-                
-                # Create distribution information for the prompt
-                dist_info = []
-                for i, name in enumerate(results['input_names']):
-                    marginal = problem.getMarginal(i)
-                    dist_info.append({
-                        'Variable': name,
-                        'Distribution': marginal.__class__.__name__,
-                        'Parameters': str(list(marginal.getParameter())),
-                        'Mean': float(marginal.getMean()[0]),
-                        'Std': float(marginal.getStandardDeviation()[0])
-                    })
-                dist_df = pd.DataFrame(dist_info)
-                
-                # Format the model code for inclusion in the prompt
-                model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
-                
-                # Generate prompt
-                prompt = f"""
-{RETURN_INSTRUCTION}
+            dist_info_list = []
+            for i, name in enumerate(computed_data['input_names']):
+                marginal = problem.getMarginal(i)
+                params_list = [f"{p:.2f}" for p in marginal.getParameter()] # Format numbers
+                dist_info_list.append(f"- **{name}**: {marginal.getClassName()} (Params: {', '.join(params_list)}, Mean: {marginal.getMean()[0]:.2f}, StdDev: {marginal.getStandardDeviation()[0]:.2f})")
+            dist_info_md = "\n".join(dist_info_list)
 
-## Correlation Analysis Results
+            model_code_formatted = f"```python\n{model_code_str.strip()}\n```" # Standard markdown code block
 
-I need your expert analysis of these correlation results for the following model:
+            prompt = f"""{RETURN_INSTRUCTION}
+You are an expert in statistical analysis and uncertainty quantification. I have performed a correlation analysis for a computational model with a single output. Please provide a comprehensive interpretation.
 
-```python
+**Model Under Analysis:**
 {model_code_formatted}
-```
 
-### Input Distributions:
-{dist_df.to_markdown(index=False)}
+**Input Variable Distributions:**
+{dist_info_md}
 
-### Correlation Analysis Results:
+**Correlation Coefficients (Input Variables vs. Output: '{computed_data['output_name']}')**
 {correlation_md_table}
 
-### Key observations:
-- Strongest Pearson correlation: {strongest_pearson_var} ({strongest_pearson:.4f})
-- Strongest Spearman correlation: {strongest_spearman_var} ({strongest_spearman:.4f})
-- Input variables: {", ".join(results['input_names'])}
-- Output: {main_output}
+**Key Pearson Correlation Findings for Output '{computed_data['output_name']}':**
+- Most Correlated Input (Absolute Pearson): {viz_bundle['strongest_abs_var']} (Value: {viz_bundle['strongest_abs_val']:.3f}, Direction: {viz_bundle['strongest_abs_sign']})
+- Strongest Positive Pearson Correlation: {viz_bundle['strongest_pos_var']} (Value: {viz_bundle['strongest_pos_val']:.3f})
+- Strongest Negative Pearson Correlation: {viz_bundle['strongest_neg_var']} (Value: {viz_bundle['strongest_neg_val']:.3f})
 
-Please provide a comprehensive analysis of these correlation results, focusing on:
+**Analysis Request:**
+Please provide a detailed scientific analysis covering the following points:
 
-1. **Executive Summary**
-   - Key findings and their practical implications
-   - Most influential parameters identified by the correlation analysis
-   - Assessment of linear vs. nonlinear relationships
+1.  **Executive Summary:**
+    * Briefly summarize the most critical findings. What are the key takeaways for someone who needs a quick understanding?
+    * Which input variables appear most influential on the output '{computed_data['output_name']}' based on this correlation study?
 
-2. **Methodology Overview**
-   - Explanation of each correlation method (Pearson, Spearman, PCC, PRCC, SRC, SRRC)
-   - When each method is most appropriate to use
-   - Differences between these methods and what insights each provides
+2.  **Interpretation of Correlation Coefficients:**
+    * Discuss the observed Pearson correlations. What do the strongest positive and negative values imply about the model's behavior with respect to '{computed_data['output_name']}'?
+    * Compare Pearson ($R$) with Spearman ($\\rho_S$) coefficients for key variables. What do significant differences suggest about the nature of the relationships (e.g., non-linearity)?
+    * Explain the insights gained from Partial Correlation Coefficients (PCC) and Partial Rank Correlation Coefficients (PRCC). How do they refine the understanding obtained from simple Pearson/Spearman, especially if input variables might be inter-correlated?
+    * Discuss the Standard Regression Coefficients (SRC) and Standard Rank Regression Coefficients (SRRC). What do they indicate about sensitivity, and what are their limitations or underlying assumptions (e.g., linearity, input independence)?
 
-3. **Results Interpretation**
-   - Variables with the strongest positive and negative correlations
-   - Consistency or inconsistency across different correlation methods
-   - What these patterns suggest about model behavior
-   - Implications of negative correlations
+3.  **Model Behavior Insights:**
+    * Based on the full set of coefficients, what can be inferred about the dominant relationships (linear, monotonic, etc.) driving the output '{computed_data['output_name']}'?
+    * Are there any variables that show consistently strong or weak correlations across multiple methods? What does this consistency (or lack thereof) imply?
+    * Highlight any counter-intuitive findings or relationships that warrant further investigation.
 
-4. **Nonlinearity Assessment**
-   - Comparison of Pearson vs. Spearman and PCC vs. PRCC to assess nonlinearity
-   - Variables showing significant differences between linear and rank-based methods
-   - What these differences indicate about the underlying model structure
+4.  **Recommendations for Further Action:**
+    * Which input variables should be prioritized for uncertainty reduction efforts to better control or predict '{computed_data['output_name']}'?
+    * Are there specific types of model non-linearity or input interactions suggested by these results that might guide further, more advanced sensitivity analyses (e.g., Sobol indices for variance decomposition)?
+    * What practical advice can be given to model users or developers based on this correlation analysis?
 
-5. **Recommendations**
-   - Variables that should be prioritized for uncertainty reduction
-   - Additional analyses that might be valuable given these correlation patterns
-   - Guidance for decision-making or model refinement
-
-Format your response with clear section headings and bullet points where appropriate.
-Focus on actionable insights that would be valuable for decision-makers.
+Please structure your response clearly. Use markdown for formatting, including headers and bullet points. Refer to specific input variables and their coefficient values where appropriate.
 """
-                
-                # Call the AI API with retry logic and always use 'llm_insights' as the key for consistency
-                max_retries = 3
-                retry_count = 0
-                ai_insights = None
-                while ai_insights is None and retry_count < max_retries:
-                    try:
-                        ai_insights = call_groq_api(prompt, model_name=language_model)
-                        results['llm_insights'] = ai_insights
-                    except Exception as e:
-                        retry_count += 1
-                        if retry_count >= max_retries:
-                            ai_insights = f"""
-                            ## Error Generating Insights
-                            There was an error connecting to the language model API: {str(e)}
-                            Please try again later or check your API key/model configuration.
-                            """
-                            results['llm_insights'] = ai_insights
-            
-            # Display results if requested
-            if display_results:
-                display_correlation_results(results, language_model)
-            
-            # Clean up results to remove unnecessary data
-            # Only remove large raw data, not summary keys needed for display
-            keys_to_remove = ['sample_X', 'sample_Y']
-            for key in keys_to_remove:
-                if key in results:
-                    del results[key]
-            
-            return results
-    except Exception as e:
+            model_name_for_api = language_model
+            if not language_model or language_model.lower() == 'groq':
+                model_name_for_api = "llama3-70b-8192" # Example capable model for Groq
+
+            max_retries = 3; retry_count = 0; ai_insights_text = None
+            while retry_count < max_retries:
+                try:
+                    ai_insights_text = call_groq_api(prompt, model_name=model_name_for_api)
+                    break
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        ai_insights_text = f"Error generating insights after {max_retries} attempts: {str(e)}"
+                        if display_results: st.error(ai_insights_text)
+            analysis_results_dict['llm_insights'] = ai_insights_text
+        
+        if display_results and results_placeholder:
+            results_placeholder.success("✅ Correlation Analysis Completed!")
+        
+        # 5. Display results if requested
         if display_results:
-            st.error(f"Error in correlation analysis: {str(e)}")
-        raise
+            display_correlation_results(analysis_results_dict)
+            
+        # 6. Clean up large raw data from the final returned dictionary
+        # (sample_X and sample_Y were already not in analysis_results_dict at this point if not needed)
+        # If they were added for some reason, this ensures cleanup.
+        analysis_results_dict.pop('sample_X', None)
+        analysis_results_dict.pop('sample_Y', None)
+            
+        return analysis_results_dict
+
+    except Exception as e:
+        error_message = f"Error during correlation analysis: {str(e)}"
+        if display_results:
+            if results_placeholder: results_placeholder.error(error_message)
+            else: st.error(error_message)
+        else:
+            print(error_message) # Log to console if not in Streamlit display mode
+        
+        # Return a structured error dictionary
+        return {
+            'correlation_df': pd.DataFrame(), 'input_names': [], 'output_name': "Error", 'size': 0,
+            'visualizations': {
+                'fig_combined_bars': go.Figure().update_layout(title=error_message),
+                'fig_pearson_spearman_scatter': go.Figure().update_layout(title=error_message),
+            },
+            'llm_insights': f"Could not generate insights due to error: {error_message}"
+        }

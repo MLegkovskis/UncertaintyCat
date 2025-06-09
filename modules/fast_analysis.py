@@ -1,427 +1,386 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-from utils.core_utils import call_groq_api
-from utils.constants import RETURN_INSTRUCTION
+from utils.core_utils import call_groq_api # create_chat_interface not used here
+from utils.constants import RETURN_INSTRUCTION # Assuming this is correctly defined
 import streamlit as st
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import plotly.express as px
+# import plotly.express as px # Not used directly in this snippet
+# from plotly.subplots import make_subplots # Not used directly but good for future
+from typing import Optional # Added for type hinting
 
-def compute_fast_sensitivity_analysis(model, problem, size=400, model_code_str=None, language_model=None):
-    """Perform enterprise-grade FAST sensitivity analysis computation.
-    
-    This function handles all computational aspects of the FAST sensitivity analysis
-    without any UI components. It computes sensitivity indices using the Fourier Amplitude 
-    Sensitivity Test (FAST) method.
-    
-    Parameters
-    ----------
-    model : ot.Function
-        OpenTURNS function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution (typically a JointDistribution)
-    size : int, optional
-        Number of samples for FAST analysis (default is 400)
-    model_code_str : str, optional
-        String representation of the model code for documentation
-    language_model : str, optional
-        Language model to use for analysis
-        
-    Returns
-    -------
-    dict
-        Dictionary containing the results of the FAST analysis
+def fast_sensitivity_analysis(model: ot.Function, 
+                                      problem: ot.Distribution, 
+                                      size: int = 400, 
+                                      model_code_str: Optional[str] = None, 
+                                      language_model: Optional[str] = None) -> dict:
+    """
+    Perform FAST sensitivity analysis computation.
+    This version is based on your provided original working code for LLM interaction.
     """
     # Verify input types
     if not isinstance(model, ot.Function):
         raise TypeError("Model must be an OpenTURNS Function")
     if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
         raise TypeError("Problem must be an OpenTURNS Distribution")
-        
+            
     # Get dimension from the model's input dimension
     dimension = model.getInputDimension()
     
-    # Get variable names
+    # Get variable names robustly
     variable_names = []
     for i in range(dimension):
         marginal = problem.getMarginal(i)
-        name = marginal.getDescription()[0]
-        variable_names.append(name if name != "" else f"X{i+1}")
+        desc = marginal.getDescription()
+        name = desc[0] if desc and desc[0] else f"X{i+1}" # Use X{i+1} if no description
+        variable_names.append(name)
     
-    # Create independent distribution for FAST (since FAST doesn't work with correlated inputs)
-    # Extract marginals from the original problem
+    # Create independent distribution for FAST
     marginals = [problem.getMarginal(i) for i in range(dimension)]
     independent_dist = ot.JointDistribution(marginals)
     
-    # Create FAST analysis with independent distribution
     sensitivityAnalysis = ot.FAST(model, independent_dist, size)
-    
-    # Compute the first order indices
     firstOrderIndices = sensitivityAnalysis.getFirstOrderIndices()
-    
-    # Retrieve total order indices
     totalOrderIndices = sensitivityAnalysis.getTotalOrderIndices()
     
-    # Create DataFrame for indices
     indices_data = []
     for i, name in enumerate(variable_names):
+        s_i = float(firstOrderIndices[i])
+        t_i = float(totalOrderIndices[i])
+        interaction_val = t_i - s_i
+        # Ensure t_i is not zero or very close to zero before division
+        interaction_pct = (interaction_val / t_i) * 100 if abs(t_i) > 1e-9 else 0.0
+        
         indices_data.append({
             'Variable': name,
-            'First Order': float(firstOrderIndices[i]),
-            'Total Order': float(totalOrderIndices[i]),
-            'Interaction': float(totalOrderIndices[i]) - float(firstOrderIndices[i]),
-            'Interaction %': (float(totalOrderIndices[i]) - float(firstOrderIndices[i])) / float(totalOrderIndices[i]) * 100 if float(totalOrderIndices[i]) > 0 else 0
+            'First Order (S_i)': s_i,
+            'Total Order (T_i)': t_i,
+            'Interaction (T_i - S_i)': interaction_val,
+            'Interaction %': interaction_pct
         })
     
-    # Create DataFrame for display
     indices_df = pd.DataFrame(indices_data)
+    if not indices_df.empty: # Ensure DataFrame is not empty before sorting
+        indices_df = indices_df.sort_values('Total Order (T_i)', ascending=False).reset_index(drop=True)
     
-    # Sort by total order index for better visualization
-    indices_df = indices_df.sort_values('Total Order', ascending=False)
-    
-    # Create Plotly bar chart for sensitivity indices
+    # --- Plotting ---
     fig_bar = go.Figure()
-    
-    # Add first order indices
-    fig_bar.add_trace(go.Bar(
-        x=indices_df['Variable'],
-        y=indices_df['First Order'],
-        name='First Order Indices',
-        marker_color='rgba(31, 119, 180, 0.8)'
-    ))
-    
-    # Add total order indices
-    fig_bar.add_trace(go.Bar(
-        x=indices_df['Variable'],
-        y=indices_df['Total Order'],
-        name='Total Order Indices',
-        marker_color='rgba(214, 39, 40, 0.8)'
-    ))
-    
-    # Update layout
+    if not indices_df.empty:
+        fig_bar.add_trace(go.Bar(
+            x=indices_df['Variable'], y=indices_df['First Order (S_i)'],
+            name='First Order ($S_i$)', marker_color='rgba(31, 119, 180, 0.8)',
+            hovertemplate="<b>%{x}</b><br>First Order ($S_i$): %{y:.4f}<extra></extra>"
+        ))
+        fig_bar.add_trace(go.Bar(
+            x=indices_df['Variable'], y=indices_df['Total Order (T_i)'],
+            name='Total Order ($T_i$)', marker_color='rgba(214, 39, 40, 0.8)',
+            hovertemplate="<b>%{x}</b><br>Total Order ($T_i$): %{y:.4f}<extra></extra>"
+        ))
     fig_bar.update_layout(
-        title='FAST Sensitivity Indices',
-        xaxis_title='Input Variables',
-        yaxis_title='Sensitivity Index',
-        barmode='group',
-        template='plotly_white',
-        height=500,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+        title_text='FAST Sensitivity Indices: First Order vs. Total Order',
+        xaxis_title='Input Variables', yaxis_title='Sensitivity Index Value',
+        barmode='group', template='plotly_white', height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
     )
     
-    # Create a unified bar chart showing the breakdown of total order indices
     fig_breakdown = go.Figure()
-    
-    # Add first order (direct effect) bars
-    fig_breakdown.add_trace(go.Bar(
-        x=indices_df['Variable'],
-        y=indices_df['First Order'],
-        name='Direct Effect',
-        marker_color='rgba(31, 119, 180, 0.8)'
-    ))
-    
-    # Add interaction effect bars (stacked on top of first order)
-    fig_breakdown.add_trace(go.Bar(
-        x=indices_df['Variable'],
-        y=indices_df['Interaction'],
-        name='Interaction Effect',
-        marker_color='rgba(214, 39, 40, 0.8)'
-    ))
-    
-    # Update layout for the breakdown chart
+    if not indices_df.empty:
+        fig_breakdown.add_trace(go.Bar(
+            x=indices_df['Variable'], y=indices_df['First Order (S_i)'],
+            name='Direct Effect ($S_i$)', marker_color='rgba(31, 119, 180, 0.8)',
+            hovertemplate="<b>%{x}</b><br>Direct Effect ($S_i$): %{y:.4f}<extra></extra>"
+        ))
+        fig_breakdown.add_trace(go.Bar(
+            x=indices_df['Variable'], y=indices_df['Interaction (T_i - S_i)'],
+            name='Interaction Effect ($T_i$ - $S_i$)', marker_color='rgba(255, 127, 14, 0.8)',
+            hovertemplate="<b>%{x}</b><br>Interaction ($T_i$-$S_i$): %{y:.4f}<extra></extra>"
+        ))
     fig_breakdown.update_layout(
-        title='FAST Sensitivity Indices Breakdown',
-        xaxis_title='Input Variables',
-        yaxis_title='Sensitivity Index',
-        barmode='stack',
-        template='plotly_white',
-        height=500,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+        title_text='FAST Sensitivity Indices: Total Order Breakdown',
+        xaxis_title='Input Variables', yaxis_title='Sensitivity Index Value',
+        barmode='stack', template='plotly_white', height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
     )
     
     # Generate LLM insights and explanation if requested
     llm_insights = None
-    explanation = None
-    if model_code_str:
-        # Prepare the prompt for insights
-        insights_prompt = f"""
-        I've performed a FAST sensitivity analysis on the following model:
-        ```python
-        {model_code_str}
-        ```
+    explanation = None # Initialize explanation
+    default_explanation = """### FAST Sensitivity Analysis
+The FAST method quantifies how each input variable contributes to the model output variance.
+First order indices measure direct effects, while total order indices include interactions.
+FAST requires input variables to be independent for its standard interpretation.
+"""
+
+    if model_code_str and language_model: # model_code_str is required for good insights
+        # Prepare the prompt for insights (using your original correct f-string format)
+        # Ensure firstOrderIndices and totalOrderIndices are available for the list comprehensions
+        first_order_summary_str = ', '.join([f"{name}: {float(firstOrderIndices[i]):.4f}" for i, name in enumerate(variable_names)])
+        total_order_summary_str = ', '.join([f"{name}: {float(totalOrderIndices[i]):.4f}" for i, name in enumerate(variable_names)])
+
+        insights_prompt = f"""{RETURN_INSTRUCTION}
+I've performed a FAST sensitivity analysis on the following model:
+```python
+{model_code_str}
+```
+
+The results show these first order indices:
+{first_order_summary_str}
+
+And these total order indices:
+{total_order_summary_str}
+
+Please provide 2-3 paragraphs of insights about:
+1. Which variables have the most influence on the model output and why
+2. The significance of any interaction effects observed (difference between Total and First order)
+3. How these results could inform model simplification or further analysis
+"""
         
-        The results show these first order indices:
-        {', '.join([f"{name}: {float(firstOrderIndices[i]):.4f}" for i, name in enumerate(variable_names)])}
+        explanation_prompt = f"""{RETURN_INSTRUCTION}
+Please provide a concise explanation of the FAST (Fourier Amplitude Sensitivity Test) method for sensitivity analysis.
+
+Here is the technical information about the FAST method from OpenTURNS documentation:
+
+FAST is a sensitivity analysis method based on the ANOVA decomposition of variance using Fourier expansion.
+It works with a random vector X of independent components and recasts the representation as a function of a scalar parameter s.
+
+The Fourier expansion of the model response is:
+f(s) = Σ A_k cos(ks) + B_k sin(ks)
+
+The first order indices are estimated by:
+S_i = D_i/D = Σ(A_p^2 + B_p^2) / Σ(A_n^2 + B_n^2) 
+(where summation for D_i is over multiples of fundamental frequency for X_i)
+
+The total order indices are estimated by:
+T_i = 1 - D_(-i)/D = 1 - Σ(A_k^2 + B_k^2) / Σ(A_n^2 + B_n^2)
+(where summation for D_(-i) is over frequencies NOT multiples of fundamental frequency for X_i)
+
+Where:
+- D is the total variance (sum of all A_n^2 + B_n^2)
+- D_i is the portion of variance from the i-th input
+- D_(-i) is the variance due to all inputs except the i-th
+
+Format your response in markdown with appropriate headers and bullet points. Keep it educational but accessible to non-experts. Explain what S_i and T_i mean practically and how to interpret their difference.
+"""
         
-        And these total order indices:
-        {', '.join([f"{name}: {float(totalOrderIndices[i]):.4f}" for i, name in enumerate(variable_names)])}
-        
-        Please provide 2-3 paragraphs of insights about:
-        1. Which variables have the most influence on the model output and why
-        2. The significance of any interaction effects observed
-        3. How these results could inform model simplification or further analysis
-        
-        {RETURN_INSTRUCTION}
-        """
-        
-        # Prepare the prompt for explanation using OpenTURNS documentation
-        explanation_prompt = f"""
-        Please provide a concise explanation of the FAST (Fourier Amplitude Sensitivity Test) method for sensitivity analysis.
-        
-        Here is the technical information about the FAST method from OpenTURNS documentation:
-        
-        FAST is a sensitivity analysis method based on the ANOVA decomposition of variance using Fourier expansion.
-        It works with a random vector X of independent components and recasts the representation as a function of a scalar parameter s.
-        
-        The Fourier expansion of the model response is:
-        f(s) = ∑ A_k cos(ks) + B_k sin(ks)
-        
-        The first order indices are estimated by:
-        S_i = D_i/D = ∑(A_p^2 + B_p^2) / ∑(A_n^2 + B_n^2)
-        
-        The total order indices are estimated by:
-        T_i = 1 - D_{-i}/D = 1 - ∑(A_k^2 + B_k^2) / ∑(A_n^2 + B_n^2)
-        
-        Where:
-        - D is the total variance
-        - D_i is the portion of variance from the i-th input
-        - D_{-i} is the variance due to all inputs except the i-th
-        
-        Format your response in markdown with appropriate headers and bullet points. Keep it educational but accessible to non-experts.
-        
-        {RETURN_INSTRUCTION}
-        """
-        
-        # Always use the default model if language_model is None or 'groq'
-        model_name = language_model
-        if not language_model or language_model == 'groq':
-            model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
+        model_name_for_api = language_model
+        if not language_model or language_model.lower() == 'groq':
+            model_name_for_api = "llama3-70b-8192" # Your preferred default
         try:
-            llm_insights = call_groq_api(insights_prompt, model_name=model_name)
+            llm_insights = call_groq_api(insights_prompt, model_name=model_name_for_api)
         except Exception as e:
             llm_insights = f"Error generating AI insights: {str(e)}"
         try:
-            explanation = call_groq_api(explanation_prompt, model_name=model_name)
+            explanation = call_groq_api(explanation_prompt, model_name=model_name_for_api)
         except Exception as e:
-            explanation = f"Error generating explanation: {str(e)}"
+            # If AI explanation fails, append the error to the default static explanation
+            explanation = f"{default_explanation}\n\nError generating detailed AI explanation: {str(e)}"
     else:
-        # Provide a minimal explanation if no model code is available
-        explanation = """
-        ### FAST Sensitivity Analysis
-        
-        The FAST method quantifies how each input variable contributes to the model output variance.
-        First order indices measure direct effects, while total order indices include interactions.
-        """
+        explanation = default_explanation # Use default if no model_code_str or language_model
     
-    # Return all results
     return {
+        'model_code_str': model_code_str, # Pass through for consistency
         'indices_df': indices_df,
-        'fig_bar': fig_bar,
-        'fig_breakdown': fig_breakdown,
-        'explanation': explanation,
-        'llm_insights': llm_insights
+        'fig_bar_indices': fig_bar, # Renamed for clarity in returned dict
+        'fig_stacked_breakdown': fig_breakdown, # Renamed for clarity
+        'explanation_text': explanation, # Use 'explanation_text' consistently
+        'llm_insights_text': llm_insights # Use 'llm_insights_text' consistently
     }
 
-def display_fast_results(fast_results, language_model=None, model_code_str=None):
+# --- Main Entry Point Function (Corrected call to fast_sensitivity_analysis) ---
+def fast_analysis(model: ot.Function, problem: ot.Distribution, size: int = 400, 
+                  model_code_str: Optional[str] = None, language_model: Optional[str] = None, 
+                  display_results: bool = True) -> dict:
+    """
+    Perform and optionally display FAST sensitivity analysis.
+    This is the primary entry point for the FAST module.
+    """
+    results_placeholder = None
+    if display_results:
+        results_placeholder = st.empty()
+        with results_placeholder.container(): # Use container to manage spinner
+            st.info("🚀 Starting FAST Sensitivity Analysis...")
+    
+    analysis_results_dict = {} 
+    try:
+        # Corrected: Call fast_sensitivity_analysis directly
+        analysis_results_dict = fast_sensitivity_analysis(
+            model=model, problem=problem, size=size, 
+            model_code_str=model_code_str, language_model=language_model
+        )
+        
+        if display_results and results_placeholder:
+            with results_placeholder.container():
+                st.success("✅ FAST Sensitivity Analysis Completed!")
+        
+        st.session_state.fast_analysis_results = analysis_results_dict
+        
+        if display_results:
+            display_fast_results(analysis_results_dict) 
+            
+        return analysis_results_dict
+    
+    except Exception as e:
+        error_message = f"Critical error in FAST analysis workflow: {str(e)}"
+        if display_results:
+            if results_placeholder: 
+                with results_placeholder.container(): st.error(error_message)
+            else: st.error(error_message)
+        else:
+            print(error_message) # Log if not in Streamlit display
+        
+        # Populate a minimal error dictionary
+        analysis_results_dict['error'] = error_message
+        analysis_results_dict.setdefault('llm_insights_text', "AI insights skipped due to critical analysis error.")
+        analysis_results_dict.setdefault('explanation_text', "Method explanation skipped due to critical analysis error.")
+        analysis_results_dict.setdefault('indices_df', pd.DataFrame())
+        analysis_results_dict.setdefault('fig_bar_indices', go.Figure())
+        analysis_results_dict.setdefault('fig_stacked_breakdown', go.Figure())
+        return analysis_results_dict
+
+# --- Display Function (Robustified) ---
+def display_fast_results(fast_results_data: dict):
     """
     Display FAST sensitivity analysis results in the Streamlit interface.
-    
-    Parameters
-    ----------
-    fast_results : dict
-        Dictionary containing the results of the FAST analysis
-    language_model : str, optional
-        Language model used for analysis, by default None
-    model_code_str : str, optional
-        String representation of the model code, by default None
     """
-    # Results Section
-    with st.container():
-        # Display the explanation
-        st.markdown(fast_results['explanation'])
+    if not fast_results_data: # Handles if None was returned
+        st.error("FAST analysis data is missing.")
+        return
+    
+    # If error occurred during compute, it might be in the dict
+    if 'error' in fast_results_data and fast_results_data['error']:
+        # Error is usually displayed by the calling function's placeholder.
+        # If critical data for display is missing, we might want to show a more specific error here
+        # or just let the warnings for missing data below handle it.
+        # For now, we'll proceed and let individual sections handle missing data.
+        pass # The error in placeholder is primary.
+
+    st.header("💨 FAST Sensitivity Analysis Results")
+
+    explanation = fast_results_data.get('explanation_text')
+    if explanation:
+        st.markdown(explanation)
+    else:
+        st.markdown("FAST method explanation not available.") # Fallback
+    
+    indices_df_display = fast_results_data.get('indices_df')
+    if indices_df_display is None or indices_df_display.empty:
+        st.warning("Sensitivity indices data is not available for display.")
+        # Attempt to display AI insights even if table data is missing, if insights exist
+        llm_insights_err_disp = fast_results_data.get('llm_insights_text')
+        if llm_insights_err_disp:
+            st.subheader("🤖 AI-Generated Expert Analysis")
+            st.markdown(llm_insights_err_disp)
+        return # Stop further display if no indices
+
+    st.subheader("📊 Sensitivity Indices & Metrics")
+    most_influential_var_display = "N/A"
+    most_influential_idx_display = np.nan
+    if not indices_df_display.empty: # Check again after initial guard
+        most_influential_var_display = indices_df_display.iloc[0]['Variable']
+        most_influential_idx_display = indices_df_display.iloc[0]['Total Order (T_i)']
+    
+    sum_first_order_display = indices_df_display['First Order (S_i)'].sum()
+    sum_total_order_display = indices_df_display['Total Order (T_i)'].sum()
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("👑 Most Influential (by $T_i$)", most_influential_var_display, f"{most_influential_idx_display:.3f}")
+    with col2:
+        st.metric("∑ $S_i$ (Sum of First Order)", f"{sum_first_order_display:.3f}", help="If ΣSᵢ is much less than 1 (and less than ΣTᵢ), interactions are significant.")
+    with col3:
+        st.metric("∑ $T_i$ (Sum of Total Order)", f"{sum_total_order_display:.3f}", help="Can be > 1. Each Tᵢ includes all interactions for that variable.")
+
+    st.markdown("#### Detailed Numerical Results")
+    required_cols_disp_table = ['Variable', 'First Order (S_i)', 'Total Order (T_i)', 'Interaction (T_i - S_i)', 'Interaction %']
+    # Check if all required columns exist in the DataFrame
+    if all(col in indices_df_display.columns for col in required_cols_disp_table):
+        df_to_show_disp_table = indices_df_display[required_cols_disp_table].copy()
+        for col_fmt_table in ['First Order (S_i)', 'Total Order (T_i)', 'Interaction (T_i - S_i)']:
+            df_to_show_disp_table[col_fmt_table] = pd.to_numeric(df_to_show_disp_table[col_fmt_table], errors='coerce').map('{:.4f}'.format)
+        df_to_show_disp_table['Interaction %'] = pd.to_numeric(df_to_show_disp_table['Interaction %'], errors='coerce').map('{:.2f}%'.format)
+        st.dataframe(df_to_show_disp_table, hide_index=True, use_container_width=True)
+    else:
+        st.warning("Detailed numerical results table is missing some expected columns. Displaying available data.")
+        st.dataframe(indices_df_display, hide_index=True, use_container_width=True)
+
+
+    st.subheader("🎨 Sensitivity Visualizations")
+    fig_bar_display_val_plot = fast_results_data.get('fig_bar_indices')
+    if isinstance(fig_bar_display_val_plot, go.Figure) and fig_bar_display_val_plot.data:
+        st.markdown("##### First Order vs. Total Order Indices")
+        st.markdown("Compares direct effects (First Order, $S_i$) vs. total effects including all interactions (Total Order, $T_i$) for each input variable.")
+        st.plotly_chart(fig_bar_display_val_plot, use_container_width=True)
+    else: st.warning("Bar chart for FAST indices is not available.")
+    
+    fig_breakdown_display_val_plot = fast_results_data.get('fig_stacked_breakdown')
+    if isinstance(fig_breakdown_display_val_plot, go.Figure) and fig_breakdown_display_val_plot.data:
+        st.markdown("##### Total Order Index Breakdown")
+        st.markdown("Shows how Total Order indices ($T_i$) are composed of Direct Effects (First Order, $S_i$) and Interaction Effects ($T_i$ - $S_i$). The sum of these two bars for each variable equals its $T_i$.")
+        st.plotly_chart(fig_breakdown_display_val_plot, use_container_width=True)
+    else: st.warning("Breakdown chart for FAST indices is not available.")
         
-        # Display the indices table
-        st.subheader("Sensitivity Indices")
-        
-        # Get most influential variable
-        most_influential = fast_results['indices_df'].iloc[0]['Variable']
-        most_influential_index = fast_results['indices_df'].iloc[0]['Total Order']
-        
-        # Calculate sums
-        sum_first_order = fast_results['indices_df']['First Order'].sum()
-        sum_total_order = fast_results['indices_df']['Total Order'].sum()
-        
-        # Create summary metrics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(
-                "Most Influential Variable", 
-                most_influential,
-                f"Total Order: {most_influential_index:.4f}"
+    if pd.notna(sum_first_order_display): # Check if sum is a valid number
+        if sum_first_order_display < 0.7 and sum_first_order_display > 0.01 : 
+            st.info("ℹ️ **Significant Interaction Effects Likely:** The sum of First-Order indices (ΣSᵢ) is noticeably less than 1. This suggests that interactions between input variables account for a substantial portion of the model output's variance. The model is likely non-additive.")
+        elif sum_first_order_display > 0.95 :
+            st.success("✅ **Low Interaction Effects Likely:** The sum of First-Order indices (ΣSᵢ) is close to 1. This implies that the model's output variance is primarily driven by the direct, additive effects of individual variables, with minimal contributions from interactions.")
+        else: 
+            st.markdown(f"The sum of First-Order indices (ΣSᵢ = {sum_first_order_display:.3f}) provides an indication of the importance of interactions. Values much less than 1 point to significant interactions.")
+
+    llm_insights_display_final_val = fast_results_data.get('llm_insights_text')
+    if llm_insights_display_final_val:
+        st.subheader("🤖 AI-Generated Expert Analysis")
+        st.markdown(llm_insights_display_final_val)
+    # Check if AI was expected but some prerequisite like model_code_str might have been missing when compute was called
+    elif fast_results_data.get("model_code_str") and fast_results_data.get("language_model") and not llm_insights_display_final_val \
+         and not ('error' in fast_results_data and fast_results_data['error']): # Only show if no major error and insights were expected
+        st.warning("AI insights were expected but not generated. This might be due to an API error during generation or if the model code was not available.")
+
+# --- Chat Context Function ---
+def get_fast_context_for_chat(fast_results_data: dict) -> str:
+    """
+    Generate a formatted string of FAST analysis results for chat context.
+    """
+    if not fast_results_data or ('error' in fast_results_data and fast_results_data['error']):
+        return f"FAST analysis results are not available due to error: {fast_results_data.get('error', 'Unknown error')}"
+
+    context = "\n\n### FAST Sensitivity Analysis Summary:\n"
+    indices_df_chat_val_ctx = fast_results_data.get("indices_df")
+    if indices_df_chat_val_ctx is not None and not indices_df_chat_val_ctx.empty:
+        context += "Top 3 influential variables (by Total Order Index Tᵢ):\n"
+        for _, row in indices_df_chat_val_ctx.head(3).iterrows():
+            context += (
+                f"- **{row['Variable']}**: Tᵢ={row['Total Order (T_i)']:.3f} "
+                f"(Sᵢ={row['First Order (S_i)']:.3f}, Interaction={row['Interaction (T_i - S_i)']:.3f})\n"
             )
-        with col2:
-            st.metric("Sum of First Order Indices", f"{sum_first_order:.4f}")
-        with col3:
-            st.metric("Sum of Total Order Indices", f"{sum_total_order:.4f}")
-        
-        # Display the indices table
-        st.subheader("Detailed Numerical Results")
-        display_df = fast_results['indices_df'][['Variable', 'First Order', 'Total Order', 'Interaction', 'Interaction %']]
-        display_df['Interaction %'] = display_df['Interaction %'].apply(lambda x: f"{x:.2f}%")
-        st.dataframe(display_df, use_container_width=True)
-        
-        # Visualizations
-        st.subheader("Sensitivity Visualizations")
-        
-        # Display the bar chart
-        st.markdown("#### FAST Sensitivity Indices")
-        st.markdown("""
-        This bar chart compares the First Order and Total Order sensitivity indices for each variable:
-        - **First Order Indices**: Measure the direct contribution of each variable to the output variance
-        - **Total Order Indices**: Measure the total contribution including interactions with other variables
-        """)
-        st.plotly_chart(fast_results['fig_bar'], use_container_width=True)
-        
-        # Display the breakdown chart
-        st.markdown("#### FAST Sensitivity Indices Breakdown")
-        st.markdown("""
-        This bar chart shows the breakdown of Total Order indices into direct effects and interaction effects.
-        """)
-        st.plotly_chart(fast_results['fig_breakdown'], use_container_width=True)
-        
-        # Add interpretation based on results
-        if sum_first_order < 0.7:
-            st.info("""
-            **High interaction effects detected.** The sum of first order indices is significantly less than 1, 
-            indicating that a substantial portion of the output variance is explained by interactions between variables.
-            This suggests that the model behavior cannot be understood by studying each variable separately.
-            """)
-        elif sum_first_order > 0.9:
-            st.success("""
-            **Low interaction effects detected.** The sum of first order indices is close to 1, 
-            indicating that the model output is primarily determined by the direct effects of individual variables,
-            with minimal interaction effects.
-            """)
+        sum_s_i_chat_val_ctx = indices_df_chat_val_ctx['First Order (S_i)'].sum()
+        context += f"Sum of First-Order Indices (ΣSᵢ): {sum_s_i_chat_val_ctx:.3f} (If << 1, strong interactions).\n"
+    else:
+        context += "Sensitivity indices data not available.\n"
     
-    # AI Insights Section
-    # AI-Generated Expert Analysis
-    if fast_results['llm_insights']:
-        st.subheader("AI-Generated Expert Analysis")
-        st.markdown(fast_results['llm_insights'])
-
-def fast_sensitivity_analysis(size=400, model=None, problem=None, model_code_str=None, language_model=None, display_results=True):
-    """Perform enterprise-grade FAST sensitivity analysis.
-    
-    This module provides comprehensive global sensitivity analysis using the Fourier Amplitude 
-    Sensitivity Test (FAST) method, which is a relevant alternative to the classical simulation 
-    approach for computing sensitivity indices. The FAST method decomposes the model response 
-    using Fourier decomposition.
-    
-    Parameters
-    ----------
-    size : int, optional
-        Number of samples for FAST analysis (default is 400)
-    model : ot.Function
-        OpenTURNS function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution (typically a JointDistribution)
-    model_code_str : str, optional
-        String representation of the model code for documentation
-    language_model : str, optional
-        Language model to use for analysis
-    display_results : bool, optional
-        Whether to display results in the UI (default is True)
+    ai_insights_chat_val_ctx_val = fast_results_data.get('llm_insights_text')
+    if ai_insights_chat_val_ctx_val and isinstance(ai_insights_chat_val_ctx_val, str) and "Error" not in ai_insights_chat_val_ctx_val :
+        insight_lines_chat_val_ctx_val = ai_insights_chat_val_ctx_val.split('\n')
+        # Try to get a more meaningful snippet
+        snippet_lines_chat = []
+        collecting = False
+        for line in insight_lines_chat_val_ctx_val:
+            stripped_line = line.strip()
+            if stripped_line.lower().startswith("1.") or "influential variables" in stripped_line.lower() or "key findings" in stripped_line.lower() or "summary" in stripped_line.lower():
+                collecting = True
+            if collecting and stripped_line:
+                snippet_lines_chat.append(stripped_line)
+                if len(snippet_lines_chat) >= 3: # Grab up to 3 lines of the identified section
+                    break
         
-    Returns
-    -------
-    dict
-        Dictionary containing the results of the FAST analysis
-    """
-    try:
-        # Compute FAST sensitivity analysis results
-        fast_results = compute_fast_sensitivity_analysis(
-            model, problem, size=size, model_code_str=model_code_str,
-            language_model=language_model
-        )
+        if snippet_lines_chat:
+            context += f"\n**AI Insights Snippet:**\n" + "\n".join(snippet_lines_chat) + "...\n"
+        elif len(insight_lines_chat_val_ctx_val) > 1 : # Fallback to first few non-empty lines
+             non_empty_lines_chat_ctx_val = [line.strip() for line in insight_lines_chat_val_ctx_val if line.strip()][:2]
+             if non_empty_lines_chat_ctx_val:
+                 context += f"\n**AI Insights Snippet:**\n" + "\n".join(non_empty_lines_chat_ctx_val) + "...\n"
+        else: 
+            context += f"\n**AI Insights Snippet:**\n{ai_insights_chat_val_ctx_val[:250]}...\n"
+        context += "(Refer to full analysis for complete AI interpretation)\n"
         
-        # Store results in session state for later access and global chat
-        if 'fast_analysis_results' not in st.session_state:
-            st.session_state.fast_analysis_results = fast_results
-        
-        # Display results if requested
-        if display_results:
-            display_fast_results(fast_results, language_model, model_code_str)
-            
-        return fast_results
-    except Exception as e:
-        if display_results:
-            st.error(f"Error in FAST sensitivity analysis: {str(e)}")
-        raise e
-
-def get_fast_context_for_chat(fast_results):
-    """
-    Generate a formatted string containing FAST analysis results for the global chat context.
-    
-    Parameters
-    ----------
-    fast_results : dict
-        Dictionary containing the results of the FAST analysis
-        
-    Returns
-    -------
-    str
-        Formatted string with FAST analysis results for chat context
-    """
-    context = ""
-    
-    # Extract key information from the results
-    fast_indices_df = fast_results.get("indices_df")
-    
-    if fast_indices_df is not None:
-        context += "\n\n### FAST Sensitivity Analysis Results\n"
-        context += fast_indices_df.to_markdown(index=False)
-    
     return context
-
-def fast_analysis(model, problem, size=400, model_code_str=None, language_model=None, display_results=True):
-    """
-    Perform and display FAST sensitivity analysis.
-    
-    This function serves as the main entry point for FAST analysis, handling both
-    the calculation and visualization of results.
-    
-    Parameters
-    ----------
-    model : ot.Function
-        OpenTURNS function to analyze
-    problem : ot.Distribution
-        OpenTURNS distribution (typically a JointDistribution)
-    size : int, optional
-        Number of samples for FAST analysis (default is 400)
-    model_code_str : str, optional
-        String representation of the model code for documentation
-    language_model : str, optional
-        Language model to use for analysis
-    display_results : bool, optional
-        Whether to display results in the UI (default is True)
-    """
-    with st.spinner("Running FAST Sensitivity Analysis..."):
-        fast_results = fast_sensitivity_analysis(
-            size, model, problem, model_code_str=model_code_str,
-            language_model=language_model, display_results=display_results
-        )
-        
-        return fast_results

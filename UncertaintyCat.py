@@ -22,7 +22,7 @@ import traceback
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
 from modules.model_understanding import model_understanding, display_model_understanding
 from modules.exploratory_data_analysis import exploratory_data_analysis, display_exploratory_data_analysis_results
-from modules.expectation_convergence_analysis import expectation_convergence_analysis_joint, display_expectation_convergence_results, compute_expectation_convergence_analysis, generate_ai_insights # Added compute and generate
+from modules.expectation_convergence_analysis import expectation_convergence_analysis, display_expectation_convergence_results, compute_expectation_convergence_analysis, generate_ai_insights # Added compute and generate
 from modules.sobol_sensitivity_analysis import sobol_sensitivity_analysis, display_sobol_results
 from modules.taylor_analysis import taylor_analysis, display_taylor_results
 from modules.correlation_analysis import correlation_analysis, display_correlation_results
@@ -404,7 +404,7 @@ if "📊 UQ Dashboard" in selected_page:
                                     st.error(f"Error: {str(e)}")
                                     st.session_state.all_results["Sobol Analysis"] = {"error": str(e)}
                                 st.rerun()
-                    
+
                     with cols2[1]:
                         if st.button("FAST Analysis (Variance)", key="run_fast"):
                             with st.spinner("Running FAST Sensitivity Analysis..."):
