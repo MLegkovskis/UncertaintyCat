@@ -1,7 +1,7 @@
 # UncertaintyCat 😺 | AI-driven Uncertainty Quantification
 
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://uncertainty.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://uncertaintycat.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![CI](https://github.com/MLegkovskis/UncertaintyCat/actions/workflows/ci.yml/badge.svg)](https://github.com/MLegkovskis/UncertaintyCat/actions/workflows/ci.yml)
