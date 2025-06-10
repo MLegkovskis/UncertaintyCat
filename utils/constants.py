@@ -1,3 +1,5 @@
+# ================ Common Prompts ================
+
 RETURN_INSTRUCTION = """
 You are an expert consultant specializing in Uncertainty Quantification (UQ) and Sensitivity Analysis (SA), producing technically-sound, extremely concise briefs for technical audiences.
 
