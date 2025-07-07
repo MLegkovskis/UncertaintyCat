@@ -1,5 +1,7 @@
+import openturns as ot
 import numpy as np
 
+# Portfolio Risk Function
 def function_of_interest(X):
     S0, mu, sigma, T = X  # Initial portfolio value, expected return, volatility, time horizon
     N = 10                # Number of assets
@@ -22,16 +24,27 @@ def function_of_interest(X):
     portfolio_value = S0 * np.exp(np.sum(correlated_returns))
     return [portfolio_value]
 
-# Problem definition
-problem = {
-    'num_vars': 4,
-    'names': ['S0', 'mu', 'sigma', 'T'],
-    'distributions': [
-        {'type': 'Uniform', 'params': [800000, 1200000]},  # S0: $800,000 - $1,200,000
-        {'type': 'Normal', 'params': [0.1, 0.02]},         # mu: Expected annual return (10%)
-        {'type': 'Normal', 'params': [0.2, 0.05]},         # sigma: Volatility (20%)
-        {'type': 'Uniform', 'params': [0.5, 1.5]},         # T: 0.5 - 1.5 years
-    ]
-}
+model = ot.PythonFunction(4, 1, function_of_interest)
 
-model = function_of_interest
+# Problem definition for the Portfolio Risk Model
+# Define distributions with corrected descriptions
+S0 = ot.Uniform(800000, 1200000)  # S0: $800,000 - $1,200,000
+S0.setDescription(["S0"])
+
+# Create Normal distributions with mean and standard deviation directly
+mu = ot.Normal(0.1, 0.02)  # mu: Expected annual return (10%)
+mu.setDescription(["mu"])
+
+sigma = ot.Normal(0.2, 0.05)  # sigma: Volatility (20%)
+sigma.setDescription(["sigma"])
+
+T = ot.Uniform(0.5, 1.5)          # T: 0.5 - 1.5 years
+T.setDescription(["T"])
+
+# Define joint distribution (independent)
+problem = ot.JointDistribution([
+    S0,
+    mu,
+    sigma,
+    T
+])

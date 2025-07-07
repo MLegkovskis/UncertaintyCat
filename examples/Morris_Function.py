@@ -1,15 +1,14 @@
+import openturns as ot
 import numpy as np
 
-# **Morris Function**
-# 
-# *Description:*
-# The Morris function is a 20-dimensional test function used in sensitivity analysis and uncertainty quantification. It is designed to exhibit complex interactions among its input variables, making it ideal for testing sensitivity analysis methods. The function includes linear terms, two-way interactions, three-way interactions, and a four-way interaction term.
-
+# Morris Function
 def function_of_interest(X):
     # Ensure X is a numpy array
     X = np.asarray(X)
 
     # Ensure that X has 20 variables
+    if X.shape[0] != 20:
+        raise ValueError("Expected 20 input variables.")
 
     U = X  # Input variables
 
@@ -56,13 +55,14 @@ def function_of_interest(X):
 
     return [Y]
 
-# **Problem Definition for the Morris Function**
-problem = {
-    'num_vars': 20,
-    'names': ['X' + str(i + 1) for i in range(20)],
-    'distributions': [
-        {'type': 'Uniform', 'params': [0, 1]} for _ in range(20)
-    ]
-}
+model = ot.PythonFunction(20, 1, function_of_interest)
 
-model = function_of_interest
+# Problem definition for the Morris Function
+# Define distributions with corrected descriptions
+names = ['X' + str(i + 1) for i in range(20)]
+distributions = [ot.Uniform(0, 1) for _ in range(20)]
+for name, dist in zip(names, distributions):
+    dist.setDescription([name])
+
+# Define joint distribution (independent)
+problem = ot.JointDistribution(distributions)
