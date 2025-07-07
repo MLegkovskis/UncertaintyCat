@@ -11,19 +11,16 @@
 [**🌐 Try the Live Application\!**](https://uncertaintycat.streamlit.app/)
 
 -----
-
 ## 🎯 Table of Contents
-
-  - [The Motivation](https://www.google.com/search?q=%23-the-motivation)
-  - [Key Features](https://www.google.com/search?q=%23-key-features)
-  - [How It Works](https://www.google.com/search?q=%23-how-it-works)
-  - [Defining Your Model for UncertaintyCat](https://www.google.com/search?q=%23-defining-your-model-for-uncertaintycat)
-  - [Available Analysis Modules](https://www.google.com/search?q=%23-available-analysis-modules)
-  - [Local Installation](https://www.google.com/search?q=%23-local-installation)
-  - [Contributing & Roadmap](https://www.google.com/search?q=%23-contributing--roadmap)
-  - [Acknowledgments](https://www.google.com/search?q=%23-acknowledgments)
-  - [License](https://www.google.com/search?q=%23-license)
-
+  - [The Motivation](#-the-motivation)
+  - [Key Features](#-key-features)
+  - [How It Works](#-how-it-works)
+  - [Defining Your Model for UncertaintyCat](#-defining-your-model-for-uncertaintycat)
+  - [Available Analysis Modules](#-available-analysis-modules)
+  - [Local Installation](#-local-installation)
+  - [Contributing & Roadmap](#-contributing--roadmap)
+  - [Acknowledgments](#-acknowledgments)
+  - [License](#-license)
 -----
 
 ## 💡 The Motivation
