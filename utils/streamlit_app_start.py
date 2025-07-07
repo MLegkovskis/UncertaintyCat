@@ -52,7 +52,7 @@ def streamlit_app_start():
     st.show_running_indicator = show_running_indicator  # Attach to st for use elsewhere if needed
 
     # Header with app title (centered, no logo column)
-    st.header("UncertaintyCat | Version 5.20")
+    st.header("UncertaintyCat | Version 5.21")
     st.caption("Advanced Uncertainty Quantification and Sensitivity Analysis Platform")
 
     # Fullscreen recommendation
