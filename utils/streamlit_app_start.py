@@ -100,6 +100,8 @@ def streamlit_app_start():
     # LLM model selection in sidebar
     groq_model_options = [
         "meta-llama/llama-4-scout-17b-16e-instruct",
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
         "llama-3.3-70b-versatile",
         "gemma2-9b-it",
         "qwen-2.5-32b",
