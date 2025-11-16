@@ -1,243 +1,182 @@
-# UncertaintyCat 🐱 | AI-Driven Uncertainty Quantification
+# UncertaintyCat 🐱 | AI-Assisted Uncertainty Quantification
 
-[](https://uncertaintycat.streamlit.app/)
-[](https://www.google.com/search?q=LICENSE)
-[](https://www.python.org/downloads/)
-[](https://www.google.com/search?q=https://openturns.github.io/openturns/latest/)
-[](https://github.com/MLegkovskis/UncertaintyCat/actions/workflows/ci.yml)
+[![Streamlit](https://img.shields.io/badge/Streamlit-cloud-red)](https://uncertaintycat.streamlit.app/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![OpenTURNS](https://img.shields.io/badge/built%20with-OpenTURNS-4d8ecf)](https://openturns.github.io/openturns/latest/)
 
-**UncertaintyCat** is a web-based platform designed to make advanced **Uncertainty Quantification (UQ)** and **Sensitivity Analysis (SA)** accessible to engineers, researchers, and data scientists. Powered by **OpenTURNS** and augmented with **Generative AI**, it streamlines the entire UQ workflow from model definition to actionable insight, all within your browser.
+UncertaintyCat is a modern, browser-based workspace for engineers, researchers, and data scientists who need to **quantify uncertainty**, **understand model sensitivity**, and **communicate results** fast. It blends battle-tested algorithms from [OpenTURNS](https://openturns.github.io/openturns/latest/) with Streamlit’s interactive UX and an AI assistant that can summarize results or answer questions about any completed analysis.
 
-[**🌐 Try the Live Application\!**](https://uncertaintycat.streamlit.app/)
+👉 **Try it now:** https://uncertaintycat.streamlit.app/
 
------
-## 🎯 Table of Contents
-  - [The Motivation](#-the-motivation)
-  - [Key Features](#-key-features)
-  - [How It Works](#-how-it-works)
-  - [Defining Your Model for UncertaintyCat](#-defining-your-model-for-uncertaintycat)
-  - [Available Analysis Modules](#-available-analysis-modules)
-  - [Local Installation](#-local-installation)
-  - [Contributing & Roadmap](#-contributing--roadmap)
-  - [Acknowledgments](#-acknowledgments)
-  - [License](#-license)
------
+---
+## 📚 Table of Contents
+- [Motivation](#-motivation)
+- [Feature Highlights](#-feature-highlights)
+- [Workspaces & Pages](#-workspaces--pages)
+- [Defining Your Model](#-defining-your-model)
+- [Analysis Modules](#-analysis-modules)
+- [Architecture at a Glance](#-architecture-at-a-glance)
+- [Run Locally with uv](#-run-locally-with-uv)
+- [Deploy to Streamlit Community Cloud](#-deploy-to-streamlit-community-cloud)
+- [Contributing & Roadmap](#-contributing--roadmap)
+- [Acknowledgments](#-acknowledgments)
+- [License](#-license)
 
-## 💡 The Motivation
+---
+## 💡 Motivation
+During a PhD project with **Tata Steel**, a single Sobol analysis routinely revealed which furnace inputs dominated output variability. The bottleneck wasn’t math—it was the repetitive OpenTURNS scripting, plotting, and report writing. UncertaintyCat automates the workflow: drop in a model, push a button, and receive a full suite of analyses plus AI-generated commentary you can hand to stakeholders.
 
-UncertaintyCat was born from a real industrial need encountered during a PhD with **Tata Steel**. While building high-dimensional models of reheating furnaces, the value of UQ became undeniable. A single Sobol analysis could pinpoint which process inputs truly dominated output variability, leading to immediate "aha\!" moments for engineers.
+---
+## 🌟 Feature Highlights
+- **Zero-install, multipage Streamlit app** with dedicated spaces for UQ, dimensionality reduction, distribution fitting, and the new **Surrogate Modeling** lab.
+- **Comprehensive UQ toolkit**: Monte Carlo, Sobol/FAST/ANCOVA, Morris, HSIC, Taylor, EDA, correlation, machine-learning Shapley indices, and more.
+- **AI everywhere**: Each module can call Groq-hosted LLMs for tailored insights, and the sidebar chat can answer questions about whichever analyses you’ve run—even incrementally.
+- **“🚀 Overall Summary” meta-analysis**: generates a consolidated executive summary whenever multiple modules have been executed.
+- **Surrogate Modeling (PCE)**: Build a polynomial chaos expansion surrogate, validate it, run degree-vs-R² cross-validation, inspect Sobol’ indices (with optional bootstrap), and visualize conditional expectations.
+- **Modern state & registry architecture**: analyses register once and auto-populate buttons, progress bars, and expander sections; compute modules are now Streamlit-free for easier testing.
+- **Streamlit Cloud-ready**: dependency management is handled by `pyproject.toml` + `uv.lock`, making deployments deterministic and fast.
 
-The pain point was clear: every new analysis required fresh **OpenTURNS** code and a time-consuming manual interpretation report.
+---
+## 🧭 Workspaces & Pages
+| Page | Purpose |
+| --- | --- |
+| **Home** | Welcome page that keeps the sidebar “frozen” (no accidental model swaps) and explains available workspaces. |
+| **📊 UQ Dashboard** | Primary hub for Monte Carlo, Sobol, FAST, ANCOVA, Taylor, HSIC, correlation, expectation convergence, EDA, ML-based Shapley, and the AI-driven Overall Summary. Buttons are generated dynamically from the analysis registry. |
+| **📉 Dimensionality Reduction** | Morris screening workflow that highlights non-influential parameters and suggests fixed values for follow-on studies. |
+| **📈 Distribution Fitting** | Ingest CSV/Excel data, fit parametric distributions and copulas, and emit ready-to-paste `problem` definitions. |
+| **🛠️ Surrogate Modeling (new)** | Build polynomial chaos expansions (regression or quadrature), validate them, explore degree sensitivity, compute PCE-based Sobol’ indices, visualize conditional expectations, and inspect coefficients. |
 
-**The solution is UncertaintyCat**: A single, powerful web application that runs a comprehensive suite of UQ analyses with a few clicks and delivers AI-generated, engineer-ready commentary. It transforms the UQ cycle from days of manual coding and report-writing into minutes of automated computation and insight.
+Each page shares a consistent sidebar (model selector, uploader, LLM picker) and uses centralized session state so results persist while you navigate.
 
------
+---
+## 🐍 Defining Your Model
+Provide two objects in the built-in editor:
+1. `model`: an `ot.Function` (Python function wrapped via `ot.PythonFunction`, symbolic expression, or OpenTURNS workflow).
+2. `problem`: an `ot.Distribution`, typically `ot.JointDistribution`/`ot.ComposedDistribution` of your marginals.
 
-## 🌟 Key Features
-
-  - **🚀 Zero-Install & Cloud-Native**: Runs entirely in your browser. All computations are handled in-memory on a managed cloud workspace, and your model code is never persisted.
-  - **🔧 Complete UQ & SA Toolkit**: A comprehensive suite of 11 analysis engines, covering the modern UQ canon:
-      - Monte Carlo Simulation & Expectation Convergence
-      - Variance-Based SA: **Sobol**, **FAST**, **ANCOVA**
-      - Screening Methods: **Morris**
-      - Dependence-Based SA: **HSIC** (Hilbert-Schmidt Independence Criterion)
-      - Local SA: **Taylor Expansion**
-      - Global Interpretation: **Shapley Values** (via machine learning surrogates)
-      - Correlation Analysis & Exploratory Data Analysis
-  - **🤖 Engine-by-Engine AI Insight**: Each analysis module bundles its numeric results with relevant theory and makes a targeted call to a Large Language Model (e.g., Llama-4, Gemma-2 via Groq Cloud) to generate concise, context-aware interpretations.
-  - **📊 Dynamic & Interactive Visualizations**: Dashboards powered by Plotly adapt from low- to high-dimensional models, with hover tool-tips, filtering, and image export as standard features.
-  - **⚙️ Data-Driven Input Modeling**:
-      - **Distribution Fitting Wizard**: Upload CSV/Excel data to fit probability distributions and copulas, generating a ready-to-use `problem` definition.
-      - **Dimensionality Reduction**: Use Morris screening to identify and fix non-influential variables, simplifying your model for further analysis.
-  - **📚 Built-in Benchmarks**: Get started instantly with classic UQ benchmark functions like Ishigami, Borehole, and Beam Deflection, perfect for demos, teaching, and testing.
-
------
-
-## ⚙️ How It Works
-
-UncertaintyCat simplifies the UQ workflow into a few straightforward steps:
-
-1.  **Select a Workspace**: Choose between the main `UQ Dashboard`, `Dimensionality Reduction` for Morris screening, or `Distribution Fitting` to define inputs from data.
-2.  **Provide Your Model**: In the code editor, define your model as an `openturns.Function` and your input uncertainties as an `openturns.Distribution`.
-3.  **Run Analyses**: Click **"Run Full UQ Suite"** for a comprehensive report, or run any of the 11 analysis modules individually for faster, targeted insights.
-4.  **Review & Interact**: Explore the interactive plots and tables. Use the sidebar **AI Chatbot**, which has full context of all your analysis results, to ask follow-up questions like *"Compare the Sobol and FAST results and explain any discrepancies."*
-
------
-
-## 🐍 Defining Your Model for UncertaintyCat
-
-To use your own model, you must define two Python variables within the code editor: `model` and `problem`.
-
-1.  **`model`**: An `openturns.Function` object. This can be created from a Python function or a symbolic string.
-2.  **`problem`**: An `openturns.Distribution` object, typically a `JointDistribution` defining the uncertain input variables.
-
-**Complete Example (Ishigami Function):**
-
-You can paste this code directly into the app's editor to get started.
-
+Minimal Ishigami example:
 ```python
 import openturns as ot
 import numpy as np
 
-# 1. Define the model as a standard Python function
-# It must take a list or array of inputs and return a list or array of outputs.
-def ishigami_function(X):
-    x1, x2, x3 = X[0], X[1], X[2]
-    
-    a = 7.0
-    b = 0.1
-    
-    term1 = np.sin(x1)
-    term2 = a * (np.sin(x2)**2)
-    term3 = b * (x3**4) * np.sin(x1)
-    
-    return [term1 + term2 + term3]
+def ishigami(x):
+    x1, x2, x3 = x
+    return [np.sin(x1) + 7.0*np.sin(x2)**2 + 0.1*x3**4*np.sin(x1)]
 
-# 2. Wrap the Python function into an OpenTURNS Function object
-# The first argument is the number of inputs (3), the second is the number of outputs (1).
-model = ot.PythonFunction(3, 1, ishigami_function_for_ot)
-
-# 3. Define the input probability distributions for each variable
-# The list of marginals must match the order of inputs in your function.
-marginals = [
-    ot.Uniform(-np.pi, np.pi), # X1
-    ot.Uniform(-np.pi, np.pi), # X2
-    ot.Uniform(-np.pi, np.pi)  # X3
-]
-
-# Set descriptions for clear labeling in plots and tables
-marginals[0].setDescription(["X1_Uniform"])
-marginals[1].setDescription(["X2_Uniform"])
-marginals[2].setDescription(["X3_Uniform"])
-
-# 4. Create the joint distribution object for the problem definition
-# For Sobol analysis, inputs are treated as independent, so an IndependentCopula is used.
-problem = ot.ComposedDistribution(marginals)
-
+model = ot.PythonFunction(3, 1, ishigami)
+problem = ot.ComposedDistribution([
+    ot.Uniform(-np.pi, np.pi),
+    ot.Uniform(-np.pi, np.pi),
+    ot.Uniform(-np.pi, np.pi),
+])
+problem.setDescription(["X1", "X2", "X3"])
 ```
+Paste this into the editor, hit **Validate Model Input**, and you’re ready to run analyses.
 
------
+---
+## 🧪 Analysis Modules
+| Module | Description |
+| --- | --- |
+| **🚀 Overall Summary** | Meta-analysis synthesizing all completed modules via an LLM-powered executive summary. |
+| **Model Understanding** | AI narrative describing equations, distributions, and uncertainty propagation. |
+| **Monte Carlo & EDA** | Sample generation, summary stats, correlation heatmaps, cross-cuts, and AI commentary. |
+| **Expectation Convergence** | Track mean/std convergence with increasing sample size plus AI insights. |
+| **Sobol / FAST / ANCOVA / Taylor** | Variance-based and local sensitivity analyses with Plotly visualizations and textual explanations. |
+| **HSIC & Correlation** | Kernel and Pearson/Spearman methods for dependency assessment. |
+| **ML Shapley** | Train a surrogate and compute Shapley values for attribution. |
+| **Morris Screening** | Efficient screening to spot non-influential inputs. |
+| **Surrogate Modeling (PCE)** | Build polynomial chaos expansions and run validation, cross-validation, Sobol’, conditional expectation, and coefficient diagnostics. |
 
-## 🔬 Available Analysis Modules
+Each module writes to `st.session_state.all_results`, so the sidebar chat and summary module always have the latest context.
 
-| Module                             | Description                                                                                              |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Model Understanding** | AI-driven summary of the model's mathematical structure and input distributions.                           |
-| **Exploratory Data Analysis** | Statistical summary and visualizations of Monte Carlo simulation results.                               |
-| **Expectation Convergence** | Analyzes the convergence of the model's expected value with increasing sample size.                        |
-| **Sobol Analysis** | Decomposes output variance into contributions from each input (first, total, and second-order indices).      |
-| **FAST Analysis** | A variance-based sensitivity analysis method efficient for identifying first-order sensitivities.        |
-| **ANCOVA Analysis** | A variance-based method that is effective for models with **correlated** input variables.                 |
-| **Taylor Analysis** | A local, derivative-based sensitivity analysis around the mean of the inputs.                               |
-| **Correlation Analysis** | Computes Pearson and Spearman correlation coefficients between inputs and the output.                    |
-| **HSIC Analysis** | A kernel-based method to detect both linear and non-linear dependencies between inputs and output.     |
-| **Shapley Analysis** | A game-theoretic approach (using a machine learning surrogate) to fairly attribute importance to inputs. |
-| **Morris Screening** | An efficient method for screening and ranking the importance of a large number of input factors.            |
+---
+## 🏗 Architecture at a Glance
+- **Streamlit multipage app**: `UncertaintyCat.py` is a thin entrypoint; actual content lives under `pages/`.
+- **Shared UI layer** (`app/components.py`): renders the sidebar, code editor, and chat widget, and ensures model selections persist across pages.
+- **Application logic** (`app/core.py`, `app/config.py`, `app/state.py`): analysis registry, cached model compilation, orchestration helpers, and typed accessors around `st.session_state`.
+- **Compute modules** (`modules/`): pure Python/OpenTURNS logic for each analysis, 100% Streamlit-free so they can be reused and unit tested.
+- **Presentation layer** (`app/displays.py`): takes raw compute results and renders Plotly figures, tables, and text in the Streamlit UI.
+- **Chat utilities** (`app/chat_utils.py`): builds Markdown context for both the per-module AI insights and the sidebar chat, enabling incremental Q&A.
 
------
-
-## 🖥️ Local Installation
-
-While the public app requires zero installation, you can run UncertaintyCat locally for development or offline use.
-
+---
+## 💻 Run Locally with uv
 ### Prerequisites
-
-  - Python 3.12+
-  - Git
-  - [uv](https://github.com/astral-sh/uv)
+- Python 3.12+
+- Git
+- [uv](https://github.com/astral-sh/uv) (modern Python package manager from Astral)
 
 ### Steps
-
-1.  **Clone the Repository**
-
+1. **Clone the repo**
     ```bash
     git clone https://github.com/MLegkovskis/UncertaintyCat.git
     cd UncertaintyCat
     ```
-
-2.  **Install uv (one time)**
-
+2. **Install uv** (one time)
     ```bash
     curl -LsSf https://astral.sh/uv/install.sh | sh
     # restart your shell so that `uv` is on PATH
     ```
-
-3.  **Create a virtual environment with uv**
-
+3. **Create & activate the environment**
     ```bash
     uv venv
-    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    source .venv/bin/activate       # Windows: .venv\Scripts\activate
     ```
-
-4.  **Install dependencies with uv**
-
+4. **Install dependencies**
     ```bash
     uv pip sync pyproject.toml
     ```
-
-5.  **Set Up API Key** (Optional, for AI features)
-    Create a `.streamlit/secrets.toml` file and add your Groq API key:
-
+5. **Optional – configure AI secrets**
     ```toml
-    GROQ_API_KEY="your-api-key-here"
+    # .streamlit/secrets.toml
+    GROQ_API_KEY = "your-key"
     ```
-
-6.  **Run the App**
-
+6. **Run the app**
     ```bash
     uv run streamlit run UncertaintyCat.py
     ```
 
-### Generating a `uv.lock`
-
-Community Cloud prefers a `uv.lock` file. After installing uv locally, create and commit the lock once:
-
+### Generate a `uv.lock`
+Community Cloud prefers a deterministic lock file. After installing uv:
 ```bash
-uv pip compile pyproject.toml --output uv.lock
+uv pip compile pyproject.toml --output-file uv.lock
 ```
-
-From then on you can keep your workstation in sync with the deployed image via:
-
+Commit `uv.lock` and use it locally with:
 ```bash
 uv pip sync uv.lock
 ```
 
------
+---
+## ☁ Deploy to Streamlit Community Cloud
+1. Push your repo with `pyproject.toml` and `uv.lock` at the root (or alongside `UncertaintyCat.py`).
+2. In Streamlit Cloud, point the app to `UncertaintyCat.py`.
+3. Community Cloud automatically detects `uv.lock`, installs dependencies with uv, and runs the app. No `requirements.txt` needed.
+4. Need system packages? Add them to `packages.txt` (one Debian package per line) and commit to the repo root.
 
+Tip: use the same Python version locally (3.12) to avoid surprises.
+
+---
 ## 🗺️ Contributing & Roadmap
+We welcome issues and pull requests! Current areas of interest:
+- **Equation-to-model assistant** (convert LaTeX to OpenTURNS code).
+- **Distributed backends** for >10⁶ sample Monte Carlo and Sobol runs.
+- **Docker bundle** for on-prem deployments and offline LLM hosting.
+- **New analyses** (Bayesian calibration, adaptive sampling, etc.).
 
-**UncertaintyCat is an open-source project, and contributions are highly welcome\!** Our goal is to create the most intuitive and powerful UQ tool for the engineering and scientific communities.
+How to contribute:
+1. Fork the repo and create a feature branch.
+2. Run `uv pip sync pyproject.toml` (or `uv.lock`) and `uv run streamlit run UncertaintyCat.py` to test.
+3. Follow the existing style (type hints, docstrings, no Streamlit in compute modules).
+4. Submit a PR targeting `main` and describe your changes.
 
-### Current Roadmap
-
-We are actively looking for collaborators to help with:
-
-  - **Equation to Model**: Paste a LaTeX equation to auto-generate the Python model code.
-  - **Scalable Backends**: Integrate a Ray or GPU-based backend to push Monte Carlo and Sobol analyses to $\>10^6$ samples.
-  - **One-Click Docker Bundle**: Create a simple Docker Compose file for easy deployment in private cloud environments, with optional on-device LLM weights.
-  - **New Analysis Modules**: Integrate additional UQ methods and surrogate modeling techniques.
-
-### How to Contribute
-
-1.  Fork the repository.
-2.  Create a feature branch (`git checkout -b feature/YourAmazingFeature`).
-3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4.  Push to the branch (`git push origin feature/YourAmazingFeature`).
-5.  Open a Pull Request.
-
-Please feel free to open an issue to discuss a bug or a new feature.
-
------
-
+---
 ## 🙏 Acknowledgments
+- [OpenTURNS](https://openturns.github.io/openturns/latest/) for the numerical backbone.
+- [Streamlit](https://streamlit.io/) for the rapid UI framework.
+- [Groq Cloud](https://groq.com/) for powering the AI insights and chat assistant.
+- The UQ community for open benchmarks (Ishigami, Borehole, etc.) that ship as built-in examples.
 
-  - This project is built on the robust and powerful **[OpenTURNS](https://www.google.com/search?q=https://openturns.github.io/openturns/latest/)** library. Its comprehensive, well-documented API makes this application possible.
-  - The interactive user interface is created with **[Streamlit](https://streamlit.io/)**.
-  - AI-powered analysis is provided by Large Language Models running on **[Groq Cloud](https://groq.com/)**.
-  - You can view the **[OpenTURNS User Day 2025 Presentation](https://github.com/openturns/presentation/blob/master/userday2025/JU_OT_2025_UncertaintyCat.pdf)** for more context on the project's motivation and architecture.
+For background, see the [OpenTURNS User Day 2025 presentation](https://github.com/openturns/presentation/blob/master/userday2025/JU_OT_2025_UncertaintyCat.pdf).
 
------
-
+---
 ## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
+This project is released under the [MIT License](LICENSE).
