@@ -157,8 +157,8 @@ def pce_least_squares_analysis(
 
     # ── display
     if display_results:
-        st.plotly_chart(figs["validation"], use_container_width=True, key="pce_val")
-        st.plotly_chart(figs["sobol"],      use_container_width=True, key="pce_sob")
+        st.plotly_chart(figs["validation"], width='stretch', key="pce_val")
+        st.plotly_chart(figs["sobol"],      width='stretch', key="pce_sob")
 
     # ── download surrogate
     surrogate_py = _SuperChaosResult(res).to_python()
@@ -192,13 +192,13 @@ def display_pce_results(results: dict, container=None):
     if "validation" in results["figs"]:
         container.plotly_chart(
             results["figs"]["validation"],
-            use_container_width=True,
+            width='stretch',
             key="pce_val_report",
         )
     if "sobol" in results["figs"]:
         container.plotly_chart(
             results["figs"]["sobol"],
-            use_container_width=True,
+            width='stretch',
             key="pce_sob_report",
         )
 

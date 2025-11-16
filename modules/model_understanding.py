@@ -1,14 +1,8 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-import streamlit as st
-import plotly.graph_objects as go
-import plotly.express as px
-import uuid
-import json
-import os
-from groq import Groq
-from utils.core_utils import call_groq_api, create_chat_interface
+
+from utils.core_utils import call_groq_api
 from utils.constants import RETURN_INSTRUCTION
 
 def compute_model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
@@ -50,7 +44,7 @@ def compute_model_understanding(model, problem, model_code_str, is_pce_used=Fals
     
     # Extract distribution information
     distributions = []
-    inputs_df = pd.DataFrame(columns=["Variable", "Distribution", "Parameters", "Bounds", "Mean", "Std"])
+    input_rows = []
     
     for i in range(dimension):
         marginal = problem.getMarginal(i)
@@ -80,22 +74,29 @@ def compute_model_understanding(model, problem, model_code_str, is_pce_used=Fals
             'params': dist_params
         })
         
-        new_row = pd.DataFrame({
-            "Variable": [input_names[i]],
-            "Distribution": [dist_type],
-            "Parameters": [dist_params],
-            "Bounds": [bounds],
-            "Mean": [mean],
-            "Std": [std]
-        })
-        if not new_row.empty and not new_row.isna().all(axis=None):
-            inputs_df = pd.concat([inputs_df, new_row], ignore_index=True)
+        row = {
+            "Variable": input_names[i],
+            "Distribution": dist_type,
+            "Parameters": dist_params,
+            "Bounds": bounds,
+            "Mean": mean,
+            "Std": std,
+        }
+        input_rows.append(row)
+
+    inputs_df = pd.DataFrame(
+        input_rows,
+        columns=["Variable", "Distribution", "Parameters", "Bounds", "Mean", "Std"],
+    )
     
     # Format the model code for inclusion in the prompt
     model_code_formatted = '\n'.join(['    ' + line for line in model_code_str.strip().split('\n')])
     
     # Convert inputs_df to markdown table for the prompt
-    inputs_md_table = inputs_df[["Variable", "Distribution", "Parameters"]].to_markdown(index=False)
+    if inputs_df.empty:
+        inputs_md_table = "No input distributions available."
+    else:
+        inputs_md_table = inputs_df[["Variable", "Distribution", "Parameters"]].to_markdown(index=False)
 
     # Generate prompt for the language model
     def generate_prompt(additional_instructions=""):
@@ -205,71 +206,15 @@ Input Parameters:
         'problem': problem
     }
 
-def display_model_understanding(analysis_results, language_model='groq'):
-    """
-    Display model understanding analysis results in the Streamlit interface.
-    
-    Parameters
-    ----------
-    analysis_results : dict
-        Dictionary containing model understanding analysis results
-    language_model : str, optional
-        Language model to use for AI insights, by default 'groq'
-    """
-    # Extract results from the analysis_results dictionary
-    model_code_str = analysis_results['model_code_str']
-    inputs_df = analysis_results['inputs_df']
-    inputs_md_table = analysis_results['inputs_md_table']
-    explanation = analysis_results['explanation']
-    is_pce_used = analysis_results['is_pce_used']
-    original_model_code_str = analysis_results['original_model_code_str']
-    metamodel_str = analysis_results['metamodel_str']
-    
-    # Store the explanation in session state for reuse in the global chat
-    if 'model_understanding_response_markdown' not in st.session_state:
-        st.session_state['model_understanding_response_markdown'] = explanation
-    
-    # Display the AI-generated explanation
-    with st.container():
-        st.markdown(explanation)
-        
-        # Display input distributions
-        st.write("### Input Distributions")
-        try:
-            # Display the dataframe with enhanced formatting
-            st.dataframe(
-                inputs_df,
-                column_config={
-                    "Variable": st.column_config.TextColumn("Variable Name"),
-                    "Distribution": st.column_config.TextColumn("Distribution Type"),
-                    "Parameters": st.column_config.TextColumn("Parameters"),
-                    "Bounds": st.column_config.TextColumn("Bounds"),
-                    "Mean": st.column_config.NumberColumn("Mean", format="%.4f"),
-                    "Std": st.column_config.NumberColumn("Std. Dev.", format="%.4f")
-                },
-                use_container_width=True
-            )
-            
-            # If OpenTURNS has the markdown representation, use it as well
-            if hasattr(problem := analysis_results.get('problem', None), '__repr_markdown__'):
-                try:
-                    markdown_repr = problem.__repr_markdown__()
-                    st.markdown(markdown_repr, unsafe_allow_html=True)
-                except:
-                    pass
-        except Exception as e:
-            st.error(f"Error displaying input distributions: {e}")
-        
-        # If a metamodel is used, display it
-        if is_pce_used and metamodel_str:
-            st.write("### Polynomial Chaos Expansion Metamodel")
-            st.info("This analysis uses a polynomial chaos expansion (PCE) metamodel instead of the original model.")
-            
-            # Display metamodel information
-            st.write("#### PCE Metamodel Information")
-            st.code(metamodel_str, language="python")
-
-def model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq', display_results=True):
+def model_understanding(
+    model,
+    problem,
+    model_code_str,
+    is_pce_used=False,
+    original_model_code_str=None,
+    metamodel_str=None,
+    language_model='groq',
+):
     """
     Generate a comprehensive description of the model and its uncertain inputs.
     
@@ -292,8 +237,6 @@ def model_understanding(model, problem, model_code_str, is_pce_used=False, origi
         String representation of the metamodel, by default None
     language_model : str, optional
         Language model to use for AI insights, by default 'groq'
-    display_results : bool, optional
-        Whether to display results in the UI, by default True
     
     Returns
     -------
@@ -301,28 +244,14 @@ def model_understanding(model, problem, model_code_str, is_pce_used=False, origi
         Dictionary containing model understanding analysis results
     """
     try:
-        # Compute model understanding analysis
-        analysis_results = compute_model_understanding(
-            model, 
-            problem, 
-            model_code_str, 
-            is_pce_used, 
-            original_model_code_str, 
-            metamodel_str, 
-            language_model
+        return compute_model_understanding(
+            model,
+            problem,
+            model_code_str,
+            is_pce_used,
+            original_model_code_str,
+            metamodel_str,
+            language_model,
         )
-        
-        # Add the problem to the results for potential markdown representation
-        analysis_results['problem'] = problem
-        
-        # Display results if requested
-        if display_results:
-            display_model_understanding(analysis_results, language_model)
-        
-        # Return analysis results
-        return analysis_results
-    
-    except Exception as e:
-        if display_results:
-            st.error(f"Error in model understanding: {str(e)}")
-        raise
+    except Exception as exc:
+        raise exc

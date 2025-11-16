@@ -88,7 +88,7 @@ def compute_exploratory_data_analysis(data: pd.DataFrame,
     np.fill_diagonal(corr_viz.values, np.nan) # Use NaN for diagonal in heatmap visual
 
     # For text display on heatmap, round values and handle NaN diagonal
-    corr_text_display = corr.copy()
+    corr_text_display = corr.copy().astype(object)
     for r_idx in range(len(corr_text_display.index)):
         for c_idx in range(len(corr_text_display.columns)):
             if r_idx == c_idx:
@@ -467,7 +467,7 @@ def display_exploratory_data_analysis_results(analysis_results: dict): # Removed
             yaxis_autorange='reversed',
             margin=dict(l=100, r=50, t=50, b=50) # Adjust margins
         )
-        st.plotly_chart(fig_corr, use_container_width=True)
+        st.plotly_chart(fig_corr, width='stretch')
     else:
         st.warning("Correlation matrix data not available.")
 
@@ -498,7 +498,7 @@ def display_exploratory_data_analysis_results(analysis_results: dict): # Removed
                     fig_1d.update_layout(height=600, margin=dict(t=60,b=50), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5))
                     fig_1d.update_yaxes(title_text=plot_data['output_display_name'], row=1, col=1); fig_1d.update_yaxes(title_text=plot_data['output_display_name'], row=2, col=1)
                     fig_1d.update_xaxes(title_text=plot_data['input_display_name'], row=2, col=1)
-                    st.plotly_chart(fig_1d, use_container_width=True)
+                    st.plotly_chart(fig_1d, width='stretch')
     else: # Multiple outputs
         output_tabs_display = st.tabs([analysis_results['display_names_map'].get(col,col) for col in output_columns_df_display])
         for i, output_col_key_tab in enumerate(output_columns_df_display):
@@ -520,7 +520,7 @@ def display_exploratory_data_analysis_results(analysis_results: dict): # Removed
                             fig_1d_multi.update_layout(height=600, margin=dict(t=60,b=50), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5))
                             fig_1d_multi.update_yaxes(title_text=plot_data_inner['output_display_name'], row=1, col=1); fig_1d_multi.update_yaxes(title_text=plot_data_inner['output_display_name'], row=2, col=1)
                             fig_1d_multi.update_xaxes(title_text=plot_data_inner['input_display_name'], row=2, col=1)
-                            st.plotly_chart(fig_1d_multi, use_container_width=True)
+                            st.plotly_chart(fig_1d_multi, width='stretch')
 
 
     # --- 2D Cross Cuts (Contour Plots) ---
@@ -542,7 +542,7 @@ def display_exploratory_data_analysis_results(analysis_results: dict): # Removed
                     fig_2d.update_layout(title=f"Output vs {plot_data_2d['input_name_i']} and {plot_data_2d['input_name_j']}",
                                          xaxis_title=plot_data_2d['input_name_i'], yaxis_title=plot_data_2d['input_name_j'],
                                          height=500, width=600, margin=dict(t=50))
-                    st.plotly_chart(fig_2d, use_container_width=True)
+                    st.plotly_chart(fig_2d, width='stretch')
         else:
             st.info("No 2D cross-cut data available (requires at least 2 input variables).")
     else:

@@ -233,11 +233,11 @@ def display_correlation_results(analysis_results_dict):
     st.subheader("Visualizations")
     st.markdown("##### All Correlation Coefficients (Bar Chart)")
     st.markdown("Compares different correlation coefficients for each input variable. Values range from -1 (perfect negative correlation) to +1 (perfect positive correlation). A value near 0 indicates a weak correlation of that type.")
-    st.plotly_chart(viz_bundle['fig_combined_bars'], use_container_width=True)
+    st.plotly_chart(viz_bundle['fig_combined_bars'], width='stretch')
     
     # Display correlation table
     st.subheader("Correlation Coefficients Table")
-    st.dataframe(corr_df.style.format("{:.4f}").background_gradient(cmap='RdBu_r', axis=None, vmin=-1, vmax=1), use_container_width=True)
+    st.dataframe(corr_df.style.format("{:.4f}").background_gradient(cmap='RdBu_r', axis=None, vmin=-1, vmax=1), width='stretch')
 
     st.subheader("Pearson vs. Spearman Coefficients") # Using subheader
     st.markdown("""
@@ -248,7 +248,7 @@ def display_correlation_results(analysis_results_dict):
         * Points significantly off the diagonal but where both coefficients are strong indicate a non-linear monotonic relationship.
         * Points where Spearman is strong but Pearson is weak are classic indicators of such non-linear monotonic trends.
     """)
-    st.plotly_chart(viz_bundle['fig_pearson_spearman_scatter'], use_container_width=True)
+    st.plotly_chart(viz_bundle['fig_pearson_spearman_scatter'], width='stretch')
 
     # Enhanced Interpretation Section
     st.subheader("Interpreting Correlation Coefficients")

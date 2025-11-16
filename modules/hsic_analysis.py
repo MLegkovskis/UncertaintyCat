@@ -322,7 +322,7 @@ def display_hsic_results(analysis_results, model_code_str=None, language_model='
         - **p-value**: Statistical significance of the dependence. Low p-value (e.g., < 0.05) suggests the observed dependence is unlikely due to chance.
         """)
 
-        st.plotly_chart(analysis_results['fig'], use_container_width=True)
+        st.plotly_chart(analysis_results['fig'], width='stretch')
 
         st.subheader("🔢 Detailed HSIC Indices")
         display_df = hsic_df.copy()
@@ -347,7 +347,7 @@ def display_hsic_results(analysis_results, model_code_str=None, language_model='
             cols_to_show = ['Variable', 'R2_HSIC_Index', 'Raw_HSIC']
 
 
-        st.dataframe(display_df[[c for c in cols_to_show if c in display_df.columns]], use_container_width=True)
+        st.dataframe(display_df[[c for c in cols_to_show if c in display_df.columns]], width='stretch')
         st.caption("Significance: *** p < 0.001, ** p < 0.01, * p < 0.05, ns p ≥ 0.05 (based on asymptotic p-value)")
 
         # Display interpretation (from original structure)

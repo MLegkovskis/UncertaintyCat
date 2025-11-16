@@ -340,11 +340,11 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                 
                 # Display plots in styled sections
                 st.subheader("Morris Mean Absolute Elementary Effects")
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig1, width='stretch')
                 
                 st.subheader("Morris Analysis: μ* vs σ")
                 st.write("Variables in the top-right corner have high influence and non-linear effects or interactions. Variables near the origin have low influence on the output.")
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width='stretch')
                 
                 # Identify non-influential variables
                 non_influential = identify_non_influential_variables(results, threshold)
@@ -368,7 +368,7 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                     })
                     
                     # Display enhanced table
-                    st.dataframe(enhanced_df, use_container_width=True)
+                    st.dataframe(enhanced_df, width='stretch')
                     
                     # Create a visual representation of the effects
                     st.write("Visual Comparison of Non-influential Variables")
@@ -404,7 +404,7 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                     )
                     
                     # Display the chart with an improved caption
-                    st.plotly_chart(fig_non_infl, use_container_width=True)
+                    st.plotly_chart(fig_non_infl, width='stretch')
                     st.caption(
                         """
                         **Interpretation:** This plot shows the absolute Morris effect (μ*) for each non-influential variable (those below the threshold). 
@@ -552,11 +552,11 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                     
                     # Display plots in styled sections
                     st.subheader("Morris Mean Absolute Elementary Effects")
-                    st.plotly_chart(fig1, use_container_width=True)
+                    st.plotly_chart(fig1, width='stretch')
                     
                     st.subheader("Morris Analysis: μ* vs σ")
                     st.write("Variables in the top-right corner have high influence and non-linear effects or interactions. Variables near the origin have low influence on the output.")
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.plotly_chart(fig2, width='stretch')
                     
                     # Identify non-influential variables
                     non_influential = identify_non_influential_variables(results, threshold)
@@ -580,7 +580,7 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                         })
                         
                         # Display enhanced table
-                        st.dataframe(enhanced_df, use_container_width=True)
+                        st.dataframe(enhanced_df, width='stretch')
                         
                         # Create a visual representation of the effects
                         st.write("Visual Comparison of Non-influential Variables")
@@ -615,7 +615,7 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                         )
                         
                         # Display the chart
-                        st.plotly_chart(fig_non_infl, use_container_width=True)
+                        st.plotly_chart(fig_non_infl, width='stretch')
                         
                         # Add contextual information
                         with st.expander("Understanding Morris Effects"):

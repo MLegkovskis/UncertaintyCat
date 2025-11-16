@@ -519,18 +519,18 @@ def display_expectation_convergence_results(analysis_data: dict):
     # Check if figures are actual Plotly Figure objects and have data
     mean_fig = analysis_data.get('fig_mean_convergence')
     if isinstance(mean_fig, go.Figure) and mean_fig.data:
-        st.plotly_chart(mean_fig, use_container_width=True)
+        st.plotly_chart(mean_fig, width='stretch')
     else: st.warning("Mean convergence plot data is unavailable or empty.")
 
     std_fig = analysis_data.get('fig_std_dev_convergence')
     if isinstance(std_fig, go.Figure) and std_fig.data:
-        st.plotly_chart(std_fig, use_container_width=True)
+        st.plotly_chart(std_fig, width='stretch')
     else: st.warning("Standard deviation convergence plot data is unavailable or empty.")
 
     st.subheader("Output Distribution Analysis")
     dist_fig = analysis_data.get('fig_output_distribution')
     if isinstance(dist_fig, go.Figure) and dist_fig.data:
-        st.plotly_chart(dist_fig, use_container_width=True)
+        st.plotly_chart(dist_fig, width='stretch')
     else: st.warning("Output distribution plot data is unavailable or empty.")
 
     st.subheader("Summary Statistics")
@@ -539,19 +539,19 @@ def display_expectation_convergence_results(analysis_data: dict):
         df_conv_summary = analysis_data.get('summary_convergence_df')
         if isinstance(df_conv_summary, pd.DataFrame) and not df_conv_summary.empty:
             st.markdown("##### Algorithm Convergence Summary")
-            st.dataframe(df_conv_summary, hide_index=True, use_container_width=True)
+            st.dataframe(df_conv_summary, hide_index=True, width='stretch')
         else: st.markdown("Algorithm convergence summary not available.")
     with col2:
         df_dist_summary = analysis_data.get('summary_distribution_df')
         if isinstance(df_dist_summary, pd.DataFrame) and not df_dist_summary.empty:
             st.markdown("##### Output Sample Statistics")
-            st.dataframe(df_dist_summary, hide_index=True, use_container_width=True)
+            st.dataframe(df_dist_summary, hide_index=True, width='stretch')
         else: st.markdown("Output sample statistics not available.")
     
     df_quantiles = analysis_data.get('summary_quantiles_df')
     if isinstance(df_quantiles, pd.DataFrame) and not df_quantiles.empty:
         st.markdown("##### Output Sample Quantiles")
-        st.dataframe(df_quantiles, hide_index=True, use_container_width=True)
+        st.dataframe(df_quantiles, hide_index=True, width='stretch')
     else: st.markdown("Output sample quantiles not available.")
 
     st.subheader("Distribution Fitting")
@@ -574,7 +574,7 @@ def display_expectation_convergence_results(analysis_data: dict):
                  try: display_fit_df_st_val[col_format_fit_val] = pd.to_numeric(display_fit_df_st_val[col_format_fit_val], errors='coerce').map('{:.4f}'.format)
                  except: pass
         
-        st.dataframe(display_fit_df_st_val.head(), hide_index=True, use_container_width=True)
+        st.dataframe(display_fit_df_st_val.head(), hide_index=True, width='stretch')
     else:
         st.info("No distribution fitting performed or no distributions provided a suitable fit.")
 

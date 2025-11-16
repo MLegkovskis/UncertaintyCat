@@ -298,10 +298,10 @@ def display_fast_results(fast_results_data: dict):
         for col_fmt_table in ['First Order (S_i)', 'Total Order (T_i)', 'Interaction (T_i - S_i)']:
             df_to_show_disp_table[col_fmt_table] = pd.to_numeric(df_to_show_disp_table[col_fmt_table], errors='coerce').map('{:.4f}'.format)
         df_to_show_disp_table['Interaction %'] = pd.to_numeric(df_to_show_disp_table['Interaction %'], errors='coerce').map('{:.2f}%'.format)
-        st.dataframe(df_to_show_disp_table, hide_index=True, use_container_width=True)
+        st.dataframe(df_to_show_disp_table, hide_index=True, width='stretch')
     else:
         st.warning("Detailed numerical results table is missing some expected columns. Displaying available data.")
-        st.dataframe(indices_df_display, hide_index=True, use_container_width=True)
+        st.dataframe(indices_df_display, hide_index=True, width='stretch')
 
 
     st.subheader("🎨 Sensitivity Visualizations")
@@ -309,14 +309,14 @@ def display_fast_results(fast_results_data: dict):
     if isinstance(fig_bar_display_val_plot, go.Figure) and fig_bar_display_val_plot.data:
         st.markdown("##### First Order vs. Total Order Indices")
         st.markdown("Compares direct effects (First Order, $S_i$) vs. total effects including all interactions (Total Order, $T_i$) for each input variable.")
-        st.plotly_chart(fig_bar_display_val_plot, use_container_width=True)
+        st.plotly_chart(fig_bar_display_val_plot, width='stretch')
     else: st.warning("Bar chart for FAST indices is not available.")
     
     fig_breakdown_display_val_plot = fast_results_data.get('fig_stacked_breakdown')
     if isinstance(fig_breakdown_display_val_plot, go.Figure) and fig_breakdown_display_val_plot.data:
         st.markdown("##### Total Order Index Breakdown")
         st.markdown("Shows how Total Order indices ($T_i$) are composed of Direct Effects (First Order, $S_i$) and Interaction Effects ($T_i$ - $S_i$). The sum of these two bars for each variable equals its $T_i$.")
-        st.plotly_chart(fig_breakdown_display_val_plot, use_container_width=True)
+        st.plotly_chart(fig_breakdown_display_val_plot, width='stretch')
     else: st.warning("Breakdown chart for FAST indices is not available.")
         
     if pd.notna(sum_first_order_display): # Check if sum is a valid number

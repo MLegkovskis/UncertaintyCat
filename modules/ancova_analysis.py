@@ -568,7 +568,7 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
         display_df_st['Uncorrelated Index'] = display_df_st['Uncorrelated Index'].map('{:.4f}'.format)
         display_df_st['Correlated Index'] = display_df_st['Correlated Index'].map('{:.4f}'.format)
         display_df_st['Correlation %'] = display_df_st['Correlation %'].map('{:.2f}%'.format)
-        st.dataframe(display_df_st, use_container_width=True, hide_index=True)
+        st.dataframe(display_df_st, width='stretch', hide_index=True)
         
         # Visualizations
         st.subheader("🎨 Sensitivity Visualizations")
@@ -579,7 +579,7 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
         decomposed into its uncorrelated part ($S_i^U$ - direct physical effect) and its 
         correlated part ($S_i^C$ - effect due to correlations with other inputs).
         """)
-        st.plotly_chart(ancova_results['fig_combined'], use_container_width=True)
+        st.plotly_chart(ancova_results['fig_combined'], width='stretch')
         
         # Pie chart and heatmap in columns
         col_viz1, col_viz2 = st.columns(2)
@@ -589,7 +589,7 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
             This pie chart illustrates the relative contribution of each input variable's total ANCOVA index ($S_i$) 
             to the sum of all total indices. Larger slices indicate a greater share of influence.
             """)
-            st.plotly_chart(ancova_results['fig_pie'], use_container_width=True)
+            st.plotly_chart(ancova_results['fig_pie'], width='stretch')
         
         with col_viz2:
             st.markdown("##### Input Variable Correlation Matrix")
@@ -600,7 +600,7 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
             - Intensity: Darker colors indicate stronger correlations.
             This context is vital for interpreting the correlated indices ($S_i^C$).
             """)
-            st.plotly_chart(ancova_results['fig_heatmap'], use_container_width=True)
+            st.plotly_chart(ancova_results['fig_heatmap'], width='stretch')
             
         # Add interpretation based on results
         has_sig_corr_effects = ancova_results.get('has_significant_correlation_effects', False)

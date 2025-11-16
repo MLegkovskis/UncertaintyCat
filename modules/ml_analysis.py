@@ -179,15 +179,15 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
         
         # Display validation plot
         st.subheader("Validation Plot")
-        st.plotly_chart(validation_plot, use_container_width=True)
+        st.plotly_chart(validation_plot, width='stretch')
         
         # Display importance plot
         st.subheader("Feature Importance")
-        st.plotly_chart(shap_bar_plot, use_container_width=True)
+        st.plotly_chart(shap_bar_plot, width='stretch')
         
         # Display dependence plots
         st.subheader("Feature Dependence")
-        st.plotly_chart(shap_summary_plot, use_container_width=True)
+        st.plotly_chart(shap_summary_plot, width='stretch')
         
         # AI Insights section
         if "ai_insights" in analysis_results and analysis_results["ai_insights"]:

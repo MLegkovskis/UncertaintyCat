@@ -144,6 +144,7 @@ While the public app requires zero installation, you can run UncertaintyCat loca
 
   - Python 3.12+
   - Git
+  - [uv](https://github.com/astral-sh/uv)
 
 ### Steps
 
@@ -154,31 +155,52 @@ While the public app requires zero installation, you can run UncertaintyCat loca
     cd UncertaintyCat
     ```
 
-2.  **Create a Virtual Environment** (Recommended)
+2.  **Install uv (one time)**
 
     ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # restart your shell so that `uv` is on PATH
     ```
 
-3.  **Install Dependencies**
+3.  **Create a virtual environment with uv**
 
     ```bash
-    pip install -r requirements.txt
+    uv venv
+    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
     ```
 
-4.  **Set Up API Key** (Optional, for AI features)
+4.  **Install dependencies with uv**
+
+    ```bash
+    uv pip sync pyproject.toml
+    ```
+
+5.  **Set Up API Key** (Optional, for AI features)
     Create a `.streamlit/secrets.toml` file and add your Groq API key:
 
     ```toml
     GROQ_API_KEY="your-api-key-here"
     ```
 
-5.  **Run the App**
+6.  **Run the App**
 
     ```bash
-    streamlit run UncertaintyCat.py
+    uv run streamlit run UncertaintyCat.py
     ```
+
+### Generating a `uv.lock`
+
+Community Cloud prefers a `uv.lock` file. After installing uv locally, create and commit the lock once:
+
+```bash
+uv pip compile pyproject.toml --output uv.lock
+```
+
+From then on you can keep your workstation in sync with the deployed image via:
+
+```bash
+uv pip sync uv.lock
+```
 
 -----
 
