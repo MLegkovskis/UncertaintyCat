@@ -1767,14 +1767,18 @@ wheels = [
 
 [[package]]
 name = "otmorris"
-version = "0.18.post1"
+version = "0.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openturns" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/ca/6204c56e40c33177c3142d866b8aebdded6a4da1d3ce58adaebb8adb875d/otmorris-0.18.post1-cp39-abi3-macosx_13_0_x86_64.whl", hash = "sha256:3b7a1683c76c40b30a4e3c2bdd70fe12c86834a8c3050f9d1fd929e21fa5481a", size = 186062, upload-time = "2025-06-12T18:32:18.419Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/1e/af593d8c086be60fc3ed3e4aa9d801e5e1bbd01de609d1e1cfdd6fc1f846/otmorris-0.18.post1-cp39-abi3-macosx_14_0_arm64.whl", hash = "sha256:c91523a735a0a58cb8e8d45978fd34a817cad65dadfbfd64907e17d507ded04a", size = 185099, upload-time = "2025-06-12T17:55:09.766Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/03/a6389438ad26b7dfea88383b375e704700aba4917f6784e90ac84e6a1f0f/otmorris-0.16-cp310-cp310-manylinux2014_x86_64.whl", hash = "sha256:dcd9120f12d24a122d466a714c062e9056a226074ca0761bd4f6386c677bb6dd", size = 303801, upload-time = "2024-05-04T08:52:28.135Z" },
+    { url = "https://files.pythonhosted.org/packages/de/58/e592bf703d9cd4fc3746d8b3d7a4bff96c697508360e0c8060a15169cfe6/otmorris-0.16-cp310-cp310-win_amd64.whl", hash = "sha256:2ab1a353a6cdbb975fb8c1783e8490866d0ba956d59ac5c02888e5cf4911df34", size = 174656, upload-time = "2024-05-04T08:57:56.351Z" },
+    { url = "https://files.pythonhosted.org/packages/17/c9/08cbb342776b4959c4842d1e5960f2448a1a73af889a0efd9d47a675c8b0/otmorris-0.16-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:44f06e23bbf0c7f708174218cdbc710d27cc0848f1f88537e326e8aad5600403", size = 303784, upload-time = "2024-05-04T08:52:49.618Z" },
+    { url = "https://files.pythonhosted.org/packages/84/eb/a49d58df6db4ac4417a4b157381ec3cfbbb2b1f27ca91e14adb24d063826/otmorris-0.16-cp311-cp311-win_amd64.whl", hash = "sha256:98a5139b6f8433965d595f52552838d2d862f7aadb38cf52055c3792b712c80d", size = 174841, upload-time = "2024-05-04T08:57:20.073Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/0a/9a50c7d909c7615127e9f475e872919f6fdc0051f35232d976f32c77ce1b/otmorris-0.16-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:7e3227f5cc9f434ab3d32ad28237698a096746025eec176f9ff1ac58faed47df", size = 303728, upload-time = "2024-05-04T08:52:39.958Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/3b/36423bd5695c9dfe5aaf48fee8208106c2ef659d976c69c629ef6ad2c546/otmorris-0.16-cp312-cp312-win_amd64.whl", hash = "sha256:d70975797b8d50ce7aeadc910bd9ac6c3cdf9a5075590781ca2f62d3502b42c3", size = 175404, upload-time = "2024-05-04T08:57:47.123Z" },
 ]
 
 [[package]]
@@ -3220,7 +3224,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "openai", specifier = "==0.28" },
     { name = "openturns" },
-    { name = "otmorris" },
+    { name = "otmorris", specifier = "==0.16" },
     { name = "pandas" },
     { name = "plotly" },
     { name = "pytest", marker = "extra == 'dev'" },
