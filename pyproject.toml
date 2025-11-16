@@ -12,7 +12,7 @@ dependencies = [
     "pandas",
     "matplotlib",
     "seaborn",
-    "openturns==1.23",
+    "openturns==1.25",
     "SALib",
     "scikit-learn",
     "llvmlite",
@@ -26,7 +26,7 @@ dependencies = [
     "tabulate",
     "IPython",
     "squarify",
-    "otmorris==0.16",
+    "otmorris==0.18",
     "chaospy",
 ]
 
