@@ -22,7 +22,7 @@ dependencies = [
     "tabulate",
     "IPython",
     "squarify",
-    "otmorris",
+    "otmorris==0.16",
     "chaospy",
 ]
 
