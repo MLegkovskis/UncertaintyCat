@@ -64,7 +64,7 @@ def render_app_shell(*, interactive: bool = True) -> Tuple[str, str]:
         unsafe_allow_html=True,
     )
 
-    st.header("UncertaintyCat | Version 5.21")
+    st.header("UncertaintyCat | Version 5.50")
     st.caption("Advanced Uncertainty Quantification and Sensitivity Analysis Platform")
     st.info(
         "📌 **Tip:** This application works best in fullscreen mode to view all analysis tabs properly."
