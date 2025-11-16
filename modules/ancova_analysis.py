@@ -557,7 +557,7 @@ def display_ancova_results(ancova_results, language_model=None, model_code_str=N
             st.metric("∑ $S_i$ (Total ANCOVA Indices)", f"{sum_ancova:.3f}")
         with col3:
             st.metric(
-                "Net Correlation Effect (${\sum S_i^C} / {\sum S_i}$)", 
+                r"Net Correlation Effect (${\sum S_i^C} / {\sum S_i}$)",
                 f"{overall_correlation_effect_ratio:.2%}",
                 help="Ratio of the sum of correlated indices to the sum of total ANCOVA indices. Indicates net impact of correlations."
             )
