@@ -522,7 +522,7 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         """)
         
         # Display the plot
-        st.plotly_chart(validation_plot, use_container_width=True)
+        st.plotly_chart(validation_plot, width='stretch')
         
         # Add warning if R² is low
         if float(validation_metrics['Value'][0]) < 0.7:
@@ -550,7 +550,7 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
             st.metric("Variables with >5% Influence", f"{sum(sensitivity_indices > 0.05)}")
         
         # Create the bar chart
-        st.plotly_chart(bar_chart, use_container_width=True)
+        st.plotly_chart(bar_chart, width='stretch')
         
         # Detailed Results
         st.subheader("Detailed Results")
@@ -566,7 +566,7 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         })
         
         # Display the dataframe
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(display_df, width='stretch')
     
     # AI Insights section (only if ai_insights is available)
     if ai_insights:

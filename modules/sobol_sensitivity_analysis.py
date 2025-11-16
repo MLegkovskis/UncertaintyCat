@@ -4,7 +4,6 @@ import openturns as ot
 from SALib.analyze import sobol
 from utils.core_utils import call_groq_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
-import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
@@ -366,123 +365,6 @@ Format your response with clear section headings and bullet points. Focus on act
         "ai_insights": ai_insights
     }
 
-def display_sobol_results(results, model_code_str, language_model='groq'):
-    """Display the Sobol sensitivity analysis results using Streamlit.
-    
-    Parameters
-    ----------
-    results : dict
-        Dictionary containing all computed results from compute_sobol_analysis
-    model_code_str : str
-        String representation of the model code for documentation
-    language_model : str, optional
-        Language model to use for analysis
-    """
-    # Extract results from the dictionary
-    indices_df = results['indices_df']
-    sum_first_order = results['sum_first_order']
-    sum_total_order = results['sum_total_order']
-    interaction_effect = results['interaction_effect']
-    fig_bar = results['fig_bar']
-    fig_interaction = results['fig_interaction']
-    fig_heatmap = results['fig_heatmap']
-    S2_matrix = results['S2_matrix']
-    variable_names = results['variable_names']
-    dimension = results['dimension']
-    dist_df = results['dist_info']
-    interactions_df = results['interactions_df']
-    ai_insights = results['ai_insights']
-    
-    st.markdown("## Sobol Sensitivity Analysis")
-    
-    # RESULTS SECTION
-    with st.container():
-        # Display sensitivity indices bar chart
-        st.subheader("Sensitivity Indices")
-        st.plotly_chart(fig_bar, use_container_width=True)
-        
-        # Display table of sensitivity indices
-        st.subheader("Sensitivity Indices Table")
-        st.markdown("""
-        This table shows the Sobol sensitivity indices for each input variable:
-        
-        - **First Order (S₁)**: Measures the direct effect of each variable (without interactions)
-        - **Total Order (S₁ᵀ)**: Measures the total effect of each variable (including interactions)
-        - **Interaction**: The difference between total and first-order indices (S₁ᵀ - S₁)
-        - **Interaction %**: The percentage of a variable's total effect that comes from interactions
-        - **Confidence Intervals**: 95% confidence bounds for the sensitivity indices
-        """)
-        
-        # Display the DataFrame
-        st.dataframe(indices_df, use_container_width=True)
-        
-        # Variance Decomposition Summary
-        st.markdown("#### Variance Decomposition Summary")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Sum of First-Order Indices", f"{sum_first_order:.4f}")
-            if sum_first_order > 1.0:
-                st.warning("""
-                The sum of first-order indices exceeds 1.0, which may indicate numerical errors in the computation.
-                Theoretically, this sum should be ≤ 1.0 for an additive model.
-                """)
-        with col2:
-            st.metric("Sum of Total-Order Indices", f"{sum_total_order:.4f}")
-            if sum_total_order < sum_first_order:
-                st.warning("""
-                The sum of total-order indices is less than the sum of first-order indices, which may indicate numerical errors.
-                Theoretically, total-order indices should be ≥ first-order indices.
-                """)
-        
-        st.markdown(f"""
-        - **Sum of First-Order Indices = {sum_first_order:.4f}**: 
-          - If close to 1.0, the model is primarily additive (variables act independently)
-          - If significantly less than 1.0, interactions between variables are important
-        
-        - **Interaction Effect = {interaction_effect:.4f}** (1 - Sum of First-Order Indices):
-          - Represents the portion of variance explained by variable interactions
-          - Higher values indicate stronger interactions between input variables
-        """)
-        
-        # Display interaction chart
-        st.subheader("Interaction Effects")
-        st.markdown("""
-        This chart shows the interaction effects for each variable (difference between total and first-order indices).
-        Larger values indicate that the variable has significant interactions with other variables.
-        """)
-        st.plotly_chart(fig_interaction, use_container_width=True)
-        
-        # Display second-order interactions if available
-        if dimension > 1 and S2_matrix is not None:
-            st.subheader("Second-Order Interactions")
-            st.markdown("""
-            This heatmap shows the estimated second-order interactions between pairs of variables.
-            Darker colors indicate stronger interactions between the corresponding variables.
-            """)
-            
-            # Display the heatmap
-            st.plotly_chart(fig_heatmap, use_container_width=True)
-            
-            # Display top interactions
-            if interactions_df is not None:
-                st.subheader("Top Interactions")
-                st.markdown("""
-                This table shows the top interactions between variables, ranked by their interaction index.
-                """)
-                st.dataframe(interactions_df, use_container_width=True)
-        
-        # Display input distributions
-        st.subheader("Input Distributions")
-        st.markdown("""
-        This table shows the probability distributions used for each input variable in the analysis.
-        """)
-        st.dataframe(dist_df, use_container_width=True)
-    
-    # AI INSIGHTS SECTION
-    if ai_insights:
-        st.subheader("AI-Generated Expert Analysis")
-        st.markdown(ai_insights)
 
 def get_sobol_context_for_chat(sobol_results):
     """
@@ -515,7 +397,7 @@ def get_sobol_context_for_chat(sobol_results):
     
     return context
 
-def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq', display_results=True):
+def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
     """Perform enterprise-grade Sobol sensitivity analysis.
     
     This module provides comprehensive global sensitivity analysis using the Sobol method,
@@ -535,9 +417,6 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
         String representation of the model code for documentation
     language_model : str, optional
         Language model to use for analysis
-    display_results : bool, optional
-        Whether to display results using Streamlit UI (default: True)
-        Set to False when running in batch mode or "Run All Analyses"
         
     Returns
     -------
@@ -548,18 +427,6 @@ def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model
         # Compute the Sobol analysis results
         results = compute_sobol_analysis(N, model, problem, model_code_str, language_model)
         
-        # If display_results is True, show the results using Streamlit UI
-        if display_results:
-            display_sobol_results(results, model_code_str, language_model)
-        
-        # Save results to session state for later access
-        if 'sobol_results' not in st.session_state:
-            st.session_state.sobol_results = results
-        
-        # Return the results dictionary
         return results
-    
-    except Exception as e:
-        if display_results:
-            st.error(f"Error in Sobol sensitivity analysis: {str(e)}")
-        raise
+    except Exception as exc:
+        raise exc

@@ -542,14 +542,14 @@ def distribution_fitting_page():
         col1, col2 = st.columns([2, 1])
         with col1:
             st.markdown("#### Data Preview")
-            st.dataframe(data_df.head(10), use_container_width=True)
+            st.dataframe(data_df.head(10), width='stretch')
         
         with col2:
             st.markdown("#### Data Statistics")
             stats_df = data_df.describe().T
             stats_df = stats_df[['count', 'mean', 'min', 'max']]
             stats_df = stats_df.round(2)
-            st.dataframe(stats_df, use_container_width=True)
+            st.dataframe(stats_df, width='stretch')
         
         # Add option to edit data
         st.markdown("#### Edit Data (Optional)")
@@ -561,7 +561,7 @@ def distribution_fitting_page():
         
         edited_data = st.data_editor(
             data_df,
-            use_container_width=True,
+            width='stretch',
             num_rows="dynamic",
             height=300
         )
@@ -773,7 +773,7 @@ def distribution_fitting_page():
                             else:
                                 return ['' for v in s]
                             
-                        st.dataframe(stat_df.style.apply(highlight_best), use_container_width=True)
+                        st.dataframe(stat_df.style.apply(highlight_best), width='stretch')
                         
                         # Plot all distributions
                         st.markdown("#### Visual Comparison")
@@ -830,7 +830,7 @@ def distribution_fitting_page():
                         )
                         
                         if fig:
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width='stretch')
                         
                         st.markdown("<hr>", unsafe_allow_html=True)
                 
@@ -855,7 +855,7 @@ def distribution_fitting_page():
                         for var, info in st.session_state.selected_distributions.items()
                     ])
                     
-                    st.dataframe(selected_df, use_container_width=True)
+                    st.dataframe(selected_df, width='stretch')
                     
                     # Create button to generate joint distribution
                     col1, col2 = st.columns([1, 3])
@@ -927,7 +927,7 @@ def distribution_fitting_page():
                                                     range_color=[-1, 1],
                                                     labels=dict(x="Variable", y="Variable", color="Correlation"))
                                     fig.update_layout(width=600, height=500)
-                                    st.plotly_chart(fig, use_container_width=True)
+                                    st.plotly_chart(fig, width='stretch')
                             else:
                                 # Use independent copula (the original approach)
                                 joint_dist = create_multivariate_distribution(selected_dists, selected_vars)
