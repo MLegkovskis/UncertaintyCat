@@ -12,7 +12,7 @@ dependencies = [
     "pandas",
     "matplotlib",
     "seaborn",
-    "openturns",
+    "openturns==1.23",
     "SALib",
     "scikit-learn",
     "llvmlite",
