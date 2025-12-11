@@ -42,6 +42,8 @@ def main() -> None:
         return
 
     st.divider()
+    input_dimension = problem.getDimension()
+
     with st.expander("1. Configure PCE Model", expanded=True):
         estimation_method = st.selectbox(
             "Estimation Method",
@@ -59,12 +61,28 @@ def main() -> None:
                 horizontal=True,
             )
             quadrature_order = 0
+            alpha_ratio = st.slider(
+                "Max coefficient/sample ratio (α)",
+                min_value=0.1,
+                max_value=1.0,
+                value=0.5,
+                step=0.05,
+                help="Controls the recommended degree so that the number of coefficients stays within α × sample size.",
+            )
+            suggested_degree = pce_surrogate.suggest_degree_from_ratio(
+                int(train_sample_size), input_dimension, alpha_ratio
+            )
+            if suggested_degree is not None:
+                st.caption(
+                    f"Suggested maximum degree (α={alpha_ratio:.2f}): {suggested_degree}"
+                )
         else:
             quadrature_order = st.number_input(
                 "Gauss Product Order (per dimension)", min_value=2, max_value=10, value=4
             )
             train_sample_size = 0
             sparsity_strategy = "Sparse (LARS)"
+            alpha_ratio = None
 
         if st.button("Build Surrogate Model"):
             with st.spinner("Building polynomial chaos surrogate..."):
@@ -87,6 +105,8 @@ def main() -> None:
                     "quadrature_order": int(quadrature_order),
                     "sparsity_strategy": sparsity_strategy,
                     "training_sample_size": training_size,
+                    "dimension": input_dimension,
+                    "alpha_ratio": alpha_ratio,
                 }
                 set_pce_chaos_result(chaos_result)
                 set_pce_build_results({"validation": validation, "config": config})

@@ -6,6 +6,8 @@ import streamlit as st
 
 from app.state import update_pce_diag_result
 from modules import pce_surrogate
+from modules.pce_surrogate import count_pce_coefficients, suggest_degree_from_ratio
+from utils.core_utils import call_groq_api
 from modules.ancova_analysis import display_ancova_results
 from modules.correlation_analysis import display_correlation_results
 from modules.expectation_convergence_analysis import display_expectation_convergence_results
@@ -211,6 +213,36 @@ def display_pce_results(
         return
 
     validation = build_results.get("validation")
+    degree = build_config.get("degree", 0)
+    dimension = build_config.get("dimension", problem.getDimension())
+    coeff_count = count_pce_coefficients(dimension, degree)
+    training_size = build_config.get("training_sample_size")
+    alpha_ratio = build_config.get("alpha_ratio")
+
+    with st.container():
+        st.subheader("Surrogate configuration")
+        cols = st.columns(3)
+        cols[0].metric("Polynomial degree", degree)
+        cols[1].metric("Input dimension", dimension)
+        cols[2].metric("Coefficients", f"{coeff_count:,}")
+        if training_size:
+            st.caption(f"Training samples: {training_size:,}")
+            if coeff_count > training_size:
+                st.warning("⚠️ Number of coefficients exceeds training sample size.")
+            if alpha_ratio:
+                suggested = suggest_degree_from_ratio(
+                    training_size, dimension, alpha_ratio
+                )
+                if suggested is not None:
+                    if degree > suggested:
+                        st.warning(
+                            f"Selected degree ({degree}) is above the suggested maximum ({suggested}) for α={alpha_ratio:.2f}."
+                        )
+                    else:
+                        st.caption(
+                            f"Suggested maximum degree (α={alpha_ratio:.2f}): {suggested}"
+                        )
+
     st.header("2. Diagnostics & Exploitation")
     tabs = st.tabs(
         [
@@ -225,13 +257,13 @@ def display_pce_results(
     with tabs[0]:
         st.subheader("Metamodel Validation")
         if validation:
-            st.metric("R² Score", f"{validation['r2_score']:.4f}")
+            st.metric("Q² score (test sample)", f"{validation['r2_score']:.4f}")
             st.plotly_chart(validation["validation_plot"], width="stretch")
         else:
             st.info("Validation metrics will appear after building the surrogate.")
 
     with tabs[1]:
-        st.subheader("R² Score vs. Polynomial Degree")
+        st.subheader("Q² Score vs. Polynomial Degree")
         st.caption(
             "Runs a K-fold cross-validation loop per degree. This computation can take a moment."
         )
@@ -292,3 +324,32 @@ def display_pce_results(
             df = pce_surrogate.get_pce_coefficients_table(chaos_result)
             update_pce_diag_result("coefficients_df", df)
         st.dataframe(diag_results.get("coefficients_df"), width="stretch")
+
+    with st.expander("ℹ️ AI Guidance on PCE Limitations", expanded=False):
+        st.caption(
+            "LLM-generated note about truncation error, bootstrap confidence intervals, and degree selection trade-offs."
+        )
+        st.markdown(
+            "Reference: [α-based degree suggestion](https://gist.github.com/mbaudin47/a5c3d40acc1eb642a1e0219b43922ffd)"
+        )
+        if st.button("Explain current surrogate's limitations"):
+            prompt = f"""
+You are an expert in polynomial chaos expansions. Summarize practical caveats for a surrogate with:
+- dimension = {dimension}
+- polynomial degree = {degree}
+- coefficients = {coeff_count}
+- training samples = {training_size or 'unknown'}
+- alpha ratio = {alpha_ratio or 'n/a'}
+Explain:
+1. Why Q² (test sample) is the right metric but still misses truncation error.
+2. Why bootstrap Sobol' confidence intervals may underestimate uncertainty when degree truncation dominates.
+3. How the alpha slider (coefficients vs. sample size) helps avoid over-determined least squares, and when to rely on cross-validation.
+Provide concrete advice referencing these numbers.
+"""
+            with st.spinner("Contacting Groq ..."):
+                try:
+                    response = call_groq_api(prompt)
+                except Exception as exc:
+                    st.error(f"Groq call failed: {exc}")
+                else:
+                    st.markdown(response)
