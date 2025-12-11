@@ -8,6 +8,7 @@ import numpy as np
 import openturns as ot
 import pandas as pd
 import plotly.graph_objects as go
+import math
 
 
 def _build_polynomial_basis(distribution: ot.Distribution) -> ot.OrthogonalProductPolynomialFactory:
@@ -107,9 +108,9 @@ def compute_pce_validation(
         )
     )
     fig.update_layout(
-        title=f"Metamodel Validation (R² = {r2_score*100:.2f}%)",
-        xaxis_title="True Output",
-        yaxis_title="PCE Prediction",
+        title=f"Metamodel Validation (Q² on test sample = {r2_score*100:.2f}%)",
+        xaxis_title="True output",
+        yaxis_title="PCE prediction",
         legend=dict(orientation="h"),
     )
 
@@ -145,7 +146,7 @@ def _compute_r2_score_by_kfold(
 ) -> float:
     sample_size = input_sample.getSize()
     splitter = ot.KFoldSplitter(sample_size, k_parameter)
-    squared_residuals = ot.Sample(sample_size, output_sample.getDimension())
+    r2_scores = ot.Sample(0, output_sample.getDimension())
 
     for indices_train, indices_test in splitter:
         x_train, x_test = input_sample[indices_train], input_sample[indices_test]
@@ -155,17 +156,11 @@ def _compute_r2_score_by_kfold(
         )
         metamodel = chaos_result.getMetaModel()
         predictions = metamodel(x_test)
-        residuals = y_test - predictions
-        fold_size = indices_test.getSize()
-        for j in range(output_sample.getDimension()):
-            for i in range(fold_size):
-                squared_residuals[indices_test[i], j] = residuals[i, j] ** 2
+        validation = ot.MetaModelValidation(y_test, predictions)
+        r2_scores.add(validation.computeR2Score())
 
-    mse = squared_residuals.computeMean()[0]
-    variance = output_sample.computeCentralMoment(2)[0]
-    if variance <= 1e-9:
-        return float("nan")
-    return float(1.0 - mse / variance)
+    r2_mean = r2_scores.computeMean()[0]
+    return float(r2_mean)
 
 
 def compute_degree_sensitivity_kfold(
@@ -199,13 +194,13 @@ def compute_degree_sensitivity_kfold(
             x=degrees,
             y=r2_scores,
             mode="lines+markers",
-            name="R² Score",
+            name="Q² score",
         )
     )
     fig.update_layout(
         title=f"{k_fold}-Fold Cross-Validation (N={sample_size})",
-        xaxis_title="Polynomial Degree",
-        yaxis_title="$R^2$",
+        xaxis_title="Polynomial degree",
+        yaxis_title="Q² score",
         yaxis=dict(range=[ymin, 1.05]),
     )
     return fig
@@ -349,8 +344,8 @@ def get_pce_conditional_expectation_plots(
                 x=sample_np[:, idx],
                 y=output_np,
                 mode="markers",
-                name="Model Samples",
-                marker=dict(size=4, opacity=0.5),
+                name="Model samples",
+                marker=dict(size=4, opacity=0.4, color="#8c8c8c"),
             )
         )
         fig.add_trace(
@@ -358,8 +353,8 @@ def get_pce_conditional_expectation_plots(
                 x=grid,
                 y=np.array(parametric_vals).flatten(),
                 mode="lines",
-                name="PCE (Mean-fixed)",
-                line=dict(dash="dash"),
+                name="PCE (mean-fixed)",
+                line=dict(dash="dash", color="#2ca02c"),
             )
         )
         fig.add_trace(
@@ -367,7 +362,8 @@ def get_pce_conditional_expectation_plots(
                 x=grid,
                 y=np.array(conditional_vals).flatten(),
                 mode="lines",
-                name="Conditional Expectation",
+                name="Conditional expectation",
+                line=dict(color="#ff7f0e"),
             )
         )
         fig.update_layout(
@@ -403,3 +399,32 @@ def get_pce_coefficients_table(
     if df.empty:
         return df
     return df.reindex(df["Coefficient"].abs().sort_values(ascending=False).index).reset_index(drop=True)
+
+
+def count_pce_coefficients(dimension: int, degree: int) -> int:
+    """Return the number of coefficients in a total-degree expansion."""
+    if degree < 0:
+        return 0
+    return math.comb(dimension + degree, degree)
+
+
+def suggest_degree_from_ratio(
+    sample_size: int,
+    dimension: int,
+    proportion: float,
+    max_degree: int = 30,
+) -> int | None:
+    """Return the largest degree whose coefficient count <= proportion * sample size."""
+    if sample_size <= 0:
+        return None
+    proportion = max(0.0, min(1.0, proportion))
+    if proportion == 0:
+        return 0
+    threshold = sample_size * proportion
+    degree = 0
+    while degree <= max_degree:
+        coeffs = count_pce_coefficients(dimension, degree)
+        if coeffs > threshold:
+            return max(degree - 1, 0)
+        degree += 1
+    return max_degree
