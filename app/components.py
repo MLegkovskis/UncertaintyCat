@@ -14,6 +14,7 @@ from app.state import (
     get_all_results,
     get_language_model,
     get_model_code,
+    get_reliability_results,
     get_sidebar_chat_messages,
     get_selected_model_name,
     init_session_state,
@@ -225,10 +226,13 @@ def render_sidebar_chat(current_code: str | None, selected_language_model: str |
 
     st.sidebar.header("Chat about Results")
     all_results_data = get_all_results()
-    if all_results_data:
+    reliability_result = get_reliability_results()
+    if all_results_data or reliability_result:
         result_names = list(all_results_data.keys())
         is_full_run = analyses_completed()
-        if is_full_run and result_names:
+        if reliability_result and not result_names:
+            info_message = "Ask questions about your reliability analysis."
+        elif is_full_run and result_names:
             info_message = "Ask questions about the full analysis suite."
         elif len(result_names) == 1:
             info_message = f"Ask questions about your '{result_names[0]}' results."
@@ -245,7 +249,9 @@ def render_sidebar_chat(current_code: str | None, selected_language_model: str |
         )
         if sidebar_prompt:
             append_sidebar_chat_message("user", sidebar_prompt)
-            context = build_global_chat_context(all_results_data, current_code)
+            context = build_global_chat_context(
+                all_results_data, current_code, reliability_result
+            )
             chat_history = ""
             history_messages = get_sidebar_chat_messages()[:-1]
             if history_messages:
