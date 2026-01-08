@@ -21,6 +21,7 @@ _STATE_FACTORIES = {
     "pce_build_results": lambda: None,
     "pce_diag_results": dict,
     "reliability_results": lambda: None,
+    "reliability_preview_context": lambda: None,
 }
 
 
@@ -157,3 +158,13 @@ def get_reliability_results() -> Any:
 def set_reliability_results(data: Any) -> None:
     init_session_state()
     st.session_state.reliability_results = data
+
+
+def get_reliability_preview_context() -> Optional[Dict[str, Any]]:
+    init_session_state()
+    return st.session_state.reliability_preview_context
+
+
+def set_reliability_preview_context(context: Optional[Dict[str, Any]]) -> None:
+    init_session_state()
+    st.session_state.reliability_preview_context = context

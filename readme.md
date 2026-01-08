@@ -123,7 +123,7 @@ Each module writes to `st.session_state.all_results`, so the sidebar chat and su
     ```
 4. **Install dependencies**
     ```bash
-    uv pip sync pyproject.toml
+    uv pip install
     ```
 5. **Optional – configure AI secrets**
     ```toml
@@ -142,7 +142,7 @@ uv pip compile pyproject.toml --output-file uv.lock
 ```
 Commit `uv.lock` and use it locally with:
 ```bash
-uv pip sync uv.lock
+uv pip install
 ```
 
 ---
@@ -164,7 +164,7 @@ We welcome issues and pull requests! Current areas of interest:
 
 How to contribute:
 1. Fork the repo and create a feature branch.
-2. Run `uv pip sync pyproject.toml` (or `uv.lock`) and `uv run streamlit run UncertaintyCat.py` to test.
+2. Run `uv pip install` (or `uv.lock`) and `uv run streamlit run UncertaintyCat.py` to test.
 3. Follow the existing style (type hints, docstrings, no Streamlit in compute modules).
 4. Submit a PR targeting `main` and describe your changes.
 
