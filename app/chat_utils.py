@@ -21,7 +21,32 @@ CHAT_PREAMBLE = (
 )
 
 
-def build_global_chat_context(results_dict: Dict[str, Any], model_code: str) -> str:
+def get_reliability_context_for_chat(result: Dict[str, Any]) -> str:
+    if not result:
+        return ""
+    method = result.get("method", "Reliability")
+    pf = result.get("probability")
+    beta = result.get("reliability_index")
+    cov = result.get("cov")
+    ci = result.get("confidence_interval")
+    lines = ["\n\n### Reliability Analysis"]
+    lines.append(f"- Method: {method}")
+    if pf is not None:
+        lines.append(f"- Probability of failure (Pf): {pf:.3e}")
+    if beta is not None:
+        lines.append(f"- Reliability index (β): {beta:.3f}")
+    if cov is not None:
+        lines.append(f"- Coefficient of variation: {cov:.3f}")
+    if ci:
+        lines.append(f"- 95% confidence interval: [{ci[0]:.3e}, {ci[1]:.3e}]")
+    return "\n".join(lines)
+
+
+def build_global_chat_context(
+    results_dict: Dict[str, Any],
+    model_code: str,
+    reliability_result: Dict[str, Any] | None = None,
+) -> str:
     """Create a combined markdown summary for the sidebar chat prompt."""
     analysis_names = list(results_dict.keys())
     summary = ", ".join(analysis_names) if analysis_names else "No analyses yet"
@@ -66,5 +91,8 @@ The model being analyzed is defined as:
             )
         if "Exploratory Data Analysis" in results_dict:
             context += get_eda_context_for_chat(results_dict["Exploratory Data Analysis"])
+
+    if reliability_result:
+        context += get_reliability_context_for_chat(reliability_result)
 
     return context

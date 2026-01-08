@@ -20,6 +20,7 @@ _STATE_FACTORIES = {
     "pce_chaos_result": lambda: None,
     "pce_build_results": lambda: None,
     "pce_diag_results": dict,
+    "reliability_results": lambda: None,
 }
 
 
@@ -146,3 +147,13 @@ def get_pce_diag_results() -> Dict[str, Any]:
 def update_pce_diag_result(key: str, data: Any) -> None:
     init_session_state()
     st.session_state.pce_diag_results[key] = data
+
+
+def get_reliability_results() -> Any:
+    init_session_state()
+    return st.session_state.reliability_results
+
+
+def set_reliability_results(data: Any) -> None:
+    init_session_state()
+    st.session_state.reliability_results = data
