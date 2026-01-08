@@ -1,9 +1,19 @@
+import hashlib
+
 import streamlit as st
+import numpy as np
 import plotly.express as px
 
 from app.components import render_app_shell, render_code_editor, render_sidebar_chat
 from app.core import get_compiled_model
-from app.state import get_reliability_results, init_session_state, set_reliability_results
+from app.state import (
+    get_model_code,
+    get_reliability_preview_context,
+    get_reliability_results,
+    init_session_state,
+    set_reliability_preview_context,
+    set_reliability_results,
+)
 from modules import reliability
 from utils.core_utils import check_code_safety, call_groq_api
 
@@ -40,7 +50,11 @@ def _render_results(results: dict) -> None:
 
     st.header("📊 Reliability Report")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Probability of Failure (Pf)", f"{prob:.3e}" if prob is not None else "—")
+    c1.metric(
+        "Probability of Failure (Pf)",
+        f"{prob:.4%}" if prob is not None else "—",
+        help=f"Scientific: {prob:.3e}" if prob is not None else None,
+    )
     c2.metric("Reliability Index (β)", f"{beta:.3f}" if beta is not None else "—")
     c3.metric("Odds", friendly_pf, delta_color="off")
     c4.metric("Method", results.get("method", "—"))
@@ -148,6 +162,8 @@ def main() -> None:
         render_sidebar_chat(current_code, selected_language_model)
         return
 
+    code_hash = hashlib.sha1(current_code.encode("utf-8")).hexdigest()
+
     with st.expander("1. Configure Reliability Problem", expanded=True):
         conf_cols = st.columns(2)
         with conf_cols[0]:
@@ -167,18 +183,89 @@ def main() -> None:
             else:
                 max_iter, target_cov = 10_000, 0.05
 
-        preview_button = st.button("Preview Output Distribution")
+        preview_button = st.button("Preview Output Distribution & Check Definition")
+        stats_summary = None
+        preview_context = get_reliability_preview_context()
+        preview_matches_inputs = (
+            preview_context is not None
+            and preview_context.get("operator") == operator
+            and preview_context.get("threshold") == threshold
+            and preview_context.get("code_hash") == code_hash
+        )
         if preview_button:
+            set_reliability_preview_context(None)
             with st.spinner("Sampling model output..."):
                 try:
+                    input_sample = problem.getSample(1000)
+                    output_sample = model(input_sample)
+                    data = np.array(output_sample).flatten()
+                    stats_summary = {
+                        "min": float(data.min()),
+                        "max": float(data.max()),
+                        "mean": float(data.mean()),
+                        "std": float(data.std()),
+                    }
                     fig = reliability.compute_output_distribution_plot(
                         model, problem, threshold, operator
                     )
                     st.plotly_chart(fig, use_container_width=True)
+                    set_reliability_preview_context(
+                        {
+                            "operator": operator,
+                            "threshold": threshold,
+                            "code_hash": code_hash,
+                        }
+                    )
+                    preview_matches_inputs = True
                 except Exception as exc:
                     st.error(f"Preview failed: {exc}")
+                    stats_summary = None
 
-        if st.button("Run Reliability Analysis", type="primary", use_container_width=True):
+        if stats_summary:
+            with st.spinner("Consulting AI on failure definition..."):
+                code_context = get_model_code() or ""
+                prompt = f"""
+You are a reliability expert. The user defined a model and a failure condition.
+
+Model code:
+```python
+{code_context}
+```
+
+Output statistics from a 1000-sample preview:
+- Range: [{stats_summary['min']:.4f}, {stats_summary['max']:.4f}]
+- Mean: {stats_summary['mean']:.4f}
+- Std: {stats_summary['std']:.4f}
+
+Failure condition: Output {operator} {threshold}
+
+In 3-4 sentences:
+1. Infer what the output likely represents (based on the code).
+2. Judge whether the threshold is physically meaningful given the range.
+3. Warn if the threshold seems impossible or ill-posed, and suggest a typical definition.
+"""
+                try:
+                    advice = call_groq_api(prompt)
+                except Exception as exc:
+                    st.error(f"AI guidance failed: {exc}")
+                else:
+                    impossible = (operator in {">", ">="} and threshold > stats_summary["max"]) or (
+                        operator in {"<", "<="} and threshold < stats_summary["min"]
+                    )
+                    box = st.warning if impossible else st.info
+                    prefix = "⚠️ Potential issue:" if impossible else "💡 AI guidance:" 
+                    box(f"{prefix} {advice}")
+
+        run_disabled = not preview_matches_inputs
+        if run_disabled:
+            st.caption("Run the preview with the current failure definition to enable analysis.")
+
+        if st.button(
+            "Run Reliability Analysis",
+            type="primary",
+            use_container_width=True,
+            disabled=run_disabled,
+        ):
             method_key = _method_key(method_label)
             with st.spinner(f"Running {method_key} analysis..."):
                 try:
