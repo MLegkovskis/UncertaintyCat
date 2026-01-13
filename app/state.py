@@ -168,3 +168,21 @@ def get_reliability_preview_context() -> Optional[Dict[str, Any]]:
 def set_reliability_preview_context(context: Optional[Dict[str, Any]]) -> None:
     init_session_state()
     st.session_state.reliability_preview_context = context
+
+
+def reset_analysis_state() -> None:
+    """Clear all derived analysis data when the model definition changes."""
+    init_session_state()
+
+    st.session_state.all_results = {}
+    st.session_state.simulation_data = None
+    st.session_state.analyses_ran = False
+
+    st.session_state.pce_chaos_result = None
+    st.session_state.pce_build_results = None
+    st.session_state.pce_diag_results = {}
+    st.session_state.reliability_results = None
+    st.session_state.reliability_preview_context = None
+
+    st.session_state.global_chat_messages = []
+    st.session_state.sidebar_global_chat_messages = []

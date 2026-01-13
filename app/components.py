@@ -18,6 +18,7 @@ from app.state import (
     get_sidebar_chat_messages,
     get_selected_model_name,
     init_session_state,
+    reset_analysis_state,
     set_language_model,
     set_model_code,
     set_selected_model_name,
@@ -90,9 +91,11 @@ def render_app_shell(*, interactive: bool = True) -> Tuple[str, str]:
     if interactive:
         if selected_option == model_options[0]:
             if previous_selection:
+                reset_analysis_state()
                 set_selected_model_name("")
         elif selected_option != previous_selection:
             model_code = load_model_code(selected_option)
+            reset_analysis_state()
             set_model_code(model_code)
             set_selected_model_name(selected_option)
             if "model_code_editor" in st.session_state:
@@ -108,6 +111,7 @@ def render_app_shell(*, interactive: bool = True) -> Tuple[str, str]:
     if interactive and uploaded_file is not None:
         file_contents = uploaded_file.read().decode("utf-8")
         if st.sidebar.button("Apply Uploaded File", key="apply_uploaded_file"):
+            reset_analysis_state()
             set_model_code(file_contents)
             set_selected_model_name("(Uploaded file)")
             if "model_code_editor" in st.session_state:
@@ -190,6 +194,8 @@ def render_code_editor(current_code: str | None = None) -> str:
                             if not model or not problem:
                                 st.error("Model code must define 'model' and 'problem' variables.")
                             else:
+                                reset_analysis_state()
+                                set_model_code(current_code)
                                 with st.spinner("Running 10 Monte Carlo samples..."):
                                     try:
                                         results = monte_carlo_simulation(model, problem, N=10, seed=42)
@@ -202,7 +208,7 @@ def render_code_editor(current_code: str | None = None) -> str:
                                             mean_str = f"{mean_value:.4f}"
                                             std_str = f"{std_value:.4f}"
                                         st.success(
-                                            f"Model validated successfully! Sample mean: {mean_str}, std: {std_str}"
+                                            f"Model validated and state reset successfully! Sample mean: {mean_str}, std: {std_str}"
                                         )
                                     except Exception as exc:
                                         st.error(f"Error running model: {exc}")
