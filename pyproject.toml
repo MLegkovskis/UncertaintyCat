@@ -26,14 +26,14 @@ legacy = [
     "llvmlite",
     "shap",
     "streamlit",
-    "openai==0.28",
+    "openai==3.1.0",
     "plotly",
     "astor",
     "tabulate",
     "IPython",
     "squarify",
     "requests>=2.32",
-    "otmorris==0.18",
+    "otmorris==0.20.post1",
     "chaospy",
 ]
 dev = [
