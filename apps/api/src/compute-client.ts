@@ -50,10 +50,18 @@ async function sandboxFetch(
   try {
     if (init?.body) await sandbox.writeFile(inputPath, String(init.body));
     const command =
-      `/app/.venv/bin/python -m services.compute.cli ${operation}` +
+      `cd /app && /app/.venv/bin/python -m services.compute.cli ${operation}` +
       (init?.body ? ` ${inputPath}` : "");
     const result = await sandbox.exec(command, { timeout: 180_000 });
     if (!result.success) {
+      console.error(
+        JSON.stringify({
+          event: "isolated_compute_failed",
+          operation,
+          exitCode: result.exitCode,
+          stderr: result.stderr.slice(0, 2_000),
+        }),
+      );
       throw new Error(
         `Isolated compute exited with status ${result.exitCode}.`,
       );
