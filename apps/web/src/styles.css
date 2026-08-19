@@ -187,6 +187,8 @@ code {
   align-items: center;
   gap: 10px;
   color: #93a6bd;
+  border: 0;
+  background: transparent;
   font-size: 12px;
 }
 .avatar {
@@ -712,7 +714,7 @@ code {
   margin-top: 28px;
 }
 .disabled-panel {
-  opacity: 0.58;
+  border-color: #2b3c53;
 }
 .composer-heading {
   display: flex;
@@ -1296,9 +1298,9 @@ tbody tr:hover td {
   position: relative;
 }
 .account-chip {
-  border: 0;
   cursor: pointer;
 }
+
 .account-popover {
   position: absolute;
   top: calc(100% + 10px);
@@ -1631,6 +1633,56 @@ tbody tr:hover td {
 .activity-run small {
   color: #6e839a;
   font: 8px var(--font-mono);
+}
+
+/* Small labels carry important scientific and operational context. Keep their
+   contrast comfortably above WCAG AA instead of treating them as decoration. */
+.sidebar-footer,
+.topbar-context span,
+.trust-row,
+.architecture-strip span,
+.catalog-card > span,
+.catalog-card p,
+.catalog-card footer,
+.stepper,
+.editor-title small,
+.model-status small,
+.variable-row label,
+.analysis-option small,
+.analysis-option em,
+.composer-footer p,
+.run-summary p,
+.task-icon,
+.task-row small,
+.report-header p,
+.provenance-banner p,
+.report-section header p,
+.metric span,
+.block-heading span,
+.table-note,
+.matrix-column,
+.matrix-row,
+.matrix-legend,
+.chart-legend,
+.account-popover small,
+.facts dt,
+.assumptions,
+.chat-heading small,
+.chat-suggestions,
+.chat-message svg,
+.ai-label,
+.report-loading,
+.route-loading,
+.empty-state,
+.project-card p,
+.project-card small,
+.activity-run small {
+  color: #96a9bd;
+}
+
+.chart-grid text,
+.axis-label {
+  fill: #96a9bd;
 }
 
 @media (max-width: 1080px) {

@@ -84,3 +84,28 @@ jobs:
             sleep 10
           done
           exit 1
+
+  verify-ui:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:production
+      - name: Upload production verification evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-ui-failure-evidence
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report-production/
+          retention-days: 14

@@ -14,6 +14,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:ts": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace @uncertaintycat/web",
+    "test:e2e:full-stack": "npm run test:e2e:full-stack --workspace @uncertaintycat/web",
+    "test:e2e:production": "npm run test:e2e:production --workspace @uncertaintycat/web",
     "test:py": "uv run pytest",
     "test": "npm run test:ts && npm run test:py",
     "lint:py": "uv run ruff check uncertaintycat_core services tests",

@@ -49,15 +49,33 @@ function DataTable({ table }: { table: TableData }) {
   );
 }
 
-function matrixColour(value: number | null, scale: number): string {
-  if (value === null) return "rgba(148, 163, 184, 0.12)";
+function matrixAppearance(
+  value: number | null,
+  scale: number,
+): { backgroundColor: string; color: string } {
+  if (value === null)
+    return { backgroundColor: "#1b2938", color: "#f0f6fc" };
   const intensity = Math.min(
     1,
     Math.abs(value) / Math.max(scale, Number.EPSILON),
   );
-  return value < 0
-    ? `rgba(244, 101, 117, ${0.15 + intensity * 0.75})`
-    : `rgba(65, 145, 245, ${0.15 + intensity * 0.75})`;
+  const start = [18, 31, 45];
+  const end = value < 0 ? [255, 151, 164] : [143, 192, 255];
+  const amount = 0.16 + intensity * 0.84;
+  const rgb = start.map((channel, index) =>
+    Math.round(channel + (end[index]! - channel) * amount),
+  );
+  const linear = rgb.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+  return {
+    backgroundColor: `rgb(${rgb.join(", ")})`,
+    color: luminance > 0.36 ? "#07101c" : "#f0f6fc",
+  };
 }
 
 function Heatmap({ name, matrix }: { name: string; matrix: MatrixData }) {
@@ -85,7 +103,7 @@ function Heatmap({ name, matrix }: { name: string; matrix: MatrixData }) {
               <span
                 className="matrix-cell"
                 key={`${rowIndex}-${columnIndex}`}
-                style={{ backgroundColor: matrixColour(value, scale) }}
+                style={matrixAppearance(value, scale)}
                 title={`${matrix.row_labels[rowIndex]} × ${matrix.column_labels[columnIndex]}: ${formatValue(value)}`}
               >
                 {formatValue(value)}

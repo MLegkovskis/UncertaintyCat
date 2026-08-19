@@ -128,6 +128,7 @@ function GuidedBuilder({
               }
             />
             <select
+              aria-label={`Variable ${index + 1} distribution`}
               value={variable.distribution}
               onChange={(event) =>
                 setVariables(
@@ -399,6 +400,9 @@ export function Workspace() {
               <small>OpenTURNS · NumPy · SciPy</small>
             </div>
             <CodeMirror
+              onCreateEditor={(view) =>
+                view.contentDOM.setAttribute("aria-label", "Python model source")
+              }
               height="520px"
               theme="dark"
               value={source}
