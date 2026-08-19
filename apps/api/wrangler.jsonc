@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "uncertaintycat-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "ai": { "binding": "AI" },
+  "vars": {
+    "COMPUTE_SERVICE_URL": "http://127.0.0.1:8080",
+    "BETTER_AUTH_URL": "http://127.0.0.1:8787",
+    "PUBLIC_WEB_ORIGIN": "http://127.0.0.1:5173",
+    "PUBLIC_EXAMPLE_SOURCE_HASHES": "62c1a7fd9ab5e02199cc02ab56bd51c30dd8740420cb704e0cd6dff2a4ce191a",
+    "DEV_AUTH_BYPASS": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "uncertaintycat-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "uncertaintycat-artifacts-local"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "RUN_QUEUE", "queue": "uncertaintycat-runs-local" }],
+    "consumers": [
+      {
+        "queue": "uncertaintycat-runs-local",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "uncertaintycat-runs-dlq-local"
+      }
+    ]
+  }
+}

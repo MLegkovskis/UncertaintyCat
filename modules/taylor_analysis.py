@@ -8,13 +8,13 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import traceback
-from utils.core_utils import call_groq_api, create_chat_interface
+from utils.core_utils import call_workers_ai_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model
 
 def compute_taylor_indices(model, problem, h=1e-6):
     """Compute Taylor-based sensitivity indices."""
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Only OpenTURNS distributions are supported")
 
     # Get input names and dimension
@@ -231,7 +231,7 @@ def create_taylor_dataframe(results):
     df['Sensitivity_Index (%)'] = df['Sensitivity_Index'] * 100
     return df
 
-def compute_taylor_analysis(model, problem, model_code_str=None, language_model='groq'):
+def compute_taylor_analysis(model, problem, model_code_str=None, language_model='workers_ai'):
     """
     Compute Taylor analysis without UI components.
     
@@ -422,7 +422,7 @@ Focus on actionable insights that would be valuable for decision-makers.
 """
         
         try:
-            ai_insights = call_groq_api(prompt, model_name=language_model)
+            ai_insights = call_workers_ai_api(prompt, model_name=language_model)
         except Exception as e:
             ai_insights = f"Error generating AI insights: {str(e)}"
     
@@ -457,7 +457,7 @@ Focus on actionable insights that would be valuable for decision-makers.
         "ai_insights": ai_insights
     }
 
-def display_taylor_results(analysis_results, model_code_str=None, language_model='groq'):
+def display_taylor_results(analysis_results, model_code_str=None, language_model='workers_ai'):
     """
     Display Taylor analysis results in the Streamlit interface.
     
@@ -573,7 +573,7 @@ def display_taylor_results(analysis_results, model_code_str=None, language_model
         st.markdown("### AI-Generated Expert Analysis")
         st.markdown(ai_insights)
 
-def taylor_analysis(model, problem, model_code_str=None, language_model='groq', display_results=True):
+def taylor_analysis(model, problem, model_code_str=None, language_model='workers_ai', display_results=True):
     """
     Perform enterprise-grade Taylor analysis on the model.
     

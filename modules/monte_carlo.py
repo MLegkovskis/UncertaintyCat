@@ -8,7 +8,7 @@ from utils.model_utils import sample_inputs
 def monte_carlo_simulation(model, problem, N=1000, seed=42):
     """Run Monte Carlo simulation."""
     # Ensure problem is an OpenTURNS distribution
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Problem must be an OpenTURNS distribution")
 
     # Get input names from marginals

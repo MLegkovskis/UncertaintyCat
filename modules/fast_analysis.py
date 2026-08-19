@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-from utils.core_utils import call_groq_api # create_chat_interface not used here
+from utils.core_utils import call_workers_ai_api # create_chat_interface not used here
 from utils.constants import RETURN_INSTRUCTION # Assuming this is correctly defined
 import streamlit as st
 import plotly.graph_objects as go
@@ -21,7 +21,7 @@ def fast_sensitivity_analysis(model: ot.Function,
     # Verify input types
     if not isinstance(model, ot.Function):
         raise TypeError("Model must be an OpenTURNS Function")
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise TypeError("Problem must be an OpenTURNS Distribution")
             
     # Get dimension from the model's input dimension
@@ -163,14 +163,14 @@ Format your response in markdown with appropriate headers and bullet points. Kee
 """
         
         model_name_for_api = language_model
-        if not language_model or language_model.lower() == 'groq':
+        if not language_model or language_model.lower() == 'workers_ai':
             model_name_for_api = "llama3-70b-8192" # Your preferred default
         try:
-            llm_insights = call_groq_api(insights_prompt, model_name=model_name_for_api)
+            llm_insights = call_workers_ai_api(insights_prompt, model_name=model_name_for_api)
         except Exception as e:
             llm_insights = f"Error generating AI insights: {str(e)}"
         try:
-            explanation = call_groq_api(explanation_prompt, model_name=model_name_for_api)
+            explanation = call_workers_ai_api(explanation_prompt, model_name=model_name_for_api)
         except Exception as e:
             # If AI explanation fails, append the error to the default static explanation
             explanation = f"{default_explanation}\n\nError generating detailed AI explanation: {str(e)}"

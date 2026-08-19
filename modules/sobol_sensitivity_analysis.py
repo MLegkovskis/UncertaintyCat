@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 import openturns as ot
 from SALib.analyze import sobol
-from utils.core_utils import call_groq_api, create_chat_interface
+from utils.core_utils import call_workers_ai_api, create_chat_interface
 from utils.constants import RETURN_INSTRUCTION
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
 
-def compute_sobol_analysis(N, model, problem, model_code_str=None, language_model='groq'):
+def compute_sobol_analysis(N, model, problem, model_code_str=None, language_model='workers_ai'):
     """Compute Sobol sensitivity analysis results without displaying UI elements.
     
     This function performs all Sobol sensitivity analysis calculations and returns
@@ -45,7 +45,7 @@ def compute_sobol_analysis(N, model, problem, model_code_str=None, language_mode
     # Verify input types
     if not isinstance(model, ot.Function):
         raise TypeError("Model must be an OpenTURNS Function")
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise TypeError("Problem must be an OpenTURNS Distribution")
         
     # Get dimension from the model's input dimension
@@ -320,12 +320,12 @@ Please provide a comprehensive enterprise-grade analysis that includes:
 Format your response with clear section headings and bullet points. Focus on actionable insights and quantitative recommendations that would be valuable for executive decision-makers in an engineering context.
 """
         
-        # Always use the default model if language_model is None or 'groq'
+        # Always use the default model if language_model is None or 'workers_ai'
         model_name = language_model
-        if not language_model or language_model == 'groq':
+        if not language_model or language_model == 'workers_ai':
             model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
         try:
-            ai_insights = call_groq_api(prompt, model_name=model_name)
+            ai_insights = call_workers_ai_api(prompt, model_name=model_name)
         except Exception as e:
             ai_insights = f"Error generating AI insights: {str(e)}"
     
@@ -397,7 +397,7 @@ def get_sobol_context_for_chat(sobol_results):
     
     return context
 
-def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='groq'):
+def sobol_sensitivity_analysis(N, model, problem, model_code_str, language_model='workers_ai'):
     """Perform enterprise-grade Sobol sensitivity analysis.
     
     This module provides comprehensive global sensitivity analysis using the Sobol method,

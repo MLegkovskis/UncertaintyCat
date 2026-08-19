@@ -24,7 +24,7 @@ from app.state import (
     set_selected_model_name,
 )
 from modules.monte_carlo import monte_carlo_simulation
-from utils.core_utils import call_groq_api, check_code_safety, get_model_options
+from utils.core_utils import call_workers_ai_api, check_code_safety, get_model_options
 from utils.css_styles import load_css
 from utils.model_loader import load_model_code
 
@@ -118,7 +118,7 @@ def render_app_shell(*, interactive: bool = True) -> Tuple[str, str]:
                 st.session_state.model_code_editor = file_contents
             current_code = file_contents
 
-    groq_model_options = [
+    workers_ai_model_options = [
         "meta-llama/llama-4-scout-17b-16e-instruct",
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
@@ -129,13 +129,13 @@ def render_app_shell(*, interactive: bool = True) -> Tuple[str, str]:
     ]
     stored_language_model = get_language_model()
     default_index = (
-        groq_model_options.index(stored_language_model)
-        if stored_language_model in groq_model_options
+        workers_ai_model_options.index(stored_language_model)
+        if stored_language_model in workers_ai_model_options
         else 0
     )
     selected_language_model = st.sidebar.selectbox(
         "Select Language Model:",
-        options=groq_model_options,
+        options=workers_ai_model_options,
         index=default_index,
         key="language_model_select",
         disabled=not interactive,
@@ -271,7 +271,7 @@ def render_sidebar_chat(current_code: str | None, selected_language_model: str |
             )
             with st.spinner("Thinking..."):
                 try:
-                    response_text = call_groq_api(
+                    response_text = call_workers_ai_api(
                         chat_prompt, model_name=selected_language_model
                     )
                 except Exception as exc:

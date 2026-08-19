@@ -1,3 +1,41 @@
 # Ignore Python cache directories and compiled files
 __pycache__/
 *.pyc
+
+# Python packaging and tooling
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Virtual environments and local configuration
+.venv/
+.env
+.env.*
+!.env.example
+.dev.vars
+!.dev.vars.example
+
+# JavaScript workspaces
+node_modules/
+apps/*/dist/
+apps/*/dist-*/
+apps/api/apps/
+apps/*/.wrangler/
+apps/api/wrangler.generated.jsonc
+apps/api/.production.secrets
+.wrangler/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Local data and generated artifacts
+.data/
+artifacts/
+*.sqlite
+*.sqlite3

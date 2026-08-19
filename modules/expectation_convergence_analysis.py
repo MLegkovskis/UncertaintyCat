@@ -3,7 +3,7 @@ import pandas as pd
 import openturns as ot
 import streamlit as st
 from utils.constants import RETURN_INSTRUCTION # Assuming this is correctly defined
-from utils.core_utils import call_groq_api # Assuming this is correctly defined
+from utils.core_utils import call_workers_ai_api # Assuming this is correctly defined
 from utils.model_utils import get_ot_model # Assuming this is correctly defined
 from scipy import stats
 import plotly.graph_objects as go
@@ -35,7 +35,7 @@ def compute_expectation_convergence_analysis(model: callable, problem: ot.Distri
     Perform expectation convergence analysis calculations for a univariate model output.
     Includes Q-Q plot summary statistics.
     """
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Input 'problem' must be an OpenTURNS Distribution object.")
     
     ot_model = get_ot_model(model) 
@@ -308,7 +308,7 @@ def compute_expectation_convergence_analysis(model: callable, problem: ot.Distri
 
 # --- AI Insight Generation Function (Signature changed, retrieves model_code_str from analysis_data) ---
 def generate_ai_insights(analysis_data: dict, # model_code_str is NOT in signature here
-                         language_model: str = 'groq') -> str: 
+                         language_model: str = 'workers_ai') -> str:
     """
     Generate AI-powered insights for expectation convergence analysis.
     model_code_str is now expected to be within analysis_data.
@@ -424,10 +424,10 @@ Please provide insights on the following, using precise scientific language:
 Structure your response clearly. Refer to the provided numerical values. The algorithm was run with `CoefficientOfVariationCriterionType = 'NONE'`, meaning it likely completed all `MaximumOuterSampling` iterations.
 """
         model_name_for_api = language_model
-        if not language_model or language_model.lower() == 'groq':
+        if not language_model or language_model.lower() == 'workers_ai':
             model_name_for_api = "llama3-70b-8192" 
 
-        insights = call_groq_api(prompt, model_name=model_name_for_api)
+        insights = call_workers_ai_api(prompt, model_name=model_name_for_api)
         return insights
         
     except Exception as e:
@@ -435,8 +435,8 @@ Structure your response clearly. Refer to the provided numerical values. The alg
         return "Error: AI insights could not be generated due to an internal error."
 
 # --- Main Entry Point (if your app calls this directly) ---
-def expectation_convergence_analysis(model: callable, problem: ot.Distribution, model_code_str: str = None, 
-                                     N_samples: int = 10000, language_model: str = 'groq', 
+def expectation_convergence_analysis(model: callable, problem: ot.Distribution, model_code_str: str = None,
+                                     N_samples: int = 10000, language_model: str = 'workers_ai',
                                      display_results: bool = True) -> dict:
     """
     Perform and display expectation convergence analysis for a univariate model.

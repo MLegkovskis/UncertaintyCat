@@ -1,0 +1,9 @@
+.git
+.venv
+node_modules
+apps
+tests
+artifacts
+__pycache__
+*.pyc
+*.egg-info

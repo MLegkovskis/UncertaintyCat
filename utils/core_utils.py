@@ -5,17 +5,18 @@ Core utilities for the UncertaintyCat application.
 This module contains API utilities and model options.
 """
 
-import os
-import streamlit as st
 import json
-import requests
-import traceback
+import os
 import re
-from groq import Groq
+import traceback
+
+import requests
+import streamlit as st
 
 # ================ Output Suppression Utility ================
 import sys
 import contextlib
+
 
 @contextlib.contextmanager
 def suppress_output():
@@ -37,50 +38,67 @@ def suppress_output():
             sys.stdout = old_stdout
             sys.stderr = old_stderr
 
+
 # ================ API Utilities ================
 
-def call_groq_api(prompt, model_name="meta-llama/llama-4-scout-17b-16e-instruct"):
+
+def call_workers_ai_api(prompt, model_name="@cf/zai-org/glm-4.7-flash"):
     """
-    Call the Groq API with a provided prompt.
-    
+    Call Cloudflare Workers AI with a provided prompt.
+
     Parameters
     ----------
     prompt : str
         The prompt to send to the API
     model_name : str, optional
-        The model to use, by default "meta-llama/llama-4-scout-17b-16e-instruct"
-        
+        Cloudflare model identifier. Non-Cloudflare legacy identifiers use the configured default.
+
     Returns
     -------
     str
         The response text from the API
     """
-    client = Groq(
-        api_key=os.getenv('GROQ_API_KEY'),
+    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+    api_token = os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("WORKERS_AI_API_TOKEN")
+    if not account_id or not api_token:
+        raise RuntimeError(
+            "Cloudflare Workers AI requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN."
+        )
+    model = (
+        model_name
+        if model_name and model_name.startswith("@cf/")
+        else os.getenv("WORKERS_AI_MODEL", "@cf/zai-org/glm-4.7-flash")
     )
-
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        model=model_name
+    response = requests.post(
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}",
+        headers={"Authorization": f"Bearer {api_token}"},
+        json={"messages": [{"role": "user", "content": prompt}]},
+        timeout=90,
     )
-    response_text = chat_completion.choices[0].message.content
-    response_text = re.sub(r'<think>.*?</think>\s*', '', response_text, flags=re.DOTALL)
+    response.raise_for_status()
+    payload = response.json()
+    if not payload.get("success"):
+        raise RuntimeError("Cloudflare Workers AI returned an unsuccessful response.")
+    response_text = payload.get("result", {}).get("response")
+    if not isinstance(response_text, str):
+        raise RuntimeError("Cloudflare Workers AI response did not contain generated text.")
+    return re.sub(r"<think>.*?</think>\s*", "", response_text, flags=re.DOTALL)
 
-    return response_text
 
 # ================ Chat Interface Utilities ================
 
-def create_chat_interface(session_key, context_generator, input_placeholder="Ask a question...", 
-                         disclaimer_text=None, language_model="meta-llama/llama-4-scout-17b-16e-instruct",
-                         side_by_side=False):
+
+def create_chat_interface(
+    session_key,
+    context_generator,
+    input_placeholder="Ask a question...",
+    disclaimer_text=None,
+    language_model="@cf/zai-org/glm-4.7-flash",
+    side_by_side=False,
+):
     """
     Creates a standardized chat interface for UncertaintyCat modules.
-    
+
     Parameters
     ----------
     session_key : str
@@ -96,7 +114,7 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
     side_by_side : bool, optional
         If True, the function will not create any UI elements and will return the necessary
         components for the caller to arrange in a side-by-side layout
-        
+
     Returns
     -------
     dict or None
@@ -106,7 +124,7 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
     # Initialize session state for chat messages if not already done
     if f"{session_key}_chat_messages" not in st.session_state:
         st.session_state[f"{session_key}_chat_messages"] = []
-    
+
     if side_by_side:
         # Return components for side-by-side layout
         components = {
@@ -116,26 +134,26 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
             "messages": st.session_state[f"{session_key}_chat_messages"],
             "placeholder": input_placeholder,
             "context_generator": context_generator,
-            "language_model": language_model
+            "language_model": language_model,
         }
         return components
     else:
         # Traditional vertical layout
         # Add chat interface header
         st.write("### Ask Questions About This Analysis")
-        
+
         # Display disclaimer if provided
         if disclaimer_text:
             st.info(disclaimer_text)
-        
+
         # Create containers for chat interface
         chat_container = st.container()
         input_container = st.container()
-        
+
         # Get user input (placing this at the bottom of the page)
         with input_container:
             prompt = st.chat_input(input_placeholder)
-        
+
         # Display chat messages in the scrollable container
         with chat_container:
             message_area = st.container()
@@ -144,15 +162,17 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
                 for message in st.session_state[f"{session_key}_chat_messages"]:
                     with st.chat_message(message["role"]):
                         st.write(message["content"])
-        
+
         # Process user input
         if prompt:
             # Add user message to chat history
-            st.session_state[f"{session_key}_chat_messages"].append({"role": "user", "content": prompt})
-            
+            st.session_state[f"{session_key}_chat_messages"].append(
+                {"role": "user", "content": prompt}
+            )
+
             # Generate context for the assistant
             context = context_generator(prompt)
-            
+
             # Include previous conversation history
             chat_history = ""
             if len(st.session_state[f"{session_key}_chat_messages"]) > 1:
@@ -160,7 +180,7 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
                 for i, msg in enumerate(st.session_state[f"{session_key}_chat_messages"][:-1]):
                     role = "User" if msg["role"] == "user" else "Assistant"
                     chat_history += f"{role}: {msg['content']}\n\n"
-            
+
             # Create the final prompt
             chat_prompt = f"""
             {context}
@@ -171,32 +191,35 @@ def create_chat_interface(session_key, context_generator, input_placeholder="Ask
             
             Please provide a helpful, accurate response to this question.
             """
-            
+
             # Call API with chat history
             with st.spinner("Thinking..."):
                 try:
-                    response_text = call_groq_api(chat_prompt, model_name=language_model)
+                    response_text = call_workers_ai_api(chat_prompt, model_name=language_model)
                 except Exception as e:
                     st.error(f"Error calling API: {str(e)}")
                     response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
-            
+
             # Add assistant response to chat history
-            st.session_state[f"{session_key}_chat_messages"].append({"role": "assistant", "content": response_text})
-            
+            st.session_state[f"{session_key}_chat_messages"].append(
+                {"role": "assistant", "content": response_text}
+            )
+
             # Rerun to display the new message immediately
             st.rerun()
-        
+
         return None
+
 
 def process_chat_input(components):
     """
     Process chat input for side-by-side layout.
-    
+
     Parameters
     ----------
     components : dict
         Dictionary containing chat components
-        
+
     Returns
     -------
     bool
@@ -204,14 +227,14 @@ def process_chat_input(components):
     """
     session_key = components["session_key"]
     prompt = components.get("current_prompt")
-    
+
     if prompt:
         # Add user message to chat history
         st.session_state[f"{session_key}_chat_messages"].append({"role": "user", "content": prompt})
-        
+
         # Generate context for the assistant
         context = components["context_generator"](prompt)
-        
+
         # Include previous conversation history
         chat_history = ""
         if len(st.session_state[f"{session_key}_chat_messages"]) > 1:
@@ -219,7 +242,7 @@ def process_chat_input(components):
             for i, msg in enumerate(st.session_state[f"{session_key}_chat_messages"][:-1]):
                 role = "User" if msg["role"] == "user" else "Assistant"
                 chat_history += f"{role}: {msg['content']}\n\n"
-        
+
         # Create the final prompt
         chat_prompt = f"""
         {context}
@@ -230,87 +253,112 @@ def process_chat_input(components):
         
         Please provide a helpful, accurate response to this question.
         """
-        
+
         # Call API with chat history
         with st.spinner("Thinking..."):
             try:
-                response_text = call_groq_api(chat_prompt, model_name=components["language_model"])
+                response_text = call_workers_ai_api(
+                    chat_prompt, model_name=components["language_model"]
+                )
             except Exception as e:
                 st.error(f"Error calling API: {str(e)}")
                 response_text = "I'm sorry, I encountered an error while processing your question. Please try again."
-        
+
         # Add assistant response to chat history
-        st.session_state[f"{session_key}_chat_messages"].append({"role": "assistant", "content": response_text})
-        
+        st.session_state[f"{session_key}_chat_messages"].append(
+            {"role": "assistant", "content": response_text}
+        )
+
         return True
-    
+
     return False
 
+
 # ================ Security Utilities ================
+
 
 def check_code_safety(code_str):
     """
     Checks if the provided code contains potentially unsafe imports or statements.
-    
+
     Args:
         code_str (str): The code string to check
-        
+
     Returns:
         tuple: (is_safe, message) where is_safe is a boolean and message describes any issues
     """
     # List of potentially dangerous modules that should be blocked
     dangerous_modules = [
-        'os', 'sys', 'subprocess', 'shutil', 'socket', 'requests', 
-        'urllib', 'ftplib', 'telnetlib', 'smtplib', 'pickle', 
-        'multiprocessing', 'tempfile', 'pathlib', 'glob'
+        "os",
+        "sys",
+        "subprocess",
+        "shutil",
+        "socket",
+        "requests",
+        "urllib",
+        "ftplib",
+        "telnetlib",
+        "smtplib",
+        "pickle",
+        "multiprocessing",
+        "tempfile",
+        "pathlib",
+        "glob",
     ]
-    
+
     # Check for import statements of dangerous modules
     for module in dangerous_modules:
         # Check different import patterns
         patterns = [
-            rf'import\s+{module}\b',                    # import os
-            rf'from\s+{module}\s+import',               # from os import path
-            rf'import\s+.*,\s*{module}\b',              # import sys, os
-            rf'import\s+{module}\s+as',                 # import os as operating_system
+            rf"import\s+{module}\b",  # import os
+            rf"from\s+{module}\s+import",  # from os import path
+            rf"import\s+.*,\s*{module}\b",  # import sys, os
+            rf"import\s+{module}\s+as",  # import os as operating_system
         ]
-        
+
         for pattern in patterns:
             if re.search(pattern, code_str, re.IGNORECASE):
-                return False, f"Potentially unsafe import detected: '{module}'. This module is restricted for security reasons."
-    
+                return (
+                    False,
+                    f"Potentially unsafe import detected: '{module}'. This module is restricted for security reasons.",
+                )
+
     # Check for exec or eval functions
-    if re.search(r'exec\s*\(', code_str) or re.search(r'eval\s*\(', code_str):
+    if re.search(r"exec\s*\(", code_str) or re.search(r"eval\s*\(", code_str):
         return False, "The use of exec() or eval() is not allowed for security reasons."
-    
+
     # Check for __import__ function
-    if re.search(r'__import__\s*\(', code_str):
+    if re.search(r"__import__\s*\(", code_str):
         return False, "The use of __import__() is not allowed for security reasons."
-    
+
     # Check for open() function which could be used to access files
-    if re.search(r'open\s*\(', code_str):
+    if re.search(r"open\s*\(", code_str):
         return False, "The use of open() is not allowed for security reasons."
-    
+
     return True, "Code passed security checks."
 
+
 # ================ Model Options ================
+
 
 def get_model_options():
     """
     Dynamically get a list of available model files from the examples directory.
-    
+
     Returns
     -------
     list
         List of Python files in the examples directory
     """
-    examples_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    examples_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples"
+    )
     model_files = []
-    
+
     if os.path.exists(examples_dir) and os.path.isdir(examples_dir):
         for file in os.listdir(examples_dir):
-            if file.endswith('.py'):
+            if file.endswith(".py"):
                 model_files.append(file)
-    
+
     # Sort alphabetically for consistent display
     return sorted(model_files)

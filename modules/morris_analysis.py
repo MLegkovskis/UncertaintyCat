@@ -442,7 +442,7 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                         insights_placeholder = st.empty()
                         
                         with st.spinner("Generating insights..."):
-                            from utils.core_utils import call_groq_api
+                            from utils.core_utils import call_workers_ai_api
                             
                             # Prepare the prompt
                             prompt = f"""
@@ -461,7 +461,7 @@ def morris_analysis(model, problem, code_snippet, language_model=None):
                             """
                             
                             # Call the LLM
-                            response = call_groq_api(prompt, model_name=language_model)
+                            response = call_workers_ai_api(prompt, model_name=language_model)
                             
                             # Display the response in the placeholder
                             insights_placeholder.write(response)
@@ -650,7 +650,7 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                             insights_placeholder = st.empty()
                             
                             with st.spinner("Generating insights..."):
-                                from utils.core_utils import call_groq_api
+                                from utils.core_utils import call_workers_ai_api
                                 
                                 # Prepare the prompt
                                 prompt = f"""
@@ -669,7 +669,7 @@ def dimensionality_reduction_page(current_code, model, problem, selected_languag
                                 """
                                 
                                 # Call the LLM
-                                response = call_groq_api(prompt, model_name=selected_language_model)
+                                response = call_workers_ai_api(prompt, model_name=selected_language_model)
                                 
                                 # Display the response in the placeholder
                                 insights_placeholder.write(response)

@@ -15,7 +15,7 @@ from app.state import (
     set_reliability_results,
 )
 from modules import reliability
-from utils.core_utils import check_code_safety, call_groq_api
+from utils.core_utils import check_code_safety, call_workers_ai_api
 
 _METHOD_OPTIONS = [
     "FORM (First Order)",
@@ -127,11 +127,11 @@ You are a senior reliability engineer. Analyze the following results:
 Explain whether this safety level is acceptable (β≈3 is a common target),
 highlight concerns when CoV/CI are large, and suggest next steps.
 """
-            with st.spinner("Consulting Groq..."):
+            with st.spinner("Consulting Workers AI..."):
                 try:
-                    response = call_groq_api(prompt)
+                    response = call_workers_ai_api(prompt)
                 except Exception as exc:
-                    st.error(f"Groq API error: {exc}")
+                    st.error(f"Workers AI API error: {exc}")
                 else:
                     st.markdown(response)
 
@@ -245,7 +245,7 @@ In 3-4 sentences:
 3. Warn if the threshold seems impossible or ill-posed, and suggest a typical definition.
 """
                 try:
-                    advice = call_groq_api(prompt)
+                    advice = call_workers_ai_api(prompt)
                 except Exception as exc:
                     st.error(f"AI guidance failed: {exc}")
                 else:

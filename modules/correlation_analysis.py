@@ -5,7 +5,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 # from plotly.subplots import make_subplots # Not used, can be removed if not planned
-from utils.core_utils import call_groq_api # Assuming this is correctly defined elsewhere
+from utils.core_utils import call_workers_ai_api # Assuming this is correctly defined elsewhere
 from utils.constants import RETURN_INSTRUCTION # Assuming this is correctly defined elsewhere
 
 def compute_correlation_analysis_univariate(model, problem, size=1000):
@@ -29,7 +29,7 @@ def compute_correlation_analysis_univariate(model, problem, size=1000):
     dict
         Contains the correlation DataFrame, input/output names, raw samples, and size.
     """
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Problem must be an OpenTURNS distribution object.")
     
     dimension = problem.getDimension()
@@ -295,7 +295,7 @@ def display_correlation_results(analysis_results_dict):
         st.subheader("🤖 AI-Powered Insights & Interpretation")
         st.markdown(analysis_results_dict['llm_insights'])
 
-def correlation_analysis(model, problem, model_code_str=None, size=1000, language_model="groq", display_results=True):
+def correlation_analysis(model, problem, model_code_str=None, size=1000, language_model="workers_ai", display_results=True):
     """
     Main function to perform and display correlation analysis for a univariate model.
     """
@@ -377,13 +377,13 @@ Please provide a detailed scientific analysis covering the following points:
 Please structure your response clearly. Use markdown for formatting, including headers and bullet points. Refer to specific input variables and their coefficient values where appropriate.
 """
             model_name_for_api = language_model
-            if not language_model or language_model.lower() == 'groq':
-                model_name_for_api = "llama3-70b-8192" # Example capable model for Groq
+            if not language_model or language_model.lower() == 'workers_ai':
+                model_name_for_api = "llama3-70b-8192" # Example capable model for Workers AI
 
             max_retries = 3; retry_count = 0; ai_insights_text = None
             while retry_count < max_retries:
                 try:
-                    ai_insights_text = call_groq_api(prompt, model_name=model_name_for_api)
+                    ai_insights_text = call_workers_ai_api(prompt, model_name=model_name_for_api)
                     break
                 except Exception as e:
                     retry_count += 1

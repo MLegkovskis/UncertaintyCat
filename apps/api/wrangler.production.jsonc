@@ -1,0 +1,71 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "uncertaintycat",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    { "pattern": "uncertaintycat.com", "custom_domain": true },
+    { "pattern": "www.uncertaintycat.com", "custom_domain": true },
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "upload_source_maps": true,
+  "vars": {
+    "BETTER_AUTH_URL": "https://uncertaintycat.com",
+    "PUBLIC_WEB_ORIGIN": "https://uncertaintycat.com",
+    "CLOUDFLARE_ACCESS_ISSUER": "https://uncertaintycat.cloudflareaccess.com/cdn-cgi/access/sso/oidc/77b32fa216cbcfad9abe98328816b6a759aa15950a43f4b071e186ffdd1e595d",
+    "PUBLIC_EXAMPLE_SOURCE_HASHES": "62c1a7fd9ab5e02199cc02ab56bd51c30dd8740420cb704e0cd6dff2a4ce191a",
+  },
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/*", "!/assets/*"],
+  },
+  "ai": { "binding": "AI" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "uncertaintycat-production",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "uncertaintycat-artifacts-production",
+    },
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "RUN_QUEUE", "queue": "uncertaintycat-runs-production" },
+    ],
+    "consumers": [
+      {
+        "queue": "uncertaintycat-runs-production",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "uncertaintycat-runs-dlq-production",
+      },
+    ],
+  },
+  "containers": [
+    {
+      "class_name": "IsolatedComputeSandbox",
+      "image": "../../services/compute/Dockerfile.sandbox",
+      "image_build_context": "../..",
+      "instance_type": "standard-1",
+      "max_instances": 10,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "class_name": "IsolatedComputeSandbox", "name": "SANDBOX" }],
+  },
+  "migrations": [
+    { "new_sqlite_classes": ["IsolatedComputeSandbox"], "tag": "v1" },
+  ],
+}

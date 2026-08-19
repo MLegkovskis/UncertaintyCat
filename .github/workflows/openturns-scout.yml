@@ -1,0 +1,29 @@
+name: OpenTURNS release scout
+
+on:
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - id: scout
+        run: python .github/scripts/openturns_scout.py
+      - if: steps.scout.outputs.update_available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.scout.outputs.latest_version }}
+        run: |
+          if ! gh issue list --state open --search "OpenTURNS ${VERSION} in:title" --json title --jq 'length > 0' | grep -q true; then
+            gh issue create --title "Evaluate OpenTURNS ${VERSION}" --body-file openturns-update.md
+          fi

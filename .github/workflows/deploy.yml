@@ -1,0 +1,86 @@
+name: Deploy production
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uncertaintycat-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://uncertaintycat.com
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @uncertaintycat/web
+      - name: Prepare production bindings
+        run: node .github/scripts/prepare-cloudflare-config.mjs
+        env:
+          CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+      - name: Validate required deployment secrets
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$BETTER_AUTH_SECRET"
+          test -n "$CLOUDFLARE_ACCESS_CLIENT_ID"
+          test -n "$CLOUDFLARE_ACCESS_CLIENT_SECRET"
+      - name: Apply forward-only D1 migrations
+        run: npm exec --workspace @uncertaintycat/api -- wrangler d1 migrations apply uncertaintycat-production --remote --config wrangler.generated.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Create ephemeral Worker secrets file
+        shell: bash
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+        run: |
+          umask 077
+          {
+            printf 'BETTER_AUTH_SECRET=%s\n' "$BETTER_AUTH_SECRET"
+            printf 'CLOUDFLARE_ACCESS_CLIENT_ID=%s\n' "$CLOUDFLARE_ACCESS_CLIENT_ID"
+            printf 'CLOUDFLARE_ACCESS_CLIENT_SECRET=%s\n' "$CLOUDFLARE_ACCESS_CLIENT_SECRET"
+          } > apps/api/.production.secrets
+      - name: Deploy Worker, assets, queue consumer, and compute sandbox
+        run: npm exec --workspace @uncertaintycat/api -- wrangler deploy --config wrangler.generated.jsonc --secrets-file .production.secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Remove ephemeral secret material
+        if: always()
+        run: rm -f apps/api/.production.secrets
+      - name: Production smoke test
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error https://uncertaintycat.com/health | grep -q '"status":"ok"'; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1

@@ -1,0 +1,33 @@
+{
+  "name": "@uncertaintycat/api",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "build:production": "wrangler deploy --dry-run --containers-rollout=none --config wrangler.production.jsonc --outdir dist-production",
+    "deploy:production": "wrangler deploy --config wrangler.generated.jsonc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "^0.12.7",
+    "@hono/zod-validator": "^0.7.0",
+    "@uncertaintycat/contracts": "0.2.0",
+    "ai": "^6.0.258",
+    "better-auth": "^1.7.1",
+    "drizzle-orm": "^0.45.2",
+    "fflate": "^0.8.2",
+    "hono": "^4.9.0",
+    "ulid": "^3.0.0",
+    "workers-ai-provider": "3.1.14",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260819.1",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.124.0"
+  }
+}
