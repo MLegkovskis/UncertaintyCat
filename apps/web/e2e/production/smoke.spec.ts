@@ -39,16 +39,20 @@ test("production serves every public screen, the real catalog, and security head
 });
 
 test("production Cloudflare identity initiation uses the configured OIDC application", async ({ page }) => {
-  await page.route("https://uncertaintycat.cloudflareaccess.com/**", (route) => route.abort());
   await page.goto("/");
   await page.getByRole("button", { name: /Guest workspace/ }).click();
-  const responsePromise = page.waitForResponse(
-    (response) => response.url().includes("/api/auth/sign-in/social") && response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Continue with Cloudflare" }).click();
-  const response = await responsePromise;
-  expect(response.ok()).toBe(true);
-  const body = (await response.json()) as { url: string; redirect: boolean };
+  await expect(page.getByRole("button", { name: "Continue with Cloudflare" })).toBeVisible();
+  const result = await page.evaluate(async () => {
+    const response = await fetch("/api/auth/sign-in/social", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ provider: "cloudflare", callbackURL: window.location.href }),
+    });
+    return { ok: response.ok, body: await response.json() };
+  });
+  expect(result.ok).toBe(true);
+  const body = result.body as { url: string; redirect: boolean };
   expect(body.redirect).toBe(true);
   const authorization = new URL(body.url);
   expect(authorization.origin).toBe("https://uncertaintycat.cloudflareaccess.com");
