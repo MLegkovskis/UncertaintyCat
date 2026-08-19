@@ -1,0 +1,29 @@
+{
+  "name": "uncertaintycat-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @uncertaintycat/web",
+    "dev:api": "npm run dev --workspace @uncertaintycat/api",
+    "dev:compute": "uv run uvicorn services.compute.main:app --reload --port 8080",
+    "build": "npm run build --workspaces --if-present",
+    "build:production": "npm run build --workspace @uncertaintycat/web && npm run build:production --workspace @uncertaintycat/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:ts": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace @uncertaintycat/web",
+    "test:py": "uv run pytest",
+    "test": "npm run test:ts && npm run test:py",
+    "lint:py": "uv run ruff check uncertaintycat_core services tests",
+    "typecheck:py": "uv run mypy uncertaintycat_core services",
+    "format:py": "uv run ruff format uncertaintycat_core services tests"
+  },
+  "engines": {
+    "node": ">=22.0"
+  },
+  "overrides": {
+    "dompurify": "3.4.14"
+  }
+}

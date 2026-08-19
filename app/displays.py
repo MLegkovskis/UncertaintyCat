@@ -7,7 +7,7 @@ import streamlit as st
 from app.state import update_pce_diag_result
 from modules import pce_surrogate
 from modules.pce_surrogate import count_pce_coefficients, suggest_degree_from_ratio
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_workers_ai_api
 from modules.ancova_analysis import display_ancova_results
 from modules.correlation_analysis import display_correlation_results
 from modules.expectation_convergence_analysis import display_expectation_convergence_results
@@ -346,10 +346,10 @@ Explain:
 3. How the alpha slider (coefficients vs. sample size) helps avoid over-determined least squares, and when to rely on cross-validation.
 Provide concrete advice referencing these numbers.
 """
-            with st.spinner("Contacting Groq ..."):
+            with st.spinner("Contacting Workers AI ..."):
                 try:
-                    response = call_groq_api(prompt)
+                    response = call_workers_ai_api(prompt)
                 except Exception as exc:
-                    st.error(f"Groq call failed: {exc}")
+                    st.error(f"Workers AI call failed: {exc}")
                 else:
                     st.markdown(response)

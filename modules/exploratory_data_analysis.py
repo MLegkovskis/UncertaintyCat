@@ -8,11 +8,11 @@ import plotly.graph_objects as go
 import plotly.figure_factory as ff # Not directly used in provided snippet, consider removal if not needed elsewhere
 import plotly.subplots as sp 
 import scipy.stats as stats
-from utils.core_utils import call_groq_api # create_chat_interface not used here
+from utils.core_utils import call_workers_ai_api # create_chat_interface not used here
 from utils.constants import RETURN_INSTRUCTION
 # import seaborn as sns # Not directly used in provided snippet, consider removal if not needed elsewhere
 from typing import Dict, List, Tuple, Any, Optional, Union
-# Unused imports: uuid, json, os, from groq import Groq
+# Unused imports: uuid, json, os, from workers_ai import Workers AI
 
 def compute_exploratory_data_analysis(data: pd.DataFrame, 
                                       N: int, # Number of samples, often len(data)
@@ -287,7 +287,7 @@ def exploratory_data_analysis(data: pd.DataFrame,
                               model: callable, # Model function
                               problem: ot.Distribution, # Problem definition
                               model_code_str: str, # For AI context
-                              language_model: str = 'groq', 
+                              language_model: str = 'workers_ai',
                               display_results: bool = True) -> dict:
     """
     Perform and display exploratory data analysis.
@@ -338,7 +338,7 @@ def exploratory_data_analysis(data: pd.DataFrame,
 
 
 # --- AI Insight Generation (Specific to EDA) ---
-def generate_ai_insights_eda(analysis_results: dict, language_model: str = 'groq') -> str:
+def generate_ai_insights_eda(analysis_results: dict, language_model: str = 'workers_ai') -> str:
     """
     Generate AI insights for exploratory data analysis results.
     Retrieves model_code_str from analysis_results.
@@ -423,10 +423,10 @@ Please provide a concise yet comprehensive EDA report covering:
 Focus on actionable insights. Be specific where data allows.
 """
         model_name_for_api = language_model
-        if not language_model or language_model.lower() == 'groq':
+        if not language_model or language_model.lower() == 'workers_ai':
             model_name_for_api = "llama3-70b-8192"
 
-        insights = call_groq_api(prompt, model_name=model_name_for_api)
+        insights = call_workers_ai_api(prompt, model_name=model_name_for_api)
         return insights
 
     except Exception as e:

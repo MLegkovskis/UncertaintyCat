@@ -1,0 +1,78 @@
+# Scientific validation
+
+## Numerical authority
+
+OpenTURNS is the numerical foundation. UncertaintyCat adds configuration bounds, applicability checks,
+serialization, orchestration, provenance, and presentation; it does not replace the upstream algorithms.
+Every result records the model hash, seed, OpenTURNS version, core version, plugin version, result schema
+version, timestamps, warnings, assumptions, runtime, and model-evaluation count.
+
+The migration baseline is OpenTURNS `1.27.post1`. Moving from the inherited `1.25` pin exposed the
+removal of `ComposedDistribution`; legacy construction and validation paths were migrated to
+`JointDistribution`, then both the scientific suite and all 23 example smoke runs were repeated.
+
+## Current automated evidence
+
+The test suite covers:
+
+- compilation and sample evaluation for all 23 bundled Python reference models;
+- consistent input/output dimensions, descriptions, finite values, and batch behavior;
+- strict contracts that reject extra fields and serialize without NaN;
+- repeatable multi-output Monte Carlo and EDA at fixed seeds;
+- Ishigami Sobol first-order structure (`S1` near 0.314, `S2` near 0.442, `S3` near zero) with tolerances
+  appropriate to a finite Saltelli design;
+- dependent-copula rejection for classical Sobol;
+- execution and strict serialization for correlation, FAST, HSIC, Taylor, Morris, convergence,
+  reliability, and PCE;
+- FORM probability near 0.5 for a standard normal response with threshold zero;
+- FastAPI health, catalog, validation, and execution contracts;
+- worker ZIP export structure and CSV quoting;
+- frontend symbolic-model generation and a Chromium navigation smoke test.
+
+Run the evidence locally with:
+
+```bash
+uv run pytest
+uv run pytest -m scientific
+npm run test:ts
+npm run test:e2e
+```
+
+## Method-specific interpretation controls
+
+- Sobol and FAST: independent inputs and non-zero selected-output variance.
+- Morris: independent marginals; trajectories operate in probability space so unbounded marginals remain
+  finite without inventing physical bounds.
+- HSIC: normalized empirical Gaussian-kernel dependence; permutation p-values are finite-sample evidence,
+  not a causal claim.
+- Taylor: local gradients at the mean; the independently sampled linear-surrogate Q2 exposes when a local
+  approximation is poor globally.
+- PCE: independent validation Q2/RMSE is always reported; a fitted surrogate is not automatically an
+  acceptable surrogate.
+- FORM: local design-point approximation; Monte Carlo is available when nonlinear event geometry makes
+  FORM unsuitable.
+- Correlation: linear and monotonic coefficients are reported side by side rather than conflated.
+
+## Acceptance policy for dependency or algorithm changes
+
+1. Pin the new dependency in a branch and regenerate `uv.lock`.
+2. Run all unit, service, and 23-model tests in the current and candidate environments.
+3. Add upstream benchmark cases for changed/new methods.
+4. Compare indices, moments, probabilities, convergence, warnings, failures, and runtime.
+5. Explain every material drift; do not widen tolerances solely to make CI pass.
+6. Version affected plugins and schemas, add migration notes, and retain old report readability.
+7. Have a domain reviewer approve changes to reliability or sensitivity interpretation.
+
+## Known validation gaps before a scientific 1.0 release
+
+- broader published benchmark corpus for each plugin and multiple dimensions/distribution families;
+- confidence-interval coverage tests across repeated randomized designs;
+- dependent-input sensitivity methods (ANCOVA/Shapley effects) in the new plugin core;
+- rare-event reliability benchmarks and FORM failure/fallback cases;
+- PCE basis/sparsity/degree sweeps and correlated-input transformations;
+- cross-platform reproducibility and numerical-drift envelopes;
+- performance/load budgets at preview, standard, and high profiles;
+- independent review of formulas, labels, and assumptions by UQ practitioners.
+
+These gaps are explicit launch work. Passing the current suite establishes a strong migration baseline,
+not universal certification of every model and method.

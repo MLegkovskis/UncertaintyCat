@@ -16,12 +16,12 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import scipy.stats as stats
 from scipy.stats import pearsonr
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_workers_ai_api
 from utils.constants import RETURN_INSTRUCTION
 from utils.model_utils import get_ot_model, sample_inputs
 from modules.monte_carlo import monte_carlo_simulation, create_monte_carlo_dataframe
 
-def compute_ml_analysis(model, problem, size=1000, model_code_str=None, language_model='groq'):
+def compute_ml_analysis(model, problem, size=1000, model_code_str=None, language_model='workers_ai'):
     """
     Compute machine learning-based sensitivity analysis using SHAP values without UI components.
     
@@ -39,7 +39,7 @@ def compute_ml_analysis(model, problem, size=1000, model_code_str=None, language
     model_code_str : str, optional
         String representation of the model code for documentation, by default None
     language_model : str, optional
-        Language model to use for analysis, by default "groq"
+        Language model to use for analysis, by default "workers_ai"
         
     Returns
     -------
@@ -47,7 +47,7 @@ def compute_ml_analysis(model, problem, size=1000, model_code_str=None, language
         Dictionary containing Shapley Analysis results
     """
     # Ensure problem is an OpenTURNS distribution
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Problem must be an OpenTURNS distribution")
     
     # Get input names from distribution
@@ -125,7 +125,7 @@ def compute_ml_analysis(model, problem, size=1000, model_code_str=None, language
         "model_metrics": model_metrics_df
     }
 
-def display_ml_results(analysis_results, model_code_str=None, language_model='groq'):
+def display_ml_results(analysis_results, model_code_str=None, language_model='workers_ai'):
     """
     Display machine learning analysis results in the Streamlit interface.
     
@@ -136,7 +136,7 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
     model_code_str : str, optional
         String representation of the model code for documentation, by default None
     language_model : str, optional
-        Language model to use for analysis, by default "groq"
+        Language model to use for analysis, by default "workers_ai"
     """
     try:
         # Extract results from the analysis_results dictionary
@@ -202,7 +202,7 @@ def display_ml_results(analysis_results, model_code_str=None, language_model='gr
         st.error(f"Error in Shapley Analysis display: {str(e)}")
         st.code(traceback.format_exc())
 
-def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='groq', display_results=True):
+def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='workers_ai', display_results=True):
     """
     Perform machine learning-based sensitivity analysis using SHAP values with enterprise-grade visualizations.
     
@@ -220,7 +220,7 @@ def ml_analysis(model, problem, size=1000, model_code_str=None, language_model='
     model_code_str : str, optional
         String representation of the model code for documentation, by default None
     language_model : str, optional
-        Language model to use for analysis, by default "groq"
+        Language model to use for analysis, by default "workers_ai"
     display_results : bool, optional
         Whether to display results in the UI (default is True)
         
@@ -633,7 +633,7 @@ def create_validation_plot(y_true, y_pred):
     return fig
 
 def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_str, 
-                           shap_results, performance_metrics, language_model='groq'):
+                           shap_results, performance_metrics, language_model='workers_ai'):
     """
     Generate expert analysis of SHAP results using AI.
     
@@ -654,7 +654,7 @@ def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_
     performance_metrics : dict
         Dictionary containing model performance metrics
     language_model : str, optional
-        Language model to use for analysis, by default "groq"
+        Language model to use for analysis, by default "workers_ai"
         
     Returns
     -------
@@ -736,7 +736,7 @@ def generate_expert_analysis(data, problem, rf_model, feature_names, model_code_
     
     # Call the AI API
     try:
-        response_markdown = call_groq_api(prompt, model_name=language_model)
+        response_markdown = call_workers_ai_api(prompt, model_name=language_model)
         return response_markdown
     except Exception as e:
         print(f"Error generating expert analysis: {str(e)}")

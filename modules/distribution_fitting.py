@@ -336,7 +336,7 @@ def create_dependent_multivariate_distribution(marginals, variable_names, copula
         
     Returns
     -------
-    openturns.ComposedDistribution
+    openturns.JointDistribution
         The multivariate distribution with dependencies
     """
     # Set descriptions for all marginals
@@ -344,7 +344,7 @@ def create_dependent_multivariate_distribution(marginals, variable_names, copula
         marginal.setDescription([variable_names[i]])
     
     # Create joint distribution with the provided copula
-    joint_dist = ot.ComposedDistribution(marginals, copula)
+    joint_dist = ot.JointDistribution(marginals, copula)
     
     return joint_dist
 
@@ -1014,7 +1014,7 @@ model = ot.PythonFunction({len(selected_vars)}, 1, function_of_interest)
                                 dist_code += "\n# Create Normal copula from correlation matrix\n"
                                 dist_code += "copula = ot.NormalCopula(R)\n\n"
                                 dist_code += "# Define joint distribution with dependencies modeled by the copula\n"
-                                dist_code += "problem = ot.ComposedDistribution([\n    "
+                                dist_code += "problem = ot.JointDistribution([\n    "
                                 dist_code += ",\n    ".join([f"{var.replace(' ', '_')}" for var in selected_vars])
                                 dist_code += "\n], copula)\n\n"
                             else:

@@ -4,21 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "uncertaintycat"
-version = "0.1.0"
-description = "Streamlit-based uncertainty quantification workspace"
+version = "0.2.0"
+description = "Versioned OpenTURNS uncertainty quantification core and services"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "pandas",
+    "openturns==1.27.post1",
+    "scipy",
+    "pydantic>=2.9,<3",
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.32,<1",
+]
+
+[project.optional-dependencies]
+legacy = [
     "matplotlib",
     "seaborn",
-    "openturns==1.25",
     "SALib",
     "scikit-learn",
     "llvmlite",
     "shap",
-    "scipy",
-    "groq",
     "streamlit",
     "openai==0.28",
     "plotly",
@@ -26,14 +32,18 @@ dependencies = [
     "tabulate",
     "IPython",
     "squarify",
+    "requests>=2.32",
     "otmorris==0.18",
     "chaospy",
 ]
-
-[project.optional-dependencies]
 dev = [
     "black",
-    "pytest",
+    "colorama>=0.4.6",
+    "httpx>=0.27",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-cov>=6",
+    "ruff>=0.8",
 ]
 
 [tool.uv]
@@ -41,4 +51,39 @@ package = true
 
 
 [tool.setuptools]
-packages = ["app", "pages", "modules"]
+packages = [
+    "app",
+    "pages",
+    "modules",
+    "utils",
+    "uncertaintycat_core",
+    "uncertaintycat_core.plugins",
+    "services",
+    "services.compute",
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "scientific: numerical regression and statistical acceptance tests",
+    "integration: tests crossing service or process boundaries",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+disallow_untyped_defs = true
+exclude = ["^(app|modules|pages|utils)/"]
+
+[[tool.mypy.overrides]]
+module = ["openturns", "scipy", "scipy.*"]
+ignore_missing_imports = true

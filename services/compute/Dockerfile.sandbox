@@ -1,0 +1,26 @@
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
+
+RUN groupadd --system uncertaintycat \
+    && useradd --system --gid uncertaintycat --create-home uncertaintycat \
+    && mkdir -p /workspace \
+    && chown uncertaintycat:uncertaintycat /workspace
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.9 /uv /uvx /bin/
+COPY --from=docker.io/cloudflare/sandbox:0.12.7 /container-server/sandbox /sandbox
+WORKDIR /app
+
+COPY pyproject.toml uv.lock LICENSE ./
+COPY uncertaintycat_core ./uncertaintycat_core
+COPY services ./services
+
+RUN uv sync --frozen --no-dev --no-install-project \
+    && chown -R uncertaintycat:uncertaintycat /app
+
+USER uncertaintycat
+ENTRYPOINT ["/sandbox"]

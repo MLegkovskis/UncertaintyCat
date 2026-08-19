@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import openturns as ot
 
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_workers_ai_api
 from utils.constants import RETURN_INSTRUCTION
 
-def compute_model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='groq'):
+def compute_model_understanding(model, problem, model_code_str, is_pce_used=False, original_model_code_str=None, metamodel_str=None, language_model='workers_ai'):
     """
     Compute model understanding analysis without UI components.
     
@@ -27,7 +27,7 @@ def compute_model_understanding(model, problem, model_code_str, is_pce_used=Fals
     metamodel_str : str, optional
         String representation of the metamodel, by default None
     language_model : str, optional
-        Language model to use for AI insights, by default 'groq'
+        Language model to use for AI insights, by default 'workers_ai'
         
     Returns
     -------
@@ -35,7 +35,7 @@ def compute_model_understanding(model, problem, model_code_str, is_pce_used=Fals
         Dictionary containing model understanding analysis results
     """
     # Ensure problem is an OpenTURNS distribution
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Problem must be an OpenTURNS distribution")
     
     # Get input dimension and names
@@ -176,7 +176,7 @@ Input Parameters:
 
         while attempts < max_attempts:
             try:
-                response_text = call_groq_api(prompt, model_name=language_model)
+                response_text = call_workers_ai_api(prompt, model_name=language_model)
                 # If we get here, the response was successful
                 best_response_text = response_text
                 break
@@ -213,7 +213,7 @@ def model_understanding(
     is_pce_used=False,
     original_model_code_str=None,
     metamodel_str=None,
-    language_model='groq',
+    language_model='workers_ai',
 ):
     """
     Generate a comprehensive description of the model and its uncertain inputs.
@@ -236,7 +236,7 @@ def model_understanding(
     metamodel_str : str, optional
         String representation of the metamodel, by default None
     language_model : str, optional
-        Language model to use for AI insights, by default 'groq'
+        Language model to use for AI insights, by default 'workers_ai'
     
     Returns
     -------

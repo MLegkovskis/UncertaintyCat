@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      frontend-and-worker:
+        patterns: ["*"]
+    # 3.2+ added optional third-party inference endpoints. Keep the production
+    # bundle Workers-AI-only until a reviewed release removes that code path.
+    ignore:
+      - dependency-name: workers-ai-provider
+        versions: [">=3.2.0"]
+  - package-ecosystem: pip
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      python-runtime:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

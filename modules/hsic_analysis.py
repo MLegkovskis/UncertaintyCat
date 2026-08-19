@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import plotly.express as px # Included for consistency, though not directly used in plots
 from plotly.subplots import make_subplots
 import traceback
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_workers_ai_api
 from utils.constants import RETURN_INSTRUCTION
 
 def compute_hsic_indices(model, problem, N=200, seed=42):
@@ -16,7 +16,7 @@ def compute_hsic_indices(model, problem, N=200, seed=42):
     """
     if not callable(model):
         raise TypeError("The 'model' argument must be a callable function.")
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Problem must be an OpenTURNS distribution.")
 
     dimension = problem.getDimension()
@@ -167,13 +167,13 @@ def create_hsic_plots(results):
     return fig
 
 
-def compute_hsic_analysis(model, problem, hsic_size=200, model_code_str=None, language_model='groq'):
+def compute_hsic_analysis(model, problem, hsic_size=200, model_code_str=None, language_model='workers_ai'):
     """
     Compute HSIC (Hilbert-Schmidt Independence Criterion) analysis without UI components.
     This function calculates HSIC-based sensitivity indices and prepares AI insights.
     (Content improved and LLM prompt enhanced based on OpenTURNS HSIC docs)
     """
-    if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+    if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
         raise ValueError("Problem must be an OpenTURNS distribution.")
     if not callable(model): # Added check for model callable
         raise TypeError("Model must be a callable function.")
@@ -257,7 +257,7 @@ Please provide a comprehensive expert analysis:
 Focus on providing clear, actionable insights grounded in the provided data and HSIC theory.
 """
         try:
-            ai_insights_content = call_groq_api(prompt, model_name=language_model)
+            ai_insights_content = call_workers_ai_api(prompt, model_name=language_model)
         except Exception as e:
             ai_insights_content = f"Error generating AI insights: {str(e)}\n\n{traceback.format_exc()}" # Include traceback in error
 
@@ -275,7 +275,7 @@ Focus on providing clear, actionable insights grounded in the provided data and 
         'dimension': dimension
     }
 
-def display_hsic_results(analysis_results, model_code_str=None, language_model='groq'):
+def display_hsic_results(analysis_results, model_code_str=None, language_model='workers_ai'):
     """
     Display HSIC sensitivity analysis results using Streamlit.
     (Content improved, formatting, and significance stars)
@@ -374,14 +374,14 @@ def display_hsic_results(analysis_results, model_code_str=None, language_model='
         st.code(traceback.format_exc())
 
 
-def run_hsic_analysis(size=200, model=None, problem=None, model_code_str=None, language_model='groq', display_results=True):
+def run_hsic_analysis(size=200, model=None, problem=None, model_code_str=None, language_model='workers_ai', display_results=True):
     """
     Perform HSIC analysis with UI elements, calling compute and display functions.
     (Structure adapted to call the refactored compute_hsic_analysis)
     """
     analysis_output_dict = None # Define outside try for broader scope
     try:
-        if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
+        if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
             st.error("Error: Problem must be an OpenTURNS distribution.")
             return None
         if not callable(model):
@@ -478,7 +478,7 @@ if __name__ == '__main__':
 
     dist_x1_hsic = ot.Normal(0, 1); dist_x1_hsic.setDescription(["InputA_Normal"])
     dist_x2_hsic = ot.Uniform(-3, 3); dist_x2_hsic.setDescription(["InputB_Uniform"])
-    problem_dist_hsic = ot.ComposedDistribution([dist_x1_hsic, dist_x2_hsic])
+    problem_dist_hsic = ot.JointDistribution([dist_x1_hsic, dist_x2_hsic])
     model_code_str_hsic = """
 def model(X): # X is a list [x1, x2]
     x1, x2 = X[0], X[1]
@@ -486,7 +486,7 @@ def model(X): # X is a list [x1, x2]
 """
     st.sidebar.markdown("### Demo Controls")
     sample_size_demo = st.sidebar.slider("HSIC Sample Size (Demo)", 100, 500, 150, 25, key="hsic_demo_size")
-    lang_model_demo = st.sidebar.selectbox("Language Model (Demo)", [None, "groq", "other_model"], index=1, key="hsic_demo_lm")
+    lang_model_demo = st.sidebar.selectbox("Language Model (Demo)", [None, "workers_ai", "other_model"], index=1, key="hsic_demo_lm")
 
 
     if st.sidebar.button("Run HSIC Analysis Demo", key="run_hsic_demo_button"):

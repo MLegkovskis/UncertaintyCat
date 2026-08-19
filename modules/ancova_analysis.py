@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import openturns as ot
-from utils.core_utils import call_groq_api, create_chat_interface # Assuming these are correctly defined elsewhere
+from utils.core_utils import call_workers_ai_api, create_chat_interface # Assuming these are correctly defined elsewhere
 from utils.constants import RETURN_INSTRUCTION # Assuming this is correctly defined elsewhere
 import streamlit as st
 import plotly.graph_objects as go
@@ -32,7 +32,7 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
     model_code_str : str, optional
         String representation of the model code for documentation and LLM analysis.
     language_model : str, optional
-        Language model to use for analysis (e.g., specific Groq model name).
+        Language model to use for analysis (e.g., specific Workers AI model name).
         
     Returns
     -------
@@ -43,8 +43,8 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
         # Verify input types
         if not isinstance(model, ot.Function):
             raise TypeError("Model must be an OpenTURNS Function")
-        if not isinstance(problem, (ot.Distribution, ot.JointDistribution, ot.ComposedDistribution)):
-            raise TypeError("Problem must be an OpenTURNS Distribution, JointDistribution, or ComposedDistribution")
+        if not isinstance(problem, (ot.Distribution, ot.JointDistribution)):
+            raise TypeError("Problem must be an OpenTURNS Distribution or JointDistribution")
             
         # Get dimension from the model's input dimension
         dimension = model.getInputDimension()
@@ -447,14 +447,14 @@ def ancova_sensitivity_analysis(model, problem, size=2000, model_code_str=None, 
             
             # Determine model name
             model_name_for_api = language_model
-            if not language_model or language_model.lower() == 'groq': # Handle if 'groq' is passed as a generic identifier
-                model_name_for_api = "llama3-70b-8192" # Example: A capable Groq model, adjust as needed. User provided "meta-llama/llama-4-scout-17b-16e-instruct" before.
+            if not language_model or language_model.lower() == 'workers_ai': # Handle if 'workers_ai' is passed as a generic identifier
+                model_name_for_api = "llama3-70b-8192" # Example: A capable Workers AI model, adjust as needed. User provided "meta-llama/llama-4-scout-17b-16e-instruct" before.
             
             max_attempts = 3
             attempts = 0
             while attempts < max_attempts:
                 try:
-                    llm_insights = call_groq_api(prompt, model_name=model_name_for_api)
+                    llm_insights = call_workers_ai_api(prompt, model_name=model_name_for_api)
                     break
                 except Exception as e:
                     attempts += 1

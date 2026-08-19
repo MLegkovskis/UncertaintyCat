@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable
 
 from utils.constants import RETURN_INSTRUCTION
-from utils.core_utils import call_groq_api
+from utils.core_utils import call_workers_ai_api
 
 
 def generate_overall_summary(
@@ -37,7 +37,7 @@ uncertainties, and recommended next actions.
 """.strip()
 
     try:
-        summary_text = call_groq_api(prompt, model_name=language_model)
+        summary_text = call_workers_ai_api(prompt, model_name=language_model)
     except Exception as exc:
         summary_text = f"Error generating summary: {exc}"
 
