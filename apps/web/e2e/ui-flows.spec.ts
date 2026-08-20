@@ -148,7 +148,7 @@ test.describe("run lifecycle", () => {
 
 test.describe("reports and grounded chat", () => {
   test("renders every evidence type and operates export, share, print, and streaming chat", async ({ page }) => {
-    await installMockApi(page, { projects: [project], runs: [makeRun()], report: makeReport() });
+    await installMockApi(page, { authenticated: true, projects: [project], runs: [makeRun()], report: makeReport() });
     await page.addInitScript(() => {
       window.print = () => document.documentElement.setAttribute("data-print-called", "true");
     });
@@ -191,7 +191,7 @@ test.describe("reports and grounded chat", () => {
   });
 
   test("chat failures are explicit and preserve the user's question", async ({ page }) => {
-    await installMockApi(page, { report: makeReport() });
+    await installMockApi(page, { authenticated: true, report: makeReport() });
     await page.route("**/api/v1/reports/report-1/chat", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({ contentType: "application/json", body: JSON.stringify({ messages: [] }) });
@@ -204,6 +204,14 @@ test.describe("reports and grounded chat", () => {
     await page.getByLabel("Question about report").press("Enter");
     await expect(page.getByText("Daily report-chat quota exceeded.")).toBeVisible();
     await expect(page.getByText("Summarise the result")).toBeVisible();
+  });
+
+  test("guest-owned reports do not expose report chat", async ({ page }) => {
+    await installMockApi(page, { report: makeReport() });
+    await page.goto("/reports/report-1");
+    await expect(page.getByRole("heading", { name: "Verification report" })).toBeVisible();
+    await expect(page.getByText("Ask this report")).toHaveCount(0);
+    await expect(page.getByLabel("Question about report")).toHaveCount(0);
   });
 });
 

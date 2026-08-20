@@ -25,8 +25,9 @@ on every pull request and every push to `main`, and covers:
 - report metrics, tables, truncated-data notices, series, heatmaps, facts,
   assumptions, partial failures, contents links, sharing, export wiring, and
   print-to-PDF wiring;
-- stored chat history, suggestions, keyboard submission, streamed answers,
-  citations, and quota errors;
+- authenticated stored chat history, suggestions, keyboard submission,
+  streamed answers, citations, quota errors, and guest denial at both UI and
+  API boundaries;
 - read-only shared reports; and
 - automated WCAG A/AA scans for every routed screen, expanded builder/account
   states, and the mobile drawer.
@@ -71,10 +72,11 @@ E2E_LIVE_MUTATIONS=true npm run test:e2e:production -- --grep "optional live mut
 ```
 
 It performs one low-cost curated guest analysis through production D1, R2,
-Queues, Cloudflare Sandbox, report/export/share endpoints, and Workers AI. It is
-opt-in because it writes real production data and consumes paid services. Any
-test project should be deleted from D1 and its exact model object deleted from
-R2 after verification.
+Queues, Cloudflare Sandbox, and report/export/share endpoints. It also proves
+the report-chat UI is absent and a direct chat API request receives HTTP 401.
+It is opt-in because it writes real production data and consumes paid services.
+Any test project should be deleted from D1 and its exact model object deleted
+from R2 after verification.
 
 ## Failure evidence
 

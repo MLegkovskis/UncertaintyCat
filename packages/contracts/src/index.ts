@@ -115,6 +115,15 @@ export interface Project {
   updatedAt: string;
 }
 
+export interface SessionPolicy {
+  identity: {
+    ownerId: string;
+    authenticated: boolean;
+    email?: string;
+  };
+  providers: Array<"cloudflare">;
+}
+
 export interface ModelVersion {
   id: string;
   projectId: string;
@@ -185,6 +194,7 @@ export class ApiClient {
   }
 
   catalog = () => this.request<{ analyses: AnalysisCatalogEntry[] }>("/analyses/catalog");
+  session = () => this.request<SessionPolicy>("/session");
   listProjects = () => this.request<{ projects: Project[] }>("/projects");
   createProject = (input: CreateProject) =>
     this.request<{ project: Project }>("/projects", { method: "POST", body: JSON.stringify(input) });

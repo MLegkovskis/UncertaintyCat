@@ -63,7 +63,7 @@ test("production Cloudflare identity initiation uses the configured OIDC applica
   expect(authorization.searchParams.get("code_challenge")).toBeTruthy();
 });
 
-test("optional live mutation exercises guest D1/R2/Queue/Sandbox/report/share/export/chat", async ({
+test("optional live mutation exercises guest D1/R2/Queue/Sandbox/report/share and denies chat", async ({
   page,
 }) => {
   test.skip(process.env.E2E_LIVE_MUTATIONS !== "true", "Enable explicitly to create and execute disposable production data.");
@@ -96,9 +96,19 @@ test("optional live mutation exercises guest D1/R2/Queue/Sandbox/report/share/ex
   expect(download.suggestedFilename()).toMatch(/^uncertaintycat-.+\.zip$/);
   await page.getByRole("button", { name: "Share" }).click();
   await expect(page.locator(".share-confirmation a")).toBeVisible();
-
-  await page.getByLabel("Question about report").fill("What is the computed mean? Cite its stored source.");
-  await page.getByRole("button", { name: "Send question" }).click();
-  await expect(page.locator(".chat-message.assistant p")).not.toHaveText("Thinking…", { timeout: 120_000 });
-  await expect(page.locator(".chat-message.assistant p")).toContainText("[");
+  await expect(page.getByText("Ask this report")).toHaveCount(0);
+  const reportId = page.url().split("/").at(-1)!;
+  const denied = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v1/reports/${id}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ message: "This guest request must be denied." }),
+    });
+    return { status: response.status, body: await response.json() };
+  }, reportId);
+  expect(denied.status).toBe(401);
+  expect(denied.body).toMatchObject({
+    error: { code: "authentication_required" },
+  });
 });

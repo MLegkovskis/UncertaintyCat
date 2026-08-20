@@ -731,6 +731,13 @@ app.get("/api/v1/shared-reports/:token", async (c) => {
 const chatSchema = z.object({ message: z.string().trim().min(1).max(4_000) });
 app.get("/api/v1/reports/:reportId/chat", async (c) => {
   const identity = await identityFor(c);
+  if (!identity.authenticated)
+    return jsonError(
+      c,
+      401,
+      "authentication_required",
+      "Sign in to ask questions about a report.",
+    );
   const report = await c.env.DB.prepare(
     `SELECT reports.id FROM reports JOIN runs ON runs.id = reports.run_id
      WHERE (reports.id = ? OR reports.run_id = ?) AND runs.owner_id = ?`,
@@ -765,6 +772,13 @@ app.post(
   zValidator("json", chatSchema),
   async (c) => {
     const identity = await identityFor(c);
+    if (!identity.authenticated)
+      return jsonError(
+        c,
+        401,
+        "authentication_required",
+        "Sign in to ask questions about a report.",
+      );
     if (!c.env.AI)
       return jsonError(
         c,
@@ -791,7 +805,7 @@ app.post(
     )
       .bind(identity.ownerId, midnight.toISOString())
       .first<{ units: number }>();
-    const dailyLimit = identity.authenticated ? 100 : 10;
+    const dailyLimit = 100;
     if (Number(usage?.units ?? 0) >= dailyLimit) {
       return jsonError(
         c,

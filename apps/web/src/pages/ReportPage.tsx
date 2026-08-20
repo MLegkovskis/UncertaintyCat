@@ -17,6 +17,12 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
     queryFn: () =>
       shared ? api.getSharedReport(token) : api.getReport(reportId),
   });
+  const sessionQuery = useQuery({
+    queryKey: ["session-policy"],
+    queryFn: api.session,
+    enabled: !shared,
+    staleTime: 60_000,
+  });
   const report = query.data?.report;
   const share = useMutation({
     mutationFn: () => api.createShareLink(report?.id ?? reportId),
@@ -135,7 +141,9 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
           </section>
         ))}
       </article>
-      {!shared && <ChatPanel reportId={report.id} />}
+      {!shared && sessionQuery.data?.identity.authenticated === true && (
+        <ChatPanel reportId={report.id} />
+      )}
     </div>
   );
 }

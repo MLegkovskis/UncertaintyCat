@@ -57,6 +57,7 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.locator(".report-section .status-succeeded")).toHaveCount(11);
   await expect(page.getByText(/OpenTURNS/).first()).toBeVisible();
   await expect(page.locator(".metrics-grid, .result-block, .plot-panel").first()).toBeVisible();
+  await expect(page.getByText("Ask this report")).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("link", { name: "Data bundle" }).click();
@@ -73,6 +74,7 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await page.goto(new URL(sharedUrl!).pathname);
   await expect(page.getByRole("heading", { name: "Uncertainty Quantification Report" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
+  await expect(page.getByText("Ask this report")).toHaveCount(0);
 
   await page.goto("/activity");
   await expect(page.getByText(studyName)).toBeVisible();
