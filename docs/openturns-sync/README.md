@@ -376,7 +376,9 @@ git push origin main
 
 The push triggers `.github/workflows/ci.yml`. Successful CI on `main` triggers `deploy.yml`, which builds the
 assets, applies forward-only D1 migrations, deploys the Worker and compute Sandbox image, checks `/health`, and
-runs production browser verification. Observe both workflows to terminal success. Then verify:
+runs production browser verification. The Worker can become healthy before the new Sandbox image has converged;
+the production suite therefore polls for the release-specific catalog contract within a bounded window.
+Observe both workflows to terminal success. Then verify:
 
 ```bash
 curl --fail --silent --show-error https://uncertaintycat.com/health

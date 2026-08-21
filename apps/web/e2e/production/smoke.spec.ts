@@ -5,6 +5,11 @@ test("production serves every public screen, the real catalog, and security head
   page,
   request,
 }) => {
+  // A Worker revision becomes available before Cloudflare has necessarily
+  // converged every newly built Sandbox container. Poll the compute-backed
+  // catalog for the release-specific contract instead of treating a healthy
+  // old image during that bounded rollout window as the final deployment.
+  test.setTimeout(5 * 60_000);
   const health = await request.get("/health");
   expect(health.ok()).toBe(true);
   expect(await health.json()).toMatchObject({ status: "ok", service: "uncertaintycat-api" });
@@ -18,9 +23,29 @@ test("production serves every public screen, the real catalog, and security head
     providers: ["cloudflare"],
   });
 
-  const catalog = await request.get("/api/v1/analyses/catalog");
-  expect(catalog.ok()).toBe(true);
-  expect((await catalog.json()).analyses).toHaveLength(12);
+  let liveCatalog: Array<{
+    key: string;
+    config_schema: { properties?: Record<string, { maximum?: number }> };
+  }> = [];
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get("/api/v1/analyses/catalog");
+        if (!response.ok()) return false;
+        liveCatalog = (await response.json()).analyses;
+        const gpr = liveCatalog.find((entry) => entry.key === "gpr");
+        return (
+          liveCatalog.length === 12 &&
+          gpr?.config_schema.properties?.training_size?.maximum === 512
+        );
+      },
+      {
+        timeout: 4 * 60_000,
+        intervals: [5_000, 10_000, 15_000],
+        message: "Cloudflare Sandbox catalog did not converge to the deployed GPR contract",
+      },
+    )
+    .toBe(true);
 
   for (const [path, heading] of [
     ["/", /Turn uncertain inputs/],
