@@ -12,8 +12,8 @@ Worker-compatible control plane, and an isolated Python compute service.
 ## What is implemented
 
 - Immutable model versions with input/output metadata, source hashes, and OpenTURNS provenance.
-- Eleven schema-driven analysis plugins: Monte Carlo, EDA, correlation, Sobol, FAST, HSIC, Taylor,
-  Morris, expectation convergence, reliability, and polynomial chaos.
+- Twelve schema-driven analysis plugins: Monte Carlo, EDA, correlation, Sobol, FAST, HSIC, Taylor,
+  Morris, expectation convergence, reliability, polynomial chaos, and Gaussian-process regression.
 - Multi-output propagation and exploration; scalar-output methods require an explicit output target.
 - Durable projects, queued/idempotent runs, partial-failure reports, cancellation, quotas, and retries.
 - Interactive native SVG/CSS results, browser-print PDF reports, ZIP JSON/CSV evidence bundles, and expiring,
@@ -41,7 +41,8 @@ catalog instead of importing algorithm-specific Python.
 
 See [Architecture](docs/ARCHITECTURE.md), [plugin guide](docs/ANALYSIS_PLUGIN_GUIDE.md),
 [security model](docs/SECURITY.md), [scientific validation](docs/SCIENTIFIC_VALIDATION.md), and
-[deployment runbook](docs/DEPLOYMENT.md).
+[deployment runbook](docs/DEPLOYMENT.md). The complete upstream review and scheduled-agent operating
+procedure is in the [OpenTURNS synchronization README](docs/openturns-sync/README.md).
 
 ## Local development
 
@@ -81,8 +82,9 @@ npm run test:e2e       # first run: npx playwright install chromium
 ```
 
 The Python suite validates every model under `examples/`, contract strictness, multi-output behavior,
-dependent-input rejection, the known Ishigami Sobol structure, FORM on a standard-normal half-space,
-all catalog plugins, and the FastAPI boundary.
+dependent-input rejection, the known Ishigami Sobol structure, Gaussian-process validation on smooth and
+dependent-input benchmarks, FORM on a standard-normal half-space, all catalog plugins, and the FastAPI
+boundary.
 
 ## Model contract
 
@@ -105,11 +107,9 @@ custom source without the isolation controls described in the security document.
 The production Worker/static-assets configuration, D1 migration, R2/Queue bindings, Workers AI binding,
 Sandbox image, custom-domain routes, and post-CI deployment workflow are implemented. The live Cloudflare
 account has D1, R2, Queues, Workers Paid, the Cloudflare Access OIDC application, and a fully configured
-GitHub production environment. The only remaining release operation is:
-
-- the first production deployment and live end-to-end release smoke test.
-
-The domain will not be cut over to a build that cannot validate or execute models.
+GitHub production environment. Successful CI on `main` triggers the production deployment and live
+non-mutating browser verification. The domain is never deliberately advanced to a build that cannot validate
+or execute models.
 
 ## Legacy application
 

@@ -38,6 +38,22 @@ def test_validate_and_execute() -> None:
     assert execution.status_code == 200
     assert execution.json()["result"]["status"] == "succeeded"
 
+    gpr_execution = client.post(
+        "/v1/execute",
+        json={
+            "source": source,
+            "analysis": {
+                "analysis_key": "gpr",
+                "config": {"training_size": 32, "validation_size": 20},
+                "output_targets": [0],
+            },
+            "seed": 42,
+        },
+    )
+    assert gpr_execution.status_code == 200
+    assert gpr_execution.json()["result"]["analysis_key"] == "gpr"
+    assert gpr_execution.json()["result"]["runtime"]["model_evaluations"] == 52
+
 
 def test_public_error_is_structured() -> None:
     response = client.post(
@@ -57,4 +73,8 @@ def test_one_shot_sandbox_protocol() -> None:
     )
     envelope = json.loads(completed.stdout)
     assert envelope["status"] == 200
-    assert {entry["key"] for entry in envelope["body"]} >= {"monte_carlo", "sobol"}
+    assert {entry["key"] for entry in envelope["body"]} >= {
+        "monte_carlo",
+        "sobol",
+        "gpr",
+    }

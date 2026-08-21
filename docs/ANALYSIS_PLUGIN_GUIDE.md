@@ -60,6 +60,11 @@ most plugins will require no frontend code.
 ## OpenTURNS release intake
 
 The weekly scout opens an issue when the exact pin lags PyPI. Treat that as discovery, never as an
-automatic upgrade. Review upstream release notes, update on a branch, run the complete benchmark suite,
-measure drift, and introduce newly useful algorithms as separate plugins. Do not expose every upstream
+automatic upgrade. Review upstream release notes, isolate the dependency change, run the complete benchmark
+suite, measure drift, and introduce newly useful algorithms as separate plugins. Do not expose every upstream
 class simply because it exists.
+
+The complete discovery rubric, stable/experimental API policy, state checkpoint, implementation procedure,
+required evidence, deployment observation, and copy-paste scheduled-agent prompt live in
+[`docs/openturns-sync/README.md`](openturns-sync/README.md). That workflow was rehearsed end to end when the
+OpenTURNS 1.27 stable Gaussian-process regression API became the `gpr` plugin.

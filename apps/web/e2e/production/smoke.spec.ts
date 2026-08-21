@@ -20,7 +20,7 @@ test("production serves every public screen, the real catalog, and security head
 
   const catalog = await request.get("/api/v1/analyses/catalog");
   expect(catalog.ok()).toBe(true);
-  expect((await catalog.json()).analyses).toHaveLength(11);
+  expect((await catalog.json()).analyses).toHaveLength(12);
 
   for (const [path, heading] of [
     ["/", /Turn uncertain inputs/],
@@ -76,11 +76,15 @@ test("optional live mutation exercises guest D1/R2/Queue/Sandbox/report/share an
   await expect(page.getByText(/Validated as version 1/)).toBeVisible({ timeout: 120_000 });
 
   const options = page.locator(".analysis-option");
-  await expect(options).toHaveCount(11);
-  for (const key of ["eda", "sobol"]) {
-    await options.filter({ has: page.getByText(new RegExp(key === "eda" ? "Exploratory" : "Sobol", "i")) })
-      .locator("input[type=checkbox]")
-      .uncheck();
+  await expect(options).toHaveCount(12);
+  for (let index = 0; index < 12; index += 1) {
+    const option = options.nth(index);
+    const checkbox = option.locator("input[type=checkbox]");
+    if ((await option.innerText()).includes("Gaussian Process Surrogate")) {
+      await checkbox.check();
+    } else {
+      await checkbox.uncheck();
+    }
   }
   await page.getByLabel("Standard sample budget").fill("64");
   await expect(page.getByText("1 analysis task")).toBeVisible();

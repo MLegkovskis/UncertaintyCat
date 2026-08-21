@@ -36,25 +36,25 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.getByText(/3 inputs · 1 outputs/)).toBeVisible();
 
   const analysisOptions = page.locator(".analysis-option");
-  await expect(analysisOptions).toHaveCount(11);
+  await expect(analysisOptions).toHaveCount(12);
   const checkboxes = analysisOptions.locator("input[type=checkbox]");
-  for (let index = 0; index < 11; index += 1) {
+  for (let index = 0; index < 12; index += 1) {
     await checkboxes.nth(index).check();
   }
   await page.getByLabel("Standard sample budget").fill("64");
-  await expect(page.getByText("11 analysis tasks")).toBeVisible();
+  await expect(page.getByText("12 analysis tasks")).toBeVisible();
   await page.getByRole("button", { name: "Run analyses" }).click();
   await expect(page).toHaveURL(/\/runs\/[0-9a-f-]+$/);
   const runId = page.url().split("/").at(-1)!;
 
   await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 7 * 60_000 });
-  await expect(page.locator(".task-row")).toHaveCount(11);
-  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(11);
+  await expect(page.locator(".task-row")).toHaveCount(12);
+  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(12);
   await page.getByRole("link", { name: /Open report/ }).click();
 
   await expect(page.getByRole("heading", { name: "Uncertainty Quantification Report" })).toBeVisible();
-  await expect(page.locator(".report-section")).toHaveCount(11);
-  await expect(page.locator(".report-section .status-succeeded")).toHaveCount(11);
+  await expect(page.locator(".report-section")).toHaveCount(12);
+  await expect(page.locator(".report-section .status-succeeded")).toHaveCount(12);
   await expect(page.getByText(/OpenTURNS/).first()).toBeVisible();
   await expect(page.locator(".metrics-grid, .result-block, .plot-panel").first()).toBeVisible();
   await expect(page.getByText("Ask this report")).toBeVisible();

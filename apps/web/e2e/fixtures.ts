@@ -20,6 +20,7 @@ export const catalog: AnalysisCatalogEntry[] = [
   ["morris", "Morris Screening", "Sensitivity", "standard"],
   ["reliability", "Reliability Analysis", "Reliability", "heavy"],
   ["pce", "Polynomial Chaos Expansion", "Metamodel", "heavy"],
+  ["gpr", "Gaussian Process Surrogate", "Surrogate", "heavy"],
 ].map(([key, name, category, resourceClass]) => ({
   key,
   version: "1.0.0",

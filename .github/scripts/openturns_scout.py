@@ -41,6 +41,9 @@ def main() -> None:
             "- [ ] Run all reference models and scientific regression tests.\n"
             "- [ ] Compare catalog/config/result schemas and add plugins deliberately.\n"
             "- [ ] Record numerical drift and migration notes before merging.\n\n"
+            "Follow the complete autonomous intake procedure in "
+            "docs/openturns-sync/README.md. A justified no-op is acceptable; do not expose "
+            "an upstream class solely because it is new.\n\n"
             f"PyPI: https://pypi.org/project/openturns/{latest}/\n"
             "Upstream releases: https://github.com/openturns/openturns/releases\n"
         )

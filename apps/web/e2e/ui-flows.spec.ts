@@ -81,12 +81,14 @@ test.describe("model studio", () => {
     for (let index = 0; index < catalog.length; index += 1) {
       await checkboxes.nth(index).check();
     }
-    await expect(page.getByText("11 analysis tasks")).toBeVisible();
+    await expect(page.getByText("12 analysis tasks")).toBeVisible();
     await page.getByLabel("Standard sample budget").fill("128");
     await page.getByLabel("Reliability method").selectOption("MONTE_CARLO");
     await page.getByLabel("Failure event").selectOption("<");
     await page.getByRole("spinbutton", { name: "Threshold" }).fill("-2.5");
     await page.getByLabel("PCE total degree").fill("4");
+    await page.getByLabel("GPR covariance kernel").selectOption("SQUARED_EXPONENTIAL");
+    await page.getByLabel("GPR trend").selectOption("LINEAR");
     await page.getByRole("button", { name: "Run analyses" }).click();
 
     await expect(page).toHaveURL(/\/runs\/run-1$/);
@@ -104,6 +106,12 @@ test.describe("model studio", () => {
       threshold: -2.5,
     });
     expect(analyses.find((item) => item.analysisKey === "pce")?.config.degree).toBe(4);
+    expect(analyses.find((item) => item.analysisKey === "gpr")?.config).toMatchObject({
+      training_size: 128,
+      validation_size: 128,
+      kernel: "SQUARED_EXPONENTIAL",
+      trend: "LINEAR",
+    });
   });
 
   test("surfaces model validation and catalog failures without enabling a run", async ({ page }) => {

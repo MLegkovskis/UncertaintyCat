@@ -39,7 +39,11 @@ const SCALAR_ANALYSES = new Set([
   "morris",
   "reliability",
   "pce",
+  "gpr",
 ]);
+
+type GprKernel = "MATERN_1_5" | "MATERN_2_5" | "SQUARED_EXPONENTIAL";
+type GprTrend = "CONSTANT" | "LINEAR";
 
 function analysisConfig(
   key: string,
@@ -50,6 +54,7 @@ function analysisConfig(
     operator: ">" | "<";
   },
   pceDegree: number,
+  gpr: { kernel: GprKernel; trend: GprTrend },
 ): Record<string, unknown> {
   switch (key) {
     case "sobol":
@@ -65,6 +70,12 @@ function analysisConfig(
         training_size: Math.max(64, sampleSize),
         validation_size: Math.max(64, Math.min(sampleSize, 1_000)),
         degree: pceDegree,
+      };
+    case "gpr":
+      return {
+        training_size: Math.max(16, Math.min(sampleSize, 512)),
+        validation_size: Math.max(64, Math.min(sampleSize, 2_000)),
+        ...gpr,
       };
     case "fast":
       return { sample_size: Math.max(65, sampleSize) };
@@ -234,6 +245,8 @@ export function Workspace() {
     ">",
   );
   const [pceDegree, setPceDegree] = useState(3);
+  const [gprKernel, setGprKernel] = useState<GprKernel>("MATERN_2_5");
+  const [gprTrend, setGprTrend] = useState<GprTrend>("CONSTANT");
   const [error, setError] = useState<string>();
   const projects = projectsQuery.data?.projects ?? [];
   const activeProjectId = projectId ?? projects[0]?.id;
@@ -286,7 +299,10 @@ export function Workspace() {
       };
       const analyses = selected.map((key) => ({
         analysisKey: key,
-        config: analysisConfig(key, sampleSize, reliability, pceDegree),
+        config: analysisConfig(key, sampleSize, reliability, pceDegree, {
+          kernel: gprKernel,
+          trend: gprTrend,
+        }),
         outputTargets: SCALAR_ANALYSES.has(key) ? [outputTarget] : [],
       }));
       return api.createRun({
@@ -500,7 +516,9 @@ export function Workspace() {
             )}
           </div>
         </div>
-        {(selected.includes("reliability") || selected.includes("pce")) && (
+        {(selected.includes("reliability") ||
+          selected.includes("pce") ||
+          selected.includes("gpr")) && (
           <div className="analysis-settings">
             {selected.includes("reliability") && (
               <>
@@ -553,6 +571,37 @@ export function Workspace() {
                   onChange={(event) => setPceDegree(Number(event.target.value))}
                 />
               </label>
+            )}
+            {selected.includes("gpr") && (
+              <>
+                <label>
+                  <span>GPR covariance kernel</span>
+                  <select
+                    value={gprKernel}
+                    onChange={(event) =>
+                      setGprKernel(event.target.value as GprKernel)
+                    }
+                  >
+                    <option value="MATERN_1_5">Matérn 3/2</option>
+                    <option value="MATERN_2_5">Matérn 5/2</option>
+                    <option value="SQUARED_EXPONENTIAL">
+                      Squared exponential
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span>GPR trend</span>
+                  <select
+                    value={gprTrend}
+                    onChange={(event) =>
+                      setGprTrend(event.target.value as GprTrend)
+                    }
+                  >
+                    <option value="CONSTANT">Constant</option>
+                    <option value="LINEAR">Linear</option>
+                  </select>
+                </label>
+              </>
             )}
           </div>
         )}

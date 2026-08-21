@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-08-21",
+  "uncertaintycat_openturns_pin": "1.27.post1",
+  "latest_stable_pypi_release": "1.27.post1",
+  "upstream_repository": "https://github.com/openturns/openturns",
+  "upstream_default_branch_commit_reviewed": "357c247de8771a9868371089cdfc1bdac13b080c",
+  "upstream_commit_date": "2026-08-03T08:16:36+02:00",
+  "catalog_plugin_count": 12,
+  "last_delivered_candidate": {
+    "key": "gpr",
+    "name": "Gaussian Process Surrogate",
+    "plugin_version": "1.0.0",
+    "result_schema_version": "1.0.0",
+    "upstream_basis": "OpenTURNS 1.27 moved the GaussianProcessRegression production API out of openturns.experimental",
+    "decision": "implemented"
+  },
+  "reviewed_candidates": [
+    {
+      "name": "GaussianProcessRegressionCrossValidation",
+      "decision": "deferred",
+      "reason": "Still exposed from openturns.experimental in the reviewed upstream tree; the shipped GPR plugin uses an independent hold-out design instead."
+    },
+    {
+      "name": "ANCOVA",
+      "decision": "deferred",
+      "reason": "Relevant dependent-input sensitivity candidate, but the 1.27 GPR stabilization was the stronger release-linked product gap for this one-feature rehearsal."
+    },
+    {
+      "name": "RankSobolSensitivityAlgorithm",
+      "decision": "deferred",
+      "reason": "Stable and potentially useful for dependent inputs, but requires a separate interpretation and benchmark review before UI exposure."
+    }
+  ]
+}

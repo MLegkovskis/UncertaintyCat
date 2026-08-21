@@ -23,7 +23,9 @@ The test suite covers:
   appropriate to a finite Saltelli design;
 - dependent-copula rejection for classical Sobol;
 - execution and strict serialization for correlation, FAST, HSIC, Taylor, Morris, convergence,
-  reliability, and PCE;
+  reliability, PCE, and Gaussian-process regression;
+- fixed-seed Gaussian-process regression accuracy on a smooth nonlinear response, plus a correlated-input
+  linear-trend benchmark and discrete/constant-output rejection;
 - FORM probability near 0.5 for a standard normal response with threshold zero;
 - FastAPI health, catalog, validation, and execution contracts;
 - worker ZIP export structure and CSV quoting;
@@ -49,6 +51,9 @@ npm run test:e2e
   approximation is poor globally.
 - PCE: independent validation Q2/RMSE is always reported; a fitted surrogate is not automatically an
   acceptable surrogate.
+- GPR: independently sampled hold-out R2/RMSE/MAE and conditional-interval coverage are always reported;
+  exact fitting is capped at 512 training points, inputs must be continuous, and the model-based conditional
+  intervals are not guaranteed frequentist confidence intervals.
 - FORM: local design-point approximation; Monte Carlo is available when nonlinear event geometry makes
   FORM unsuitable.
 - Correlation: linear and monotonic coefficients are reported side by side rather than conflated.
@@ -70,6 +75,8 @@ npm run test:e2e
 - dependent-input sensitivity methods (ANCOVA/Shapley effects) in the new plugin core;
 - rare-event reliability benchmarks and FORM failure/fallback cases;
 - PCE basis/sparsity/degree sweeps and correlated-input transformations;
+- repeated-design GPR calibration/coverage studies, anisotropic kernel diagnostics, and high-dimensional
+  scaling evidence beyond the current exact-GPR cap;
 - cross-platform reproducibility and numerical-drift envelopes;
 - performance/load budgets at preview, standard, and high profiles;
 - independent review of formulas, labels, and assumptions by UQ practitioners.

@@ -9,6 +9,7 @@ from uncertaintycat_core.plugins.convergence import plugin as convergence_plugin
 from uncertaintycat_core.plugins.correlation import plugin as correlation_plugin
 from uncertaintycat_core.plugins.eda import plugin as eda_plugin
 from uncertaintycat_core.plugins.fast import plugin as fast_plugin
+from uncertaintycat_core.plugins.gpr import plugin as gpr_plugin
 from uncertaintycat_core.plugins.hsic import plugin as hsic_plugin
 from uncertaintycat_core.plugins.monte_carlo import plugin as monte_carlo_plugin
 from uncertaintycat_core.plugins.morris import plugin as morris_plugin
@@ -31,6 +32,7 @@ _PLUGINS: dict[str, AnalysisPlugin] = {
         convergence_plugin,
         reliability_plugin,
         pce_plugin,
+        gpr_plugin,
     )
 }
 

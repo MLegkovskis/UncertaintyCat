@@ -96,6 +96,15 @@ problem = ot.JointDistribution([ot.Normal(), ot.Normal()], ot.NormalCopula(corre
             {"method": "MONTE_CARLO", "threshold": 0.0, "operator": ">", "sample_size": 100},
         ),
         ("pce", {"degree": 2, "training_size": 100, "validation_size": 50}),
+        (
+            "gpr",
+            {
+                "training_size": 64,
+                "validation_size": 50,
+                "kernel": "MATERN_2_5",
+                "trend": "CONSTANT",
+            },
+        ),
     ],
 )
 def test_extended_catalog_plugins_return_strict_results(
@@ -109,6 +118,84 @@ def test_extended_catalog_plugins_return_strict_results(
     assert result.status == "succeeded"
     assert result.runtime.model_evaluations > 0
     assert "NaN" not in result.model_dump_json()
+
+
+@pytest.mark.scientific
+def test_gpr_validates_a_smooth_response_and_is_reproducible() -> None:
+    source = """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["sin(x1) + 0.5 * x2^2"])
+model.setOutputDescription(["smooth_response"])
+problem = ot.JointDistribution([ot.Uniform(-2.0, 2.0), ot.Normal(0.0, 0.7)])
+problem.setDescription(["x1", "x2"])
+"""
+    request = AnalysisRequest(
+        analysis_key="gpr",
+        config={
+            "training_size": 64,
+            "validation_size": 128,
+            "kernel": "MATERN_2_5",
+            "trend": "CONSTANT",
+        },
+        output_targets=[0],
+    )
+    result_a = run_analysis(compile_model(source), request, seed=19)
+    result_b = run_analysis(compile_model(source), request, seed=19)
+
+    assert result_a.payload.metrics == result_b.payload.metrics
+    assert result_a.payload.metrics["validation_r2"] > 0.99
+    assert result_a.payload.metrics["validation_rmse"] < 0.03
+    assert 0.8 <= result_a.payload.metrics["nominal_95_interval_coverage"] <= 1.0
+    assert result_a.runtime.model_evaluations == 192
+    assert result_a.payload.tables["validation_predictions"].row_count == 128
+    assert result_a.payload.tables["kernel_length_scales"].row_count == 2
+    assert "NaN" not in result_a.model_dump_json()
+
+
+def test_gpr_supports_dependent_continuous_inputs() -> None:
+    source = """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["2*x1 - 0.25*x2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.6
+problem = ot.JointDistribution(
+    [ot.Normal(), ot.Normal()], ot.NormalCopula(correlation)
+)
+problem.setDescription(["x1", "x2"])
+"""
+    result = run_analysis(
+        compile_model(source),
+        AnalysisRequest(
+            analysis_key="gpr",
+            config={"training_size": 32, "validation_size": 64, "trend": "LINEAR"},
+            output_targets=[0],
+        ),
+        seed=7,
+    )
+    assert result.payload.metrics["validation_r2"] > 0.999
+    assert result.payload.facts["trend"] == "Linear"
+
+
+def test_gpr_rejects_discrete_inputs_and_constant_outputs() -> None:
+    discrete = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["x"], ["x"])
+problem = ot.Poisson(3.0)
+"""
+    )
+    with pytest.raises(IncompatibleAnalysisError, match="continuous input"):
+        run_analysis(discrete, AnalysisRequest(analysis_key="gpr"))
+
+    constant = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["x"], ["1.0"])
+problem = ot.Uniform(-1.0, 1.0)
+"""
+    )
+    with pytest.raises(IncompatibleAnalysisError, match="constant selected output"):
+        run_analysis(constant, AnalysisRequest(analysis_key="gpr"))
 
 
 def test_form_probability_for_standard_normal_half_space() -> None:

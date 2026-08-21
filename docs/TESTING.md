@@ -19,7 +19,7 @@ on every pull request and every push to `main`, and covers:
 - guest, Cloudflare sign-in initiation, retained-user account, and sign-out;
 - project onboarding, Python authoring, and guided-builder authoring;
 - validation success and failure;
-- selection and method-specific configuration of all 11 plugins;
+- selection and method-specific configuration of all 12 plugins;
 - run progress, task persistence, terminal state, and cancellation;
 - activity empty/history states;
 - report metrics, tables, truncated-data notices, series, heatmaps, facts,
@@ -42,8 +42,8 @@ npm run test:e2e:full-stack
 
 Playwright starts a fresh isolated local D1/R2/Queues state, the Hono Worker,
 the FastAPI/OpenTURNS compute service, and Vite. The browser creates a retained
-project, validates the curated Ishigami model, selects all 11 analysis plugins,
-and requires all 11 tasks and report sections to succeed. It then downloads the
+project, validates the curated Ishigami model, selects all 12 analysis plugins,
+and requires all 12 tasks and report sections to succeed. It then downloads the
 real ZIP, creates and opens a share link, reloads activity history, and verifies
 the persisted D1 records through the API. Successful task execution also proves
 the immutable source was written to and reread from R2.
@@ -61,7 +61,7 @@ npm run test:e2e:production
 ```
 
 These checks run automatically after deployment. They verify production health
-and security headers, the live 11-plugin Sandbox catalog, guest session policy,
+and security headers, the live 12-plugin Sandbox catalog, guest session policy,
 all public screens, deployed WCAG results, and the real Cloudflare Access OIDC
 authorization request including PKCE and the exact callback URI.
 
