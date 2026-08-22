@@ -1,0 +1,9 @@
+Changes made during refactor:
+
+- Added multipage Streamlit structure via pages/ directory and a slim UncertaintyCat.py entry point.
+- Introduced app/ package for state management, shared components, display helpers, analysis registry, and core orchestration logic.
+- Migrated sidebar shell, code editor, and chat UI into app/components.py; centralized session-state access in app/state.py.
+- Created ANALYSIS_REGISTRY-driven workflow for the UQ Dashboard, including cached model compilation and result management.
+- Removed st.rerun-heavy button callbacks in favor of state updates and natural Streamlit reruns.
+- Decoupled modules/model_understanding.py and modules/sobol_sensitivity_analysis.py from Streamlit by moving their UI rendering into app/displays.py and keeping only compute logic in modules/.
+- Deleted legacy utils/code_editor.py, utils/side_panel.py, and utils/streamlit_app_start.py files.
