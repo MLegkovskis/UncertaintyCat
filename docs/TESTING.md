@@ -15,7 +15,7 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - discovery of all 23 reference models in the unified, immediately editable Python authoring view;
 - blank/manual model naming, resizable Python authoring, project creation from both onboarding and the workspace selector, and the multi-output symbolic OpenTURNS builder;
 - model validation success/failure, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
-- streamed concise Model Understanding, dedicated surrogate promotion, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
+- concise Model Understanding, single-flight polling, explicit uncharged timeout/failure states, dedicated surrogate promotion, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
 - desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
 - queued/running/terminal run states, cancellation, exact reruns, and project-oriented history;
 - metrics, tables, truncation notices, series, heatmaps, facts, equations, assumptions, provenance, partial failures, sharing, export, and print wiring;

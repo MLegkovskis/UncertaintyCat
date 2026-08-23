@@ -134,6 +134,93 @@ test.describe("model studio", () => {
     }
   });
 
+  test("polls one in-flight Model Understanding generation without submitting retries", async ({ page }) => {
+    let reads = 0;
+    let writes = 0;
+    await installMockApi(page, {
+      authenticated: true,
+      projects: [project],
+      modelUnderstanding: async (route) => {
+        if (route.request().method() === "POST") {
+          writes += 1;
+          await route.fulfill({
+            status: 202,
+            contentType: "application/json",
+            body: JSON.stringify({ understanding: null }),
+          });
+          return;
+        }
+        reads += 1;
+        const succeeded = reads >= 3;
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            understanding: {
+              id: "understanding-1",
+              modelVersionId: "model-1",
+              modelHash: "abcdef",
+              promptVersion: "1.2.0",
+              aiModelId: "@cf/zai-org/glm-4.7-flash",
+              status: succeeded ? "succeeded" : "generating",
+              content: succeeded
+                ? "## Model in brief\n\nThe existing generation completed once."
+                : null,
+              error: null,
+              createdAt: "2026-08-23T12:00:00Z",
+              updatedAt: "2026-08-23T12:00:01Z",
+            },
+          }),
+        });
+      },
+    });
+    await page.goto("/new-analysis");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(
+      page.getByText("An existing Workers AI generation is finishing…"),
+    ).toBeVisible();
+    await expect(
+      page.getByText("The existing generation completed once."),
+    ).toBeVisible();
+    expect(reads).toBeGreaterThanOrEqual(3);
+    expect(writes).toBe(0);
+  });
+
+  test("surfaces Model Understanding failures as uncharged and retryable", async ({ page }) => {
+    await installMockApi(page, {
+      authenticated: true,
+      projects: [project],
+      modelUnderstanding: async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({ understanding: null }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 504,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: {
+              message:
+                "Workers AI did not answer within 15 seconds. Please retry; failed requests are not charged.",
+            },
+          }),
+        });
+      },
+    });
+    await page.goto("/new-analysis");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(
+      page.getByText(/failed requests are not charged/i),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  });
+
   test("creates a project, authors with the guided builder, configures all direct plugins, and queues the suite", async ({
     page,
   }) => {

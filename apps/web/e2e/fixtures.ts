@@ -239,6 +239,7 @@ export interface MockApiOptions {
   projects?: Project[];
   runs?: Run[];
   report?: Report;
+  modelUnderstanding?: (route: Route) => Promise<void>;
 }
 
 export async function installMockApi(page: Page, options: MockApiOptions = {}) {
@@ -392,6 +393,10 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     }),
   );
   await page.route(/\/api\/v1\/model-versions\/[^/]+\/understanding$/, async (route) => {
+    if (options.modelUnderstanding) {
+      await options.modelUnderstanding(route);
+      return;
+    }
     if (route.request().method() === "GET") {
       await json(route, { understanding: null });
       return;

@@ -20,7 +20,7 @@ import {
   promoteSurrogateSchema,
   uploadDatasetSchema,
 } from "@uncertaintycat/contracts";
-import { stepCountIs, streamText, tool } from "ai";
+import { generateText, stepCountIs, streamText, tool } from "ai";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
@@ -30,6 +30,15 @@ import { z } from "zod";
 import { createWorkersAI } from "workers-ai-provider";
 
 import { createAuth, identityFor } from "./auth";
+import {
+  generationFailure,
+  generationLeaseIsActive,
+  LOW_LATENCY_AI_SETTINGS,
+  MODEL_UNDERSTANDING_LEASE_MS,
+  MODEL_UNDERSTANDING_PROMPT_VERSION,
+  MODEL_UNDERSTANDING_TIMEOUT_MS,
+  REPORT_CHAT_TIMEOUT_MS,
+} from "./ai-config";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
 import { failRunTask, processRunTask, requeueRunTask } from "./compute";
 import {
@@ -45,7 +54,6 @@ import { createReportBundle } from "./exports";
 type Variables = { requestId: string; identity?: Identity };
 type AppContext = Context<{ Bindings: Env; Variables: Variables }>;
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
-const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.1.0";
 
 function jsonError(
   c: AppContext,
@@ -1532,6 +1540,14 @@ app.post(
       c.header("X-UncertaintyCat-Cache", "hit");
       return c.body(cached.content);
     }
+    if (generationLeaseIsActive(cached?.status, cached?.updated_at)) {
+      c.header("Cache-Control", "private, no-store");
+      c.header("Retry-After", "1");
+      return c.json(
+        { understanding: cached ? understandingPayload(cached) : null },
+        202,
+      );
+    }
     if (input.regenerate) {
       const midnight = new Date();
       midnight.setUTCHours(0, 0, 0, 0);
@@ -1548,16 +1564,13 @@ app.post(
           "model_understanding_quota_exceeded",
           "Daily Model Understanding regeneration quota exceeded.",
         );
-      await c.env.DB.prepare(
-        `INSERT INTO usage_ledger (id, owner_id, kind, units, reference_id, created_at)
-         VALUES (?, ?, 'model_understanding_regeneration', 1, ?, ?)`,
-      )
-        .bind(crypto.randomUUID(), identity.ownerId, definition.modelVersion.id, now())
-        .run();
     }
     const timestamp = now();
     const understandingId = cached?.id ?? crypto.randomUUID();
-    await c.env.DB.prepare(
+    const staleBefore = new Date(
+      Date.now() - MODEL_UNDERSTANDING_LEASE_MS,
+    ).toISOString();
+    const claim = await c.env.DB.prepare(
       `INSERT INTO model_understandings
        (id, model_version_id, model_hash, prompt_version, ai_model_id, status,
         content, error, created_at, updated_at)
@@ -1566,7 +1579,9 @@ app.post(
          model_version_id = excluded.model_version_id,
          ai_model_id = excluded.ai_model_id,
          status = 'generating', content = NULL, error = NULL,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at
+       WHERE model_understandings.status != 'generating'
+          OR model_understandings.updated_at < ?`,
     )
       .bind(
         understandingId,
@@ -1576,63 +1591,125 @@ app.post(
         AI_MODEL_ID,
         timestamp,
         timestamp,
+        staleBefore,
       )
       .run();
+    if (Number(claim.meta.changes ?? 0) === 0) {
+      const active = await c.env.DB.prepare(
+        `SELECT id, model_version_id, model_hash, prompt_version, ai_model_id,
+                status, content, error, created_at, updated_at
+         FROM model_understandings WHERE model_hash = ? AND prompt_version = ?`,
+      )
+        .bind(
+          definition.modelVersion.sourceHash,
+          MODEL_UNDERSTANDING_PROMPT_VERSION,
+        )
+        .first<UnderstandingRow>();
+      c.header("Cache-Control", "private, no-store");
+      c.header("Retry-After", "1");
+      return c.json(
+        { understanding: active ? understandingPayload(active) : null },
+        202,
+      );
+    }
 
     const workersai = createWorkersAI({ binding: c.env.AI });
-    const result = streamText({
-      model: workersai(AI_MODEL_ID),
-      maxOutputTokens: 650,
-      temperature: 0.2,
-      system: `Explain validated uncertainty metadata in at most 300 words of concise Markdown. Use exactly three sections: "Model in brief", "How uncertainty enters", and "Questions to confirm". Distinguish supplied facts from inference. Never invent an equation, units, physical meaning, industry, sensitivity rankings, or causal claims. State clearly when functional form or domain meaning is unavailable. Do not give deterministic workflow advice.`,
-      prompt: JSON.stringify({
-        facts: {
-          sourceKind: definition.modelVersion.sourceKind,
-          inputDimension: definition.modelVersion.metadata.input_dimension,
-          outputDimension: definition.modelVersion.metadata.output_dimension,
-          inputs: definition.modelVersion.metadata.inputs,
-          outputs: definition.modelVersion.metadata.outputs,
-          functionType: definition.modelVersion.metadata.function_type,
-          copula: definition.modelVersion.metadata.copula,
-          dependentInputs: definition.modelVersion.metadata.dependent_inputs,
-          pilotOutputs: definition.modelVersion.assessment?.profile.pilot_outputs,
-        },
+    const generationStartedAt = Date.now();
+    console.log(
+      JSON.stringify({
+        event: "model_understanding_generation_started",
+        requestId: c.get("requestId"),
+        understandingId,
+        aiModelId: AI_MODEL_ID,
+        regenerate: input.regenerate,
       }),
-    });
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const encoder = new TextEncoder();
-        let content = "";
-        try {
-          for await (const chunk of result.textStream) {
-            content += chunk;
-            controller.enqueue(encoder.encode(chunk));
-          }
-          await c.env.DB.prepare(
-            `UPDATE model_understandings SET status = 'succeeded', content = ?,
-                    error = NULL, updated_at = ? WHERE id = ?`,
-          )
-            .bind(content, now(), understandingId)
-            .run();
-          controller.close();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Workers AI generation failed.";
-          await c.env.DB.prepare(
-            `UPDATE model_understandings SET status = 'failed', error = ?,
-                    updated_at = ? WHERE id = ?`,
-          )
-            .bind(message.slice(0, 2_000), now(), understandingId)
-            .run();
-          controller.error(error);
-        }
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/markdown; charset=utf-8",
-        "Cache-Control": "private, no-store",
-      },
-    });
+    );
+    try {
+      const result = await generateText({
+        model: workersai(AI_MODEL_ID, {
+          ...LOW_LATENCY_AI_SETTINGS,
+          sessionAffinity: `understanding:${definition.modelVersion.sourceHash.slice(0, 48)}`,
+        }),
+        maxOutputTokens: 320,
+        maxRetries: 0,
+        timeout: MODEL_UNDERSTANDING_TIMEOUT_MS,
+        temperature: 0.2,
+        system: `Explain validated uncertainty metadata in at most 180 words of concise Markdown. Use exactly three sections: "Model in brief", "How uncertainty enters", and "Questions to confirm". Distinguish supplied facts from inference. Never invent an equation, units, physical meaning, industry, sensitivity rankings, or causal claims. State clearly when functional form or domain meaning is unavailable. Do not give deterministic workflow advice.`,
+        prompt: JSON.stringify({
+          facts: {
+            sourceKind: definition.modelVersion.sourceKind,
+            inputDimension: definition.modelVersion.metadata.input_dimension,
+            outputDimension: definition.modelVersion.metadata.output_dimension,
+            inputs: definition.modelVersion.metadata.inputs,
+            outputs: definition.modelVersion.metadata.outputs,
+            functionType: definition.modelVersion.metadata.function_type,
+            copula: definition.modelVersion.metadata.copula,
+            dependentInputs: definition.modelVersion.metadata.dependent_inputs,
+            pilotOutputs:
+              definition.modelVersion.assessment?.profile.pilot_outputs,
+          },
+        }),
+      });
+      const content = result.text.trim();
+      if (!content) throw new Error("Workers AI returned an empty explanation.");
+      const statements = [
+        c.env.DB.prepare(
+          `UPDATE model_understandings SET status = 'succeeded', content = ?,
+                  error = NULL, updated_at = ? WHERE id = ?`,
+        ).bind(content, now(), understandingId),
+      ];
+      if (input.regenerate) {
+        statements.push(
+          c.env.DB.prepare(
+            `INSERT INTO usage_ledger
+             (id, owner_id, kind, units, reference_id, created_at)
+             VALUES (?, ?, 'model_understanding_regeneration', 1, ?, ?)`,
+          ).bind(
+            crypto.randomUUID(),
+            identity.ownerId,
+            definition.modelVersion.id,
+            now(),
+          ),
+        );
+      }
+      await c.env.DB.batch(statements);
+      const durationMs = Date.now() - generationStartedAt;
+      console.log(
+        JSON.stringify({
+          event: "model_understanding_generation_succeeded",
+          requestId: c.get("requestId"),
+          understandingId,
+          aiModelId: AI_MODEL_ID,
+          durationMs,
+          outputCharacters: content.length,
+        }),
+      );
+      c.header("Content-Type", "text/markdown; charset=utf-8");
+      c.header("Cache-Control", "private, no-store");
+      c.header("X-UncertaintyCat-Cache", "miss");
+      c.header("X-UncertaintyCat-AI-Duration-Ms", String(durationMs));
+      return c.body(content);
+    } catch (error) {
+      const failure = generationFailure(error);
+      await c.env.DB.prepare(
+        `UPDATE model_understandings SET status = 'failed', error = ?,
+                updated_at = ? WHERE id = ?`,
+      )
+        .bind(failure.diagnostic, now(), understandingId)
+        .run();
+      console.error(
+        JSON.stringify({
+          event: "model_understanding_generation_failed",
+          requestId: c.get("requestId"),
+          understandingId,
+          aiModelId: AI_MODEL_ID,
+          durationMs: Date.now() - generationStartedAt,
+          code: failure.code,
+          error: failure.diagnostic,
+        }),
+      );
+      return jsonError(c, failure.status, failure.code, failure.message);
+    }
   },
 );
 
@@ -2219,24 +2296,27 @@ app.post(
     )
       .bind(report.id, identity.ownerId)
       .all<{ role: "user" | "assistant"; content: string }>();
-    await c.env.DB.batch([
-      c.env.DB.prepare(
-        "INSERT INTO chat_messages (id, report_id, owner_id, role, content, created_at) VALUES (?, ?, ?, 'user', ?, ?)",
-      ).bind(
+    await c.env.DB.prepare(
+      "INSERT INTO chat_messages (id, report_id, owner_id, role, content, created_at) VALUES (?, ?, ?, 'user', ?, ?)",
+    )
+      .bind(
         crypto.randomUUID(),
         report.id,
         identity.ownerId,
         input.message,
         timestamp,
-      ),
-      c.env.DB.prepare(
-        "INSERT INTO usage_ledger (id, owner_id, kind, units, reference_id, created_at) VALUES (?, ?, 'ai_chat', 1, ?, ?)",
-      ).bind(crypto.randomUUID(), identity.ownerId, report.id, timestamp),
-    ]);
+      )
+      .run();
 
     const workersai = createWorkersAI({ binding: c.env.AI });
+    const chatStartedAt = Date.now();
     const result = streamText({
-      model: workersai(AI_MODEL_ID),
+      model: workersai(AI_MODEL_ID, {
+        ...LOW_LATENCY_AI_SETTINGS,
+        sessionAffinity: `report:${report.id}`,
+      }),
+      maxRetries: 0,
+      timeout: REPORT_CHAT_TIMEOUT_MS,
       system:
         "You are UncertaintyCat's uncertainty-quantification report assistant. The stored OpenTURNS result is the sole numerical authority. " +
         "Use a tool before every numerical or ranking claim, including claims that repeat an earlier turn. " +
@@ -2389,12 +2469,48 @@ app.post(
       },
       onFinish: async ({ text }) => {
         if (text) {
-          await c.env.DB.prepare(
-            "INSERT INTO chat_messages (id, report_id, owner_id, role, content, created_at) VALUES (?, ?, ?, 'assistant', ?, ?)",
-          )
-            .bind(crypto.randomUUID(), report.id, identity.ownerId, text, now())
-            .run();
+          await c.env.DB.batch([
+            c.env.DB.prepare(
+              "INSERT INTO chat_messages (id, report_id, owner_id, role, content, created_at) VALUES (?, ?, ?, 'assistant', ?, ?)",
+            ).bind(
+              crypto.randomUUID(),
+              report.id,
+              identity.ownerId,
+              text,
+              now(),
+            ),
+            c.env.DB.prepare(
+              "INSERT INTO usage_ledger (id, owner_id, kind, units, reference_id, created_at) VALUES (?, ?, 'ai_chat', 1, ?, ?)",
+            ).bind(
+              crypto.randomUUID(),
+              identity.ownerId,
+              report.id,
+              now(),
+            ),
+          ]);
+          console.log(
+            JSON.stringify({
+              event: "report_chat_generation_succeeded",
+              requestId: c.get("requestId"),
+              reportId: report.id,
+              aiModelId: AI_MODEL_ID,
+              durationMs: Date.now() - chatStartedAt,
+              outputCharacters: text.length,
+            }),
+          );
         }
+      },
+      onError: ({ error }) => {
+        console.error(
+          JSON.stringify({
+            event: "report_chat_generation_failed",
+            requestId: c.get("requestId"),
+            reportId: report.id,
+            aiModelId: AI_MODEL_ID,
+            durationMs: Date.now() - chatStartedAt,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       },
     });
     return result.toTextStreamResponse();

@@ -44,6 +44,11 @@ Non-secret production origins and the Access issuer are checked into `apps/api/w
 
 The deployment token should remain scoped to the UncertaintyCat Cloudflare account/zone and only the Workers Scripts, Containers, D1, R2, Queues, Workers AI, and Workers Routes capabilities needed by the workflow. Never store the global API key in GitHub or the Worker.
 
+Workers Logs are enabled at a 100% head sample rate. AI generation events contain request/record IDs, model ID,
+outcome, wall time, and output length only; they deliberately exclude prompts, model source, and persisted numerical
+evidence. Model Understanding requests should normally complete in a few seconds. A 15-second deadline becomes an
+explicit retryable 504 and is not charged to the successful-regeneration quota.
+
 ## Automatic delivery
 
 `.github/workflows/ci.yml` runs on every push to `main`, every pull request, and manual dispatch. It has no repository-variable gate or skip path. The required jobs are:

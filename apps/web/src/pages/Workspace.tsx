@@ -4,6 +4,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import type {
   AnalysisCatalogEntry,
   ExampleCatalogEntry,
+  ModelUnderstanding,
   ModelVersion,
 } from "@uncertaintycat/contracts";
 import { AI_MODEL_LABEL } from "@uncertaintycat/contracts";
@@ -45,6 +46,36 @@ import { EmptyState } from "../components/Status";
 import { useTheme } from "../components/Theme";
 
 type AuthorMode = "source" | "builder";
+
+const MODEL_UNDERSTANDING_CLIENT_TIMEOUT_MS = 20_000;
+const MODEL_UNDERSTANDING_POLL_MS = 750;
+
+function abortableDelay(milliseconds: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("The request was aborted.", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      window.clearTimeout(timeout);
+      reject(new DOMException("The request was aborted.", "AbortError"));
+    };
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function modelUnderstandingError(caught: unknown) {
+  if (caught instanceof DOMException && caught.name === "AbortError") {
+    return "Workers AI did not answer within 20 seconds. Please retry; failed requests are not charged.";
+  }
+  return caught instanceof Error
+    ? caught.message
+    : "Model Understanding failed. Please retry; failed requests are not charged.";
+}
 
 const SCALAR_ANALYSES = new Set([
   "sobol",
@@ -288,14 +319,63 @@ function ModelUnderstandingPane({
 }) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<
-    "loading" | "streaming" | "ready" | "failed"
+    "loading" | "streaming" | "waiting" | "ready" | "failed"
   >("loading");
   const [error, setError] = useState<string>();
-  const startedModel = useRef<string | undefined>(undefined);
+  const activeRequest = useRef<AbortController | undefined>(undefined);
   const assessment = model.assessment;
+
+  const fetchUnderstanding = useCallback(
+    async (signal: AbortSignal) => {
+      const response = await fetch(
+        `/api/v1/model-versions/${model.id}/understanding`,
+        { credentials: "include", signal },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        throw new Error(
+          body.error?.message ?? "Model Understanding is unavailable.",
+        );
+      }
+      return (await response.json()) as {
+        understanding: ModelUnderstanding | null;
+      };
+    },
+    [model.id],
+  );
+
+  const waitForCompletion = useCallback(
+    async (signal: AbortSignal) => {
+      setStatus("waiting");
+      while (!signal.aborted) {
+        await abortableDelay(MODEL_UNDERSTANDING_POLL_MS, signal);
+        const { understanding } = await fetchUnderstanding(signal);
+        if (understanding?.status === "succeeded" && understanding.content) {
+          setContent(understanding.content);
+          setStatus("ready");
+          return;
+        }
+        if (understanding?.status === "failed") {
+          throw new Error(
+            "Workers AI could not create the explanation. Please retry; failed requests are not charged.",
+          );
+        }
+      }
+    },
+    [fetchUnderstanding],
+  );
 
   const generate = useCallback(
     async (regenerate: boolean) => {
+      activeRequest.current?.abort();
+      const controller = new AbortController();
+      activeRequest.current = controller;
+      const timeout = window.setTimeout(
+        () => controller.abort(),
+        MODEL_UNDERSTANDING_CLIENT_TIMEOUT_MS,
+      );
       setContent("");
       setError(undefined);
       setStatus("streaming");
@@ -307,8 +387,13 @@ function ModelUnderstandingPane({
             headers: { "Content-Type": "application/json" },
             credentials: "include",
             body: JSON.stringify({ regenerate }),
+            signal: controller.signal,
           },
         );
+        if (response.status === 202) {
+          await waitForCompletion(controller.signal);
+          return;
+        }
         if (!response.ok) {
           const body = (await response.json().catch(() => ({}))) as {
             error?: { message?: string };
@@ -317,25 +402,51 @@ function ModelUnderstandingPane({
             body.error?.message ?? "Model Understanding is unavailable.",
           );
         }
-        await readTextStream(response, (chunk) =>
-          setContent((current) => current + chunk),
-        );
+        let receivedContent = false;
+        await readTextStream(response, (chunk) => {
+          receivedContent ||= Boolean(chunk);
+          setContent((current) => current + chunk);
+        });
+        if (!receivedContent) {
+          throw new Error("Workers AI returned an empty explanation.");
+        }
         setStatus("ready");
       } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Model Understanding failed.",
-        );
+        setError(modelUnderstandingError(caught));
         setStatus("failed");
+      } finally {
+        window.clearTimeout(timeout);
+        if (activeRequest.current === controller) {
+          activeRequest.current = undefined;
+        }
       }
     },
-    [model.id],
+    [model.id, waitForCompletion],
   );
 
+  const pollActiveGeneration = useCallback(async () => {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      MODEL_UNDERSTANDING_CLIENT_TIMEOUT_MS,
+    );
+    setError(undefined);
+    try {
+      await waitForCompletion(controller.signal);
+    } catch (caught) {
+      setError(modelUnderstandingError(caught));
+      setStatus("failed");
+    } finally {
+      window.clearTimeout(timeout);
+      if (activeRequest.current === controller) {
+        activeRequest.current = undefined;
+      }
+    }
+  }, [waitForCompletion]);
+
   useEffect(() => {
-    if (startedModel.current === model.id) return;
-    startedModel.current = model.id;
     let active = true;
     void api
       .getModelUnderstanding(model.id)
@@ -344,6 +455,8 @@ function ModelUnderstandingPane({
         if (understanding?.status === "succeeded" && understanding.content) {
           setContent(understanding.content);
           setStatus("ready");
+        } else if (understanding?.status === "generating") {
+          void pollActiveGeneration();
         } else {
           void generate(false);
         }
@@ -359,8 +472,9 @@ function ModelUnderstandingPane({
       });
     return () => {
       active = false;
+      activeRequest.current?.abort();
     };
-  }, [generate, model.id]);
+  }, [generate, model.id, pollActiveGeneration]);
 
   return (
     <aside className="understanding-pane" aria-label="Model Understanding">
@@ -413,11 +527,13 @@ function ModelUnderstandingPane({
       <section
         className="understanding-narrative"
         aria-live="polite"
-        aria-busy={status === "streaming"}
+        aria-busy={status === "streaming" || status === "waiting"}
       >
-        {status === "streaming" && !content && (
+        {(status === "streaming" || status === "waiting") && !content && (
           <div className="assistant-placeholder">
-            <span /> <span /> <span /> Workers AI is drafting a concise explanation…
+            <span /> <span /> <span /> {status === "waiting"
+              ? "An existing Workers AI generation is finishing…"
+              : "Workers AI is drafting a concise explanation…"}
           </div>
         )}
         {content && <Markdown>{content}</Markdown>}

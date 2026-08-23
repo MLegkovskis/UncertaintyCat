@@ -152,9 +152,14 @@ The model receives conversation history and can read only these projections of p
 - a bounded row/column window from a named matrix.
 
 It cannot read model source, call compute, run code, write D1, or mutate a report. Model Understanding is
-also source-isolated: it receives compact validated metadata, has a 300-word response contract and a bounded
-output budget, and streams its response while D1 caches it by model hash and prompt version. Chat messages and daily
-usage are persisted in D1, so an authenticated user can resume a report conversation on another device.
+also source-isolated: it receives compact validated metadata, has a 180-word response contract and a bounded
+output budget, and D1 caches it by model hash and prompt version. Both AI paths explicitly disable GLM's hidden
+reasoning mode because these grounded explanation/tool-selection tasks do not need a long reasoning trace. Model
+Understanding has a 15-second server deadline, zero automatic retries, and a 30-second single-flight lease;
+concurrent clients poll the one active generation. Only successful manual regenerations and successful report-chat
+answers enter the usage ledger. Chat messages and daily usage are persisted in D1, so an authenticated user can
+resume a report conversation on another device. Structured Worker logs record model ID, outcome, duration, and
+output size without recording model source, prompts, or numerical artifacts.
 
 ## Data ownership and retention
 

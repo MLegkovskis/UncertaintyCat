@@ -10,6 +10,8 @@ interface Message {
   content: string;
 }
 
+const REPORT_CHAT_CLIENT_TIMEOUT_MS = 50_000;
+
 export function ChatPanel({ reportId }: { reportId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -41,12 +43,18 @@ export function ChatPanel({ reportId }: { reportId: string }) {
       { role: "user", content: message },
       { role: "assistant", content: "" },
     ]);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      REPORT_CHAT_CLIENT_TIMEOUT_MS,
+    );
     try {
       const response = await fetch(`/api/v1/reports/${reportId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ message }),
+        signal: controller.signal,
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as {
@@ -64,9 +72,16 @@ export function ChatPanel({ reportId }: { reportId: string }) {
         ),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Chat failed.");
+      setError(
+        caught instanceof DOMException && caught.name === "AbortError"
+          ? "Workers AI did not answer within 50 seconds. Please retry; failed requests are not charged."
+          : caught instanceof Error
+            ? caught.message
+            : "Chat failed. Please retry; failed requests are not charged.",
+      );
       setMessages((current) => current.slice(0, -1));
     } finally {
+      window.clearTimeout(timeout);
       setSending(false);
     }
   }
