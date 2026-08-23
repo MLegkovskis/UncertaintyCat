@@ -70,7 +70,7 @@ export function SurrogateWorkbench({ model, projectId }: { model: ModelVersion; 
           <details className="surrogate-evidence" open><summary>Independent hold-out evidence</summary><ResultView result={current.validation.result} /></details>
           {!guidance.meetsDefault && <><label className="confirmation-check"><input type="checkbox" checked={acknowledge} onChange={(event) => setAcknowledge(event.target.checked)} /><span>I acknowledge the validation is below the default promotion guidance.</span></label><label><span>Recorded reason</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why this approximation is acceptable…" /></label></>}
           {current.status === "promoted" ? (
-            <div className="promoted-next-step"><CheckCircle2 /><div><strong>Surrogate promoted</strong><small>It can now be selected explicitly as the evidence source for a new analysis.</small></div><Link className="button secondary" to={`/new-analysis?sourceModel=${model.id}&surrogate=${current.id}`} >Analyse this surrogate <ArrowRight /></Link></div>
+            <div className="promoted-next-step"><CheckCircle2 /><div><strong>Surrogate promoted</strong><small>It can now be selected explicitly as the evidence source for a new analysis.</small></div><Link className="button secondary" to={`/studies/${projectId}/workspace?sourceModel=${model.id}&surrogate=${current.id}`} >Analyse this surrogate <ArrowRight /></Link></div>
           ) : <button className="button primary" onClick={() => promote.mutate()} disabled={promote.isPending || (!guidance.meetsDefault && (!acknowledge || reason.trim().length < 10))}>{promote.isPending ? "Serializing OpenTURNS XML…" : "Promote validated surrogate"}</button>}
         </div>
       )}

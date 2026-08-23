@@ -3,6 +3,7 @@ import { ArrowRight, Braces, FlaskConical, Plus } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api";
+import { ProjectNav } from "../components/ProjectNav";
 import { EmptyState, StatusBadge } from "../components/Status";
 
 export function StudyDetail() {
@@ -19,6 +20,7 @@ export function StudyDetail() {
       <nav className="breadcrumbs" aria-label="Breadcrumb">
         <Link to="/studies">Projects</Link><span>/</span><span>{project?.name ?? "Project"}</span>
       </nav>
+      <ProjectNav projectId={projectId} projectName={project?.name} />
       <div className="page-heading split">
         <div>
           <span className="section-kicker">Project</span>

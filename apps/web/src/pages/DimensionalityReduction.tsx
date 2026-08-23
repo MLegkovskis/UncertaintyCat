@@ -1,21 +1,24 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Play, ScanSearch } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api";
+import { ProjectNav } from "../components/ProjectNav";
 import { StudioModelPicker } from "../components/StudioModelPicker";
 
 export function DimensionalityReduction() {
   const navigate = useNavigate();
+  const { projectId = "" } = useParams();
   const [searchParams] = useSearchParams();
-  const [projectId, setProjectId] = useState(searchParams.get("projectId") ?? "");
   const [modelId, setModelId] = useState(searchParams.get("modelId") ?? "");
   const [trajectories, setTrajectories] = useState(10);
   const [levels, setLevels] = useState(6);
   const [error, setError] = useState<string>();
   const modelsQuery = useQuery({ queryKey: ["models", projectId], queryFn: () => api.listModels(projectId), enabled: Boolean(projectId) });
+  const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const model = modelsQuery.data?.modelVersions.find((item) => item.id === modelId);
+  const project = projectsQuery.data?.projects.find((item) => item.id === projectId);
   const run = useMutation({
     mutationFn: () => api.createRun({
       modelVersionId: modelId,
@@ -30,6 +33,7 @@ export function DimensionalityReduction() {
 
   return (
     <div className="page scientific-studio-page">
+      <ProjectNav projectId={projectId} projectName={project?.name} />
       <div className="page-heading split">
         <div>
           <span className="section-kicker">Dimensionality Reduction Studio</span>
@@ -39,7 +43,7 @@ export function DimensionalityReduction() {
         <a className="button secondary" href="https://openturns.github.io/otmorris/master/user_manual/_generated/otmorris.Morris.html" target="_blank" rel="noreferrer">OTMorris method <ArrowRight /></a>
       </div>
       <div className="scientific-method-note"><ScanSearch /><div><strong>When this route is recommended</strong><p>UncertaintyCat recommends screening first at 15 or more inputs. For 8–14 inputs it remains available as an optional exploration; the original model is never modified automatically.</p></div></div>
-      <StudioModelPicker projectId={projectId} modelId={modelId} onProjectChange={setProjectId} onModelChange={setModelId} returnTo="dimension-reduction" />
+      <StudioModelPicker projectId={projectId} modelId={modelId} onModelChange={setModelId} returnTo="dimension-reduction" />
       {model && (
         <section className="method-workbench">
           <div className="section-copy"><span className="section-kicker">Selected model</span><h2>{model.displayName}</h2><p>{model.metadata.input_dimension} inputs · projected {Math.round(model.assessment?.profile.projected_1000_evaluation_runtime_ms ?? 0).toLocaleString()} ms per 1,000 direct evaluations.</p></div>

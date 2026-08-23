@@ -19,6 +19,7 @@ from uncertaintycat_core.data_lab import (
     fit_distributions,
     inspect_dataset,
 )
+from uncertaintycat_core.data_surrogate import DataSurrogateRequest, fit_data_surrogate
 from uncertaintycat_core.errors import UncertaintyCatError
 from uncertaintycat_core.surrogate import (
     PromotedSurrogateExecutionRequest,
@@ -111,6 +112,11 @@ def inspect_data(request: DatasetContent) -> dict[str, Any]:
 @app.post("/v1/data/fit", dependencies=[Depends(require_internal_token)])
 def fit_data(request: DistributionFitRequest) -> dict[str, Any]:
     return {"fit": fit_distributions(request)}
+
+
+@app.post("/v1/data/surrogate", dependencies=[Depends(require_internal_token)])
+def fit_empirical_surrogate(request: DataSurrogateRequest) -> dict[str, Any]:
+    return {"surrogate": fit_data_surrogate(request)}
 
 
 @app.post("/v1/surrogates/serialize", dependencies=[Depends(require_internal_token)])

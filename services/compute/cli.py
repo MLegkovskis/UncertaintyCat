@@ -17,6 +17,7 @@ from uncertaintycat_core.data_lab import (
     fit_distributions,
     inspect_dataset,
 )
+from uncertaintycat_core.data_surrogate import DataSurrogateRequest, fit_data_surrogate
 from uncertaintycat_core.errors import UncertaintyCatError
 from uncertaintycat_core.surrogate import (
     PromotedSurrogateExecutionRequest,
@@ -76,6 +77,10 @@ def main() -> int:
         if operation == "fit-data":
             request = DistributionFitRequest.model_validate(_payload(path))
             _response(200, {"fit": fit_distributions(request)})
+            return 0
+        if operation == "fit-data-surrogate":
+            request = DataSurrogateRequest.model_validate(_payload(path))
+            _response(200, {"surrogate": fit_data_surrogate(request)})
             return 0
         if operation == "serialize-surrogate":
             surrogate_request = SurrogateSerializationRequest.model_validate(_payload(path))

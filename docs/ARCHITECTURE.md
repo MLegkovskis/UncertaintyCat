@@ -39,7 +39,7 @@ deliberately.
 
 ### `services/compute`
 
-FastAPI exposes only health, catalog, validation, and single-analysis execution. It accepts an optional
+FastAPI exposes health, catalog, validation, single-analysis execution, and data-driven surrogate fitting. It accepts an optional
 constant-time bearer-token check and converts domain errors to stable public error codes. The image runs
 as a non-root user and supports read-only filesystems, dropped capabilities, memory/CPU limits, and a
 private Docker network.
@@ -81,11 +81,14 @@ boundary as the Worker. Cloudflare authentication returns to the project dashboa
 editable Python are one authoring mode; the guided builder emits the same Python model contract using
 OpenTURNS `SymbolicFunction`.
 
-The application has four deliberately distinct scientific workspaces:
+Every scientific workspace is scoped beneath `/studies/:projectId`; global navigation exposes the project
+index rather than duplicating dashboard, project, and new-analysis destinations. Within a project, five
+deliberately distinct views share one contextual navigation surface:
 
+- project overview and retained results;
 - model authoring and direct analysis;
 - OTMorris dimensionality screening;
-- validated PCE/GPR surrogate construction; and
+- validated PCE/GPR surrogate construction from a model or Gaussian-process regression from paired data; and
 - empirical distribution fitting.
 
 The direct run composer is catalog-driven but filters Morris, PCE, and GPR because those capabilities need
@@ -93,13 +96,16 @@ their own scientific sequence and controls. A promoted surrogate is passed back 
 an explicit Surrogate Studio link, which preserves evidence-source provenance without presenting
 surrogation as an ordinary analysis checkbox.
 
-Model validation records a versioned workflow recommendation. The deterministic rule prioritizes Morris at
+Model validation records a versioned workflow recommendation. Its validation outcome, deterministic facts,
+Workers AI brief, and recommended route are rendered together so an assessment does not fragment across the
+authoring page. The deterministic rule prioritizes Morris at
 15 or more inputs, recommends an eligible surrogate above a measured five-second projection per 1,000
 evaluations, and otherwise recommends direct analysis. Workers AI explains validated metadata separately;
 it does not choose the route and does not receive Python source.
 
 Routes are split so the Python editor is loaded only in the model workspace. Reports are responsive HTML,
-lazy-load the plotting runtime, retain exact table/text fallbacks, and print cleanly to PDF; machine-readable evidence is a separate ZIP.
+lazy-load the plotting runtime, retain exact table/text fallbacks, and lazy-load `html2canvas`/`jsPDF` only
+when the user requests a direct PDF download; machine-readable evidence is a separate ZIP.
 
 ### `packages/contracts`
 
@@ -166,7 +172,8 @@ numerical artifacts.
 ## Data ownership and retention
 
 - D1 holds authenticated identities, projects, model assessment/lineage, dataset and surrogate indexes, task state, report references, chat/understanding text, quotas, and share-link hashes.
-- R2 holds immutable model source, private original datasets, and promoted OpenTURNS surrogate XML. Raw share tokens are never persisted.
+- R2 holds immutable model source, private original datasets, promoted model-based surrogate XML, and
+  retained data-driven Gaussian-process XML. Raw share tokens are never persisted.
 - A report bundle contains its manifest, complete JSON, and normalized CSV views so it remains useful
   outside UncertaintyCat.
 - Deletion and retention endpoints are not yet implemented; they are a production launch gate.

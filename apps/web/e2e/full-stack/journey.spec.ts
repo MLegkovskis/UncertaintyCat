@@ -19,10 +19,13 @@ test("retained-user journey persists a project, executes every plugin, and produ
     }),
   );
 
-  await page.goto("/workspace");
+  await page.goto("/studies");
+  await page.getByRole("button", { name: "Create first project" }).click();
   await page.getByLabel("Project name").fill(studyName);
   await page.getByRole("button", { name: /Create project/ }).click();
   await expect(page.getByRole("heading", { name: studyName })).toBeVisible();
+  const projectId = new URL(page.url()).pathname.split("/")[2]!;
+  await page.getByRole("link", { name: "New analysis in this project" }).click();
 
   // Exercise both authoring modes; execute the curated Ishigami Python model so
   // every direct analysis receives a stable, well-understood scalar test function.
@@ -34,8 +37,8 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await page.getByRole("button", { name: "Examples & Python model" }).click();
   await expect(page.getByRole("textbox", { name: "Python model source" })).toBeVisible();
   await page.getByRole("button", { name: "Validate & Assess" }).click();
-  await expect(page.getByText(/Validated as version 1/)).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/3 inputs · 1 outputs/)).toBeVisible();
+  await expect(page.getByText("Model validated", { exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(/3 inputs → 1 outputs/).first()).toBeVisible();
 
   const analysisOptions = page.locator(".analysis-option");
   await expect(analysisOptions).toHaveCount(9);
@@ -82,21 +85,28 @@ test("retained-user journey persists a project, executes every plugin, and produ
 
   // The three methods intentionally removed from the direct composer are
   // exercised through their dedicated scientific workspaces.
-  await page.goto("/dimension-reduction");
+  await page.goto(`/studies/${projectId}/dimension-reduction`);
   await expect(page.getByRole("heading", { name: "Screen inputs before expensive analysis." })).toBeVisible();
   await page.getByRole("button", { name: "Run Morris screening" }).click();
   await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 7 * 60_000 });
   await expect(page.locator(".task-row")).toHaveCount(1);
 
-  await page.goto("/surrogates");
-  await expect(page.getByRole("heading", { name: "Approximate an expensive model deliberately." })).toBeVisible();
+  await page.goto(`/studies/${projectId}/surrogates`);
+  await expect(page.getByRole("heading", { name: "Approximate a response deliberately." })).toBeVisible();
   await page.getByRole("button", { name: "Build GPR candidate" }).click();
   await expect(page.getByText("Hold-out R²")).toBeVisible({ timeout: 7 * 60_000 });
   await page.getByLabel("Method").selectOption("pce");
   await page.getByRole("button", { name: "Build PCE candidate" }).click();
   await expect(page.getByText("Hold-out Q²")).toBeVisible({ timeout: 7 * 60_000 });
 
-  await page.goto("/activity");
+  await page.getByRole("tab", { name: "From empirical data" }).click();
+  await expect(page.getByLabel("Example surrogate CSV")).toBeVisible();
+  await page.getByRole("button", { name: "Add example dataset" }).click();
+  await expect(page.getByRole("button", { name: "Build data-driven GPR" })).toBeVisible({ timeout: 120_000 });
+  await page.getByRole("button", { name: "Build data-driven GPR" }).click();
+  await expect(page.getByText("Data-driven GPR retained")).toBeVisible({ timeout: 7 * 60_000 });
+
+  await page.goto("/studies");
   await expect(page.getByText(studyName)).toBeVisible();
   await expect(page.locator(".project-row")).toHaveCount(1);
   await page.reload();

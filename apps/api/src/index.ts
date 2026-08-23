@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import {
   createModelVersionSchema,
+  createDataSurrogateSchema,
   createProjectSchema,
   createReducedModelSchema,
   createRunSchema,
@@ -12,6 +13,7 @@ import {
   REPORT_CHAT_AI_MODEL_ID,
   type AnalysisCatalogEntry,
   type Dataset,
+  type DataSurrogateModel,
   type DistributionFitInput,
   type DistributionFitResult,
   type DistributionFitRun,
@@ -44,7 +46,7 @@ import {
   runSequentialFallback,
 } from "./ai-config";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
-import { failRunTask, processRunTask, requeueRunTask } from "./compute";
+import { ComputeRequestError, failRunTask, processRunTask, requeueRunTask } from "./compute";
 import {
   loadModelDefinition,
   loadOwnedRun,
@@ -335,6 +337,49 @@ function distributionFitPayload(row: DistributionFitRow): DistributionFitRun {
     openturnsVersion: row.openturns_version,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+  };
+}
+
+interface DataSurrogateRow {
+  id: string;
+  project_id: string;
+  dataset_id: string;
+  method: "gpr";
+  plugin_version: string;
+  openturns_version: string;
+  input_columns_json: string;
+  output_column: string;
+  config_json: string;
+  validation_json: string;
+  artifact_json: string;
+  created_at: string;
+}
+
+function dataSurrogatePayload(row: DataSurrogateRow): DataSurrogateModel {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    datasetId: row.dataset_id,
+    method: row.method,
+    pluginVersion: row.plugin_version,
+    openturnsVersion: row.openturns_version,
+    inputColumns: parseJson<string[]>(row.input_columns_json, []),
+    outputColumn: row.output_column,
+    config: parseJson<DataSurrogateModel["config"]>(row.config_json, {
+      kernel: "MATERN_2_5",
+      trend: "CONSTANT",
+      seed: 42,
+      validationFraction: 0.2,
+    }),
+    validation: parseJson<DataSurrogateModel["validation"]>(
+      row.validation_json,
+      {} as DataSurrogateModel["validation"],
+    ),
+    artifact: parseJson<DataSurrogateModel["artifact"]>(
+      row.artifact_json,
+      {} as DataSurrogateModel["artifact"],
+    ),
+    createdAt: row.created_at,
   };
 }
 
@@ -729,6 +774,161 @@ app.post(
   },
 );
 
+app.get("/api/v1/projects/:projectId/data-surrogates", async (c) => {
+  const identity = authenticatedIdentity(c);
+  const projectId = c.req.param("projectId");
+  const project = await c.env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
+  )
+    .bind(projectId, identity.ownerId)
+    .first();
+  if (!project)
+    return jsonError(c, 404, "project_not_found", "Project not found.");
+  const rows = await c.env.DB.prepare(
+    `SELECT id, project_id, dataset_id, method, plugin_version,
+            openturns_version, input_columns_json, output_column, config_json,
+            validation_json, artifact_json, created_at
+     FROM data_surrogate_models
+     WHERE project_id = ? AND owner_id = ? ORDER BY created_at DESC`,
+  )
+    .bind(projectId, identity.ownerId)
+    .all<DataSurrogateRow>();
+  c.header("Cache-Control", "private, no-store");
+  return c.json({ surrogates: rows.results.map(dataSurrogatePayload) });
+});
+
+app.post(
+  "/api/v1/datasets/:datasetId/surrogates",
+  zValidator("json", createDataSurrogateSchema),
+  async (c) => {
+    const identity = authenticatedIdentity(c);
+    const dataset = await c.env.DB.prepare(
+      `SELECT id, project_id, source_kind, object_key FROM datasets
+       WHERE id = ? AND owner_id = ?`,
+    )
+      .bind(c.req.param("datasetId"), identity.ownerId)
+      .first<{
+        id: string;
+        project_id: string;
+        source_kind: Dataset["sourceKind"];
+        object_key: string;
+      }>();
+    if (!dataset)
+      return jsonError(c, 404, "dataset_not_found", "Dataset not found.");
+    const object = await c.env.ARTIFACTS.get(dataset.object_key);
+    if (!object)
+      return jsonError(
+        c,
+        500,
+        "dataset_artifact_missing",
+        "The immutable dataset artifact is missing.",
+      );
+    const input = c.req.valid("json");
+    const response = await computeFetch(c.env, "/v1/data/surrogate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content_base64: encodeBase64(await object.arrayBuffer()),
+        source_kind: dataset.source_kind,
+        input_columns: input.inputColumns,
+        output_column: input.outputColumn,
+        validation_fraction: input.validationFraction,
+        kernel: input.kernel,
+        trend: input.trend,
+        seed: input.seed,
+      }),
+    }).catch(() => null);
+    if (!response)
+      return jsonError(
+        c,
+        503,
+        "compute_unavailable",
+        "Data-driven surrogate fitting is unavailable.",
+      );
+    const body = (await response.json()) as {
+      surrogate?: Omit<DataSurrogateModel, "id" | "projectId" | "datasetId" | "createdAt"> & {
+        artifact: DataSurrogateModel["artifact"] & { xmlBase64: string };
+      };
+      error?: { code?: string; message?: string };
+    };
+    if (!response.ok || !body.surrogate)
+      return jsonError(
+        c,
+        422,
+        body.error?.code ?? "data_surrogate_failed",
+        body.error?.message ?? "The data-driven surrogate could not be fitted.",
+      );
+    let xml: Uint8Array<ArrayBuffer>;
+    try {
+      xml = decodeBase64(body.surrogate.artifact.xmlBase64);
+    } catch {
+      return jsonError(c, 500, "surrogate_artifact_invalid", "The fitted surrogate artifact is invalid.");
+    }
+    if (await sha256Bytes(xml) !== body.surrogate.artifact.sha256)
+      return jsonError(c, 500, "surrogate_artifact_checksum_mismatch", "The fitted surrogate checksum did not match.");
+    const id = crypto.randomUUID();
+    const timestamp = now();
+    const objectKey = `data-surrogates/${identity.ownerId}/${dataset.project_id}/${id}.xml`;
+    const artifact = {
+      sha256: body.surrogate.artifact.sha256,
+      sizeBytes: body.surrogate.artifact.sizeBytes,
+      resultType: body.surrogate.artifact.resultType,
+    };
+    await c.env.ARTIFACTS.put(objectKey, xml, {
+      httpMetadata: { contentType: "application/xml" },
+      customMetadata: { sha256: artifact.sha256, datasetId: dataset.id },
+    });
+    try {
+      await c.env.DB.prepare(
+        `INSERT INTO data_surrogate_models
+         (id, project_id, dataset_id, owner_id, method, plugin_version,
+          openturns_version, input_columns_json, output_column, config_json,
+          validation_json, object_key, artifact_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(
+          id,
+          dataset.project_id,
+          dataset.id,
+          identity.ownerId,
+          body.surrogate.method,
+          body.surrogate.pluginVersion,
+          body.surrogate.openturnsVersion,
+          JSON.stringify(body.surrogate.inputColumns),
+          body.surrogate.outputColumn,
+          JSON.stringify(body.surrogate.config),
+          JSON.stringify(body.surrogate.validation),
+          objectKey,
+          JSON.stringify(artifact),
+          timestamp,
+        )
+        .run();
+    } catch (error) {
+      await c.env.ARTIFACTS.delete(objectKey);
+      throw error;
+    }
+    return c.json(
+      {
+        surrogate: {
+          id,
+          projectId: dataset.project_id,
+          datasetId: dataset.id,
+          method: body.surrogate.method,
+          pluginVersion: body.surrogate.pluginVersion,
+          openturnsVersion: body.surrogate.openturnsVersion,
+          inputColumns: body.surrogate.inputColumns,
+          outputColumn: body.surrogate.outputColumn,
+          config: body.surrogate.config,
+          validation: body.surrogate.validation,
+          artifact,
+          createdAt: timestamp,
+        } satisfies DataSurrogateModel,
+      },
+      201,
+    );
+  },
+);
+
 app.get("/api/v1/projects/:projectId/models", async (c) => {
   const identity = authenticatedIdentity(c);
   const ownership = await c.env.DB.prepare(
@@ -1029,12 +1229,12 @@ app.post(
       plugin_version?: string;
       payload?: { tables?: { effects?: { rows?: unknown[][] } } };
     }>(morris.result_json, {});
-    if (result.plugin_version !== "2.0.0" || !result.payload?.tables?.effects)
+    if (!new Set(["2.0.0", "2.1.0"]).has(result.plugin_version ?? "") || !result.payload?.tables?.effects)
       return jsonError(
         c,
         422,
         "incompatible_morris_evidence",
-        "The reduction requires OTMorris plugin evidence version 2.0.0.",
+        "The reduction requires compatible OTMorris plugin evidence.",
       );
     const dimension = definition.modelVersion.metadata.input_dimension;
     const fixed = [...input.fixedVariables].sort((left, right) => left.index - right.index);
@@ -2602,9 +2802,10 @@ export default {
           JSON.stringify({ taskId: message.body.taskId, error: String(error) }),
         );
         if (message.attempts >= 3) {
+          const computeError = error instanceof ComputeRequestError ? error : null;
           await failRunTask(env, message.body.taskId, {
-            code: "compute_retries_exhausted",
-            message:
+            code: computeError?.code ?? "compute_retries_exhausted",
+            message: computeError?.message ??
               "The compute service remained unavailable after the retry budget was exhausted.",
           });
           message.ack();

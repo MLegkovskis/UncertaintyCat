@@ -49,15 +49,18 @@ export function App() {
       >
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/new-analysis" element={privatePage(<Workspace />)} />
-          <Route path="/workspace" element={privatePage(<Navigate to="/new-analysis" replace />)} />
+          <Route path="/new-analysis" element={privatePage(<Navigate to="/studies" replace />)} />
+          <Route path="/workspace" element={privatePage(<Navigate to="/studies" replace />)} />
           <Route path="/studies" element={privatePage(<Studies />)} />
           <Route path="/studies/:projectId" element={privatePage(<StudyDetail />)} />
           <Route path="/studies/:projectId/workspace" element={privatePage(<Workspace />)} />
+          <Route path="/studies/:projectId/dimension-reduction" element={privatePage(<DimensionalityReduction />)} />
+          <Route path="/studies/:projectId/surrogates" element={privatePage(<SurrogateStudio />)} />
+          <Route path="/studies/:projectId/data-lab" element={privatePage(<DataLab />)} />
           <Route path="/activity" element={privatePage(<Navigate to="/studies" replace />)} />
-          <Route path="/dimension-reduction" element={privatePage(<DimensionalityReduction />)} />
-          <Route path="/surrogates" element={privatePage(<SurrogateStudio />)} />
-          <Route path="/data-lab" element={privatePage(<DataLab />)} />
+          <Route path="/dimension-reduction" element={privatePage(<Navigate to="/studies" replace />)} />
+          <Route path="/surrogates" element={privatePage(<Navigate to="/studies" replace />)} />
+          <Route path="/data-lab" element={privatePage(<Navigate to="/studies" replace />)} />
           <Route path="/runs/:runId" element={privatePage(<RunPage />)} />
           <Route path="/reports/:reportId" element={privatePage(<ReportPage />)} />
           <Route path="/shared/:token" element={privatePage(<ReportPage shared />)} />

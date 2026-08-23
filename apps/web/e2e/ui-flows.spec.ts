@@ -19,11 +19,11 @@ test.describe("application shell and identity", () => {
     );
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { name: /Turn uncertain inputs/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Understand what uncertainty does/ })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
     await expect(page.getByRole("link", { name: "New analysis", exact: true })).toHaveCount(0);
-    await expect(page.getByText("Ishigami", { exact: true })).toBeVisible();
-    await page.goto("/new-analysis");
+    await expect(page.getByRole("heading", { name: "Sensitivity analysis" })).toBeVisible();
+    await page.goto("/studies/project-1/workspace");
     await expect(page.getByRole("heading", { name: "Sign in before starting an analysis." })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue with Cloudflare" })).toBeVisible();
     await page.goto("/");
@@ -46,6 +46,17 @@ test.describe("application shell and identity", () => {
   test("a retained user sees account details and can sign out", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     let signedOut = false;
+    await page.route("**/api/v1/session", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          identity: signedOut
+            ? { ownerId: "", authenticated: false }
+            : { ownerId: "user-1", authenticated: true, name: "Mark Legkovskis", email: "mlegkovskis@gmail.com" },
+          providers: ["cloudflare"],
+        }),
+      }),
+    );
     await page.route("**/api/auth/sign-out", async (route) => {
       signedOut = true;
       await route.fulfill({ contentType: "application/json", body: JSON.stringify({ success: true }) });
@@ -62,12 +73,15 @@ test.describe("application shell and identity", () => {
     await accountButton.click();
     await page.getByRole("menuitem", { name: "Sign out" }).click();
     await expect.poll(() => signedOut).toBe(true);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("button", { name: /Not signed in/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Projects" })).toHaveCount(0);
   });
 
   test("blank profile names fall back to email initials and theme choice persists", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
-    await page.route("**/api/auth/get-session", (route) =>
-      route.fulfill({ contentType: "application/json", body: JSON.stringify({ session: { id: "session-blank", expiresAt: "2099-01-01T00:00:00Z" }, user: { id: "user-1", name: "   ", email: "m.legkovskis@gmail.com" } }) }),
+    await page.route("**/api/v1/session", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify({ identity: { ownerId: "user-1", authenticated: true, name: "   ", email: "m.legkovskis@gmail.com" }, providers: ["cloudflare"] }) }),
     );
     await page.goto("/");
     await expect(page.locator(".avatar")).toHaveText("ML");
@@ -83,7 +97,7 @@ test.describe("application shell and identity", () => {
 test.describe("model studio", () => {
   test("unifies all 23 examples with an editable Python model", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
-    await page.goto("/new-analysis");
+    await page.goto("/studies/project-1/workspace");
     await expect(page.locator(".example-card")).toHaveCount(23);
     await expect(page.getByLabel("Model name")).toHaveValue("");
     await expect(page.getByRole("textbox", { name: "Python model source" })).toBeVisible();
@@ -99,11 +113,11 @@ test.describe("model studio", () => {
     await expect(page.getByLabel("Model name")).toHaveValue("My adapted rocket");
   });
 
-  test("creates a new project from the workspace project selector", async ({ page }) => {
+  test("creates a new project from the projects page", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
-    await page.goto("/new-analysis");
-    await page.getByLabel("Project").selectOption("__create__");
-    await page.getByLabel("New project name").fill("Fresh engineering project");
+    await page.goto("/studies");
+    await page.getByRole("button", { name: "New project" }).click();
+    await page.getByLabel("Project name").fill("Fresh engineering project");
     await page.getByRole("button", { name: "Create project", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Fresh engineering project" })).toBeVisible();
   });
@@ -111,7 +125,7 @@ test.describe("model studio", () => {
   test("keeps the validated understanding header inside its panel", async ({ page }, testInfo) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     await page.setViewportSize({ width: 1920, height: 1200 });
-    await page.goto("/new-analysis");
+    await page.goto("/studies/project-1/workspace");
     await page.getByLabel("Search reference models").fill("Ishigami");
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
@@ -173,7 +187,7 @@ test.describe("model studio", () => {
         });
       },
     });
-    await page.goto("/new-analysis");
+    await page.goto("/studies/project-1/workspace");
     await page.getByLabel("Search reference models").fill("Ishigami");
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
@@ -211,7 +225,7 @@ test.describe("model studio", () => {
         });
       },
     });
-    await page.goto("/new-analysis");
+    await page.goto("/studies/project-1/workspace");
     await page.getByLabel("Search reference models").fill("Ishigami");
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
@@ -232,11 +246,12 @@ test.describe("model studio", () => {
       }
     });
 
-    await page.goto("/workspace");
-    await expect(page.getByRole("heading", { name: "Start with a durable project." })).toBeVisible();
+    await page.goto("/studies");
+    await page.getByRole("button", { name: "Create first project" }).click();
     await page.getByLabel("Project name").fill("Complete browser study");
-    await page.getByRole("button", { name: /Create project/ }).click();
+    await page.getByRole("button", { name: "Create project", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Complete browser study" })).toBeVisible();
+    await page.getByRole("link", { name: /New analysis in this project/ }).click();
 
     await expect(page.getByRole("button", { name: /Run analyses/ })).toBeDisabled();
     await page.getByLabel("Model name").fill("Guided browser model");
@@ -245,7 +260,7 @@ test.describe("model studio", () => {
     await page.getByLabel("Variable 3 name").fill("pressure");
     await page.getByLabel("Output 1 formula").fill("x1 + x2^2 + pressure");
     await page.getByRole("button", { name: "Validate & Assess" }).click();
-    await expect(page.getByText("Validated as version 1")).toBeVisible();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
 
     const checkboxes = page.locator(".analysis-option input[type=checkbox]");
     const directCatalog = catalog.filter((item) => !["morris", "pce", "gpr"].includes(item.key));
@@ -285,7 +300,7 @@ test.describe("model studio", () => {
     await page.route("**/api/v1/projects/*/models", (route) =>
       route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ error: { code: "invalid_model", message: "Model must define model and distribution." } }) }),
     );
-    await page.goto("/workspace");
+    await page.goto("/studies/project-1/workspace");
     await page.getByLabel("Search reference models").fill("Ishigami");
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
@@ -300,7 +315,7 @@ test.describe("model studio", () => {
     page.on("request", (request) => {
       if (request.url().endsWith("/api/v1/runs") && request.method() === "POST") runBody = request.postDataJSON() as Record<string, unknown>;
     });
-    await page.goto("/surrogates");
+    await page.goto("/studies/project-1/surrogates");
     await page.getByRole("button", { name: "Build GPR candidate" }).click();
     await expect(page.getByText("Meets default")).toBeVisible();
     await page.getByRole("button", { name: "Promote validated surrogate" }).click();
@@ -310,13 +325,26 @@ test.describe("model studio", () => {
     await expect.poll(() => runBody?.surrogateModelId).toBe("surrogate-1");
   });
 
+  test("builds and validates a Gaussian-process surrogate from empirical data", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.goto("/studies/project-1/surrogates");
+    await page.getByRole("tab", { name: "From empirical data" }).click();
+    await expect(page.getByRole("heading", { name: "Choose a dataset with input and output columns." })).toBeVisible();
+    await expect(page.getByLabel("Output column")).toHaveValue("pressure");
+    await expect(page.getByRole("group").getByText("temperature", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Build data-driven GPR" }).click();
+    await expect(page.getByText("Data-driven GPR retained")).toBeVisible();
+    await expect(page.getByText("0.98200")).toBeVisible();
+    await expect(page.locator(".data-surrogate-evidence .echart canvas")).toHaveCount(1);
+  });
+
   test("runs dimensionality screening from the dedicated studio", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     let runBody: Record<string, unknown> | undefined;
     page.on("request", (request) => {
       if (request.url().endsWith("/api/v1/runs") && request.method() === "POST") runBody = request.postDataJSON() as Record<string, unknown>;
     });
-    await page.goto("/dimension-reduction");
+    await page.goto("/studies/project-1/dimension-reduction");
     await page.getByRole("button", { name: "Run Morris screening" }).click();
     await expect(page).toHaveURL(/\/runs\/run-1$/);
     expect((runBody?.analyses as Array<{ analysisKey: string }>)[0]?.analysisKey).toBe("morris");
@@ -350,9 +378,6 @@ test.describe("run lifecycle", () => {
 test.describe("reports and grounded chat", () => {
   test("renders every evidence type and operates export, share, print, and streaming chat", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project], runs: [makeRun()], report: makeReport() });
-    await page.addInitScript(() => {
-      window.print = () => document.documentElement.setAttribute("data-print-called", "true");
-    });
     await page.goto("/reports/report-1");
 
     await expect(page.getByRole("heading", { name: "Verification report" })).toBeVisible();
@@ -374,8 +399,10 @@ test.describe("reports and grounded chat", () => {
     await expect(page.getByRole("checkbox", { name: "Include model definition" })).not.toBeChecked();
     await page.getByRole("button", { name: "Create share link" }).click();
     await expect(page.getByText(/Share link copied:/)).toBeVisible();
-    await page.getByRole("button", { name: "PDF" }).click();
-    await expect(page.locator("html")).toHaveAttribute("data-print-called", "true");
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download PDF" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/-report\.pdf$/);
 
     await page.getByRole("button", { name: "Which input has the greatest influence?" }).click();
     await expect(page.getByLabel("Question about report")).toHaveValue(/greatest influence/);
@@ -391,7 +418,7 @@ test.describe("reports and grounded chat", () => {
     await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Data bundle" })).toHaveCount(0);
     await expect(page.getByText("Ask this report")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "PDF" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
   });
 
   test("chat failures are explicit and preserve the user's question", async ({ page }) => {
@@ -422,7 +449,7 @@ test.describe("reports and grounded chat", () => {
 test.describe("distribution data lab", () => {
   test("uploads retained data, ranks marginals, and generates an explicit problem draft", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
-    await page.goto("/data-lab?projectId=project-1");
+    await page.goto("/studies/project-1/data-lab");
     await expect(page.getByText("Or paste comma-separated data").locator("..").getByRole("textbox")).toHaveValue(/^E,F,L,I/);
     await expect(page.getByRole("button", { name: /Fixture observations\.csv/ })).toBeVisible();
     await expect(page.getByRole("table").first()).toContainText("temperature");
@@ -453,7 +480,8 @@ test.describe("dimensionality screening", () => {
     await page.getByLabel("Fixed value for x3").fill("0.25");
     await page.getByText(/I confirm these explicit fixed values/).click();
     await page.getByRole("button", { name: "Create derived version" }).click();
-    await expect(page).toHaveURL(/sourceModel=model-reduced/);
+    await expect(page.getByText("Reduced model created")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Analyse reduced model" })).toHaveAttribute("href", "/studies/project-1/workspace?sourceModel=model-reduced");
   });
 });
 

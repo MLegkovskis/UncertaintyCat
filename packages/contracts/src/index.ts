@@ -106,6 +106,15 @@ export const createSurrogateSchema = z.object({
   seed: z.number().int().nonnegative().max(2_147_483_647).default(42),
 });
 
+export const createDataSurrogateSchema = z.object({
+  inputColumns: z.array(z.string().min(1)).min(1).max(40),
+  outputColumn: z.string().min(1).max(200),
+  validationFraction: z.number().min(0.1).max(0.5).default(0.2),
+  kernel: z.enum(["MATERN_1_5", "MATERN_2_5", "SQUARED_EXPONENTIAL"]).default("MATERN_2_5"),
+  trend: z.enum(["CONSTANT", "LINEAR"]).default("CONSTANT"),
+  seed: z.number().int().nonnegative().max(2_147_483_647).default(42),
+});
+
 export const promoteSurrogateSchema = z.object({
   acknowledgeOverride: z.boolean().default(false),
   reason: z.string().trim().max(1_000).default(""),
@@ -119,6 +128,7 @@ export type UploadDataset = z.infer<typeof uploadDatasetSchema>;
 export type DistributionFitInput = z.infer<typeof distributionFitSchema>;
 export type CreateReducedModel = z.infer<typeof createReducedModelSchema>;
 export type CreateSurrogate = z.infer<typeof createSurrogateSchema>;
+export type CreateDataSurrogate = z.infer<typeof createDataSurrogateSchema>;
 export type PromoteSurrogate = z.infer<typeof promoteSurrogateSchema>;
 
 export interface VariableMetadata {
@@ -416,6 +426,35 @@ export interface SurrogateModel {
   promotedAt?: string | null;
 }
 
+export interface DataSurrogateModel {
+  id: string;
+  projectId: string;
+  datasetId: string;
+  method: "gpr";
+  pluginVersion: string;
+  openturnsVersion: string;
+  inputColumns: string[];
+  outputColumn: string;
+  config: {
+    kernel: "MATERN_1_5" | "MATERN_2_5" | "SQUARED_EXPONENTIAL";
+    trend: "CONSTANT" | "LINEAR";
+    seed: number;
+    validationFraction: number;
+  };
+  validation: {
+    trainingSize: number;
+    validationSize: number;
+    r2: number;
+    rmse: number;
+    normalizedRmse: number;
+    meetsDefault: boolean;
+    observed: number[];
+    predicted: number[];
+  };
+  artifact: { sha256: string; sizeBytes: number; resultType: string };
+  createdAt: string;
+}
+
 export interface AnalysisTask {
   id: string;
   analysisKey: string;
@@ -549,6 +588,13 @@ export class ApiClient {
     this.request<{ surrogates: SurrogateModel[] }>(`/projects/${projectId}/surrogates`);
   createSurrogate = (modelVersionId: string, input: CreateSurrogate) =>
     this.request<{ surrogate: SurrogateModel }>(`/model-versions/${modelVersionId}/surrogates`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  listDataSurrogates = (projectId: string) =>
+    this.request<{ surrogates: DataSurrogateModel[] }>(`/projects/${projectId}/data-surrogates`);
+  createDataSurrogate = (datasetId: string, input: CreateDataSurrogate) =>
+    this.request<{ surrogate: DataSurrogateModel }>(`/datasets/${datasetId}/surrogates`, {
       method: "POST",
       body: JSON.stringify(input),
     });

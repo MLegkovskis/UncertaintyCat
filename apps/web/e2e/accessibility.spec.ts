@@ -4,13 +4,13 @@ import { expect, test } from "@playwright/test";
 import { installMockApi, makeReport, makeRun, project } from "./fixtures";
 
 const routes = [
-  ["dashboard", "/"],
-  ["new analysis", "/new-analysis"],
+  ["projects home", "/"],
   ["studies", "/studies"],
   ["study detail", "/studies/project-1"],
-  ["dimension reduction", "/dimension-reduction"],
-  ["surrogate studio", "/surrogates"],
-  ["distribution fitting", "/data-lab"],
+  ["model and analyses", "/studies/project-1/workspace"],
+  ["dimension reduction", "/studies/project-1/dimension-reduction"],
+  ["surrogate studio", "/studies/project-1/surrogates"],
+  ["distribution fitting", "/studies/project-1/data-lab"],
   ["run", "/runs/run-1"],
   ["report", "/reports/report-1"],
   ["shared report", "/shared/share-token"],
@@ -74,7 +74,7 @@ for (const theme of ["light", "dark"] as const) {
 
 test("guided builder and expanded account controls remain accessible", async ({ page }) => {
   await installMockApi(page, { authenticated: true, projects: [project] });
-  await page.goto("/workspace");
+  await page.goto("/studies/project-1/workspace");
   await page.getByRole("button", { name: "Guided builder" }).click();
   await page.getByRole("button", { name: "Add variable" }).click();
   await page.getByRole("button", { name: /Mark Legkovskis/ }).click();
@@ -84,7 +84,10 @@ test("guided builder and expanded account controls remain accessible", async ({ 
   expect(
     results.violations
       .filter((item) => item.impact === "serious" || item.impact === "critical")
-      .map((item) => item.id),
+      .map((item) => ({
+        id: item.id,
+        nodes: item.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })),
+      })),
   ).toEqual([]);
 });
 
@@ -99,6 +102,12 @@ test("mobile navigation has no serious accessibility violations", async ({ page 
   expect(
     results.violations
       .filter((item) => item.impact === "serious" || item.impact === "critical")
-      .map((item) => item.id),
+      .map((item) => ({
+        id: item.id,
+        nodes: item.nodes.map((node) => ({
+          target: node.target.join(" "),
+          failure: node.failureSummary,
+        })),
+      })),
   ).toEqual([]);
 });

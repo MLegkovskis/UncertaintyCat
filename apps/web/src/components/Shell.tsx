@@ -2,27 +2,25 @@ import {
   BookOpen,
   Cat,
   Cloud,
-  Database,
   FolderKanban,
   GitBranch,
   LogOut,
   Menu,
   Moon,
-  PlusCircle,
-  ScanSearch,
   Sun,
   User,
-  Waves,
   X,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useEffect,
   useRef,
   useState,
   type PropsWithChildren,
 } from "react";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
+import { api } from "../api";
 import { authClient } from "../auth-client";
 import { useTheme } from "./Theme";
 
@@ -63,29 +61,17 @@ export function formatIdentity(claims?: IdentityClaims | null) {
 export function Shell({ children }: PropsWithChildren) {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [providers, setProviders] = useState<Array<"cloudflare">>([]);
-  const [identity, setIdentity] = useState<IdentityClaims | null>(null);
-  const [policyLoading, setPolicyLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
   const accountMenu = useRef<HTMLDivElement>(null);
   const accountButton = useRef<HTMLButtonElement>(null);
-  const session = authClient.useSession();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const session = useQuery({
+    queryKey: ["session-policy"],
+    queryFn: api.session,
+  });
   const { theme, setTheme } = useTheme();
-  useEffect(() => {
-    void fetch("/api/v1/session", { credentials: "include" })
-      .then(
-        (response) =>
-          response.json() as Promise<{
-            identity?: IdentityClaims;
-            providers?: Array<"cloudflare">;
-          }>,
-      )
-      .then((body) => {
-        setProviders(body.providers ?? []);
-        setIdentity(body.identity ?? null);
-      })
-      .catch(() => undefined)
-      .finally(() => setPolicyLoading(false));
-  }, []);
   useEffect(() => {
     if (!accountOpen) return;
     const dismiss = (event: KeyboardEvent | PointerEvent) => {
@@ -109,25 +95,49 @@ export function Shell({ children }: PropsWithChildren) {
     };
   }, [accountOpen]);
 
-  const sessionUser = session.data?.user;
-  const claims: IdentityClaims = sessionUser
-    ? {
-        authenticated: true,
-        name: sessionUser.name,
-        email: sessionUser.email,
-      }
-    : (identity ?? { authenticated: false });
+  const claims: IdentityClaims = signingOut
+    ? { authenticated: false }
+    : (session.data?.identity ?? { authenticated: false });
   const formatted = formatIdentity(claims);
   const signedIn = claims.authenticated;
-  const sessionLoading = session.isPending || policyLoading;
+  const sessionLoading = session.isPending;
+  const providers = session.data?.providers ?? [];
+  const context = !signedIn
+    ? ["Uncertainty quantification", "OpenTURNS, made interactive"]
+    : location.pathname === "/studies"
+      ? ["Projects", "Models, studies, and retained results"]
+      : location.pathname.startsWith("/studies/")
+        ? ["Project workspace", "Model, methods, and numerical evidence"]
+        : ["Scientific report", "Reproducible numerical evidence"];
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    setAccountOpen(false);
+    try {
+      await authClient.signOut();
+      queryClient.setQueryData(["session-policy"], {
+        identity: { ownerId: "anonymous", authenticated: false },
+        providers,
+      });
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== "session-policy",
+      });
+      navigate("/", { replace: true });
+      await queryClient.invalidateQueries({ queryKey: ["session-policy"] });
+    } finally {
+      setSigningOut(false);
+    }
+  };
   return (
     <div className="app-shell">
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
-        <div className="brand">
-          <span className="brand-mark">
-            <Cat size={22} />
-          </span>
-          <span>UncertaintyCat</span>
+        <div className="brand-row">
+          <Link className="brand" to="/" onClick={() => setOpen(false)} aria-label="UncertaintyCat home">
+            <span className="brand-mark">
+              <Cat size={22} />
+            </span>
+            <span>UncertaintyCat</span>
+          </Link>
           <button
             className="icon-button mobile-close"
             onClick={() => setOpen(false)}
@@ -137,27 +147,14 @@ export function Shell({ children }: PropsWithChildren) {
           </button>
         </div>
         <nav aria-label="Primary navigation">
-          <NavLink to="/" end>
-            <BookOpen size={18} /> {signedIn ? "Dashboard" : "Overview"}
-          </NavLink>
-          {signedIn && (
-            <>
-              <NavLink to="/new-analysis">
-                <PlusCircle size={18} /> New analysis
-              </NavLink>
-              <NavLink to="/studies">
-                <FolderKanban size={18} /> Projects
-              </NavLink>
-              <NavLink to="/dimension-reduction">
-                <ScanSearch size={18} /> Dimension reduction
-              </NavLink>
-              <NavLink to="/surrogates">
-                <Waves size={18} /> Surrogate Studio
-              </NavLink>
-              <NavLink to="/data-lab">
-                <Database size={18} /> Distribution fitting
-              </NavLink>
-            </>
+          {signedIn ? (
+            <NavLink to="/studies">
+              <FolderKanban size={18} /> Projects
+            </NavLink>
+          ) : (
+            <NavLink to="/" end>
+              <BookOpen size={18} /> Overview
+            </NavLink>
           )}
         </nav>
         <div className="sidebar-footer">
@@ -187,8 +184,8 @@ export function Shell({ children }: PropsWithChildren) {
             <Menu />
           </button>
           <div className="topbar-context">
-            <strong>Scientific workspace</strong>
-            <span>Reproducible · inspectable · exportable</span>
+            <strong>{context[0]}</strong>
+            <span>{context[1]}</span>
           </div>
           <button
             className="icon-button theme-toggle"
@@ -229,8 +226,8 @@ export function Shell({ children }: PropsWithChildren) {
                     {claims.name?.trim() && claims.email?.trim() && (
                       <small>{claims.email.trim()}</small>
                     )}
-                    <button role="menuitem" onClick={() => authClient.signOut()}>
-                      <LogOut /> Sign out
+                    <button role="menuitem" onClick={() => void handleSignOut()} disabled={signingOut}>
+                      <LogOut /> {signingOut ? "Signing out…" : "Sign out"}
                     </button>
                   </>
                 ) : (

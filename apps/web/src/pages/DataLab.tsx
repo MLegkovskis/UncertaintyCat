@@ -14,9 +14,10 @@ import {
   Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
+import { ProjectNav } from "../components/ProjectNav";
 import { EmptyState } from "../components/Status";
 import { EChart } from "../components/EChart";
 
@@ -215,12 +216,12 @@ function FitEvidence({
 export function DataLab() {
   const client = useQueryClient();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { projectId = "" } = useParams();
   const fileRef = useRef<HTMLInputElement>(null);
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const projects = projectsQuery.data?.projects ?? [];
-  const [projectId, setProjectId] = useState(searchParams.get("projectId") ?? "");
-  const activeProjectId = projectId || projects[0]?.id || "";
+  const project = projects.find((item) => item.id === projectId);
+  const activeProjectId = projectId;
   const datasetsQuery = useQuery({
     queryKey: ["datasets", activeProjectId],
     queryFn: () => api.listDatasets(activeProjectId),
@@ -239,10 +240,6 @@ export function DataLab() {
   const [fitRun, setFitRun] = useState<DistributionFitRun>();
   const [error, setError] = useState<string>();
 
-  useEffect(() => {
-    if (projectId || !projects[0]) return;
-    setProjectId(projects[0].id);
-  }, [projectId, projects]);
   useEffect(() => {
     if (!dataset) return;
     setDatasetId(dataset.id);
@@ -290,28 +287,18 @@ export function DataLab() {
 
   return (
     <div className="page data-lab-page">
+      <ProjectNav projectId={projectId} projectName={project?.name} />
       <div className="page-heading split">
         <div>
           <span className="section-kicker">Distribution Fitting</span>
           <h1>Fit uncertainty from empirical data.</h1>
           <p>Validate private observations, compare OpenTURNS fits, then explicitly compose a problem definition.</p>
         </div>
-        <label className="project-select">
-          <span>Project</span>
-          <select value={activeProjectId} onChange={(event) => {
-            const next = event.target.value;
-            setProjectId(next);
-            setSearchParams({ projectId: next });
-            setDatasetId("");
-          }}>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-          </select>
-        </label>
       </div>
       {!projects.length && !projectsQuery.isLoading ? (
         <div className="empty-state">
           <EmptyState title="Create a project first" body="Data provenance is always scoped to an owned project." />
-          <Link to="/new-analysis" className="button primary">Create project</Link>
+          <Link to="/studies" className="button primary">Create project</Link>
         </div>
       ) : (
         <div className="data-lab-layout">
@@ -379,7 +366,7 @@ export function DataLab() {
                         <pre><code>{fitRun.result.generatedSource}</code></pre>
                         <button className="button secondary" onClick={() => {
                           window.sessionStorage.setItem("uncertaintycat-data-lab-draft", JSON.stringify({ fitRunId: fitRun.id, datasetId: dataset.id, source: `${fitRun.result?.generatedSource ?? ""}\n# Define an OpenTURNS Function named model before validation.\n`, builderSpec: fitRun.result?.builderSpec }));
-                          navigate(`/studies/${activeProjectId}/workspace?dataFit=${fitRun.id}`);
+                        navigate(`/studies/${activeProjectId}/workspace?dataFit=${fitRun.id}`);
                         }}>Prepare model draft</button>
                       </div>
                     )}

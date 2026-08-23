@@ -19,6 +19,8 @@
     "@uncertaintycat/contracts": "0.2.0",
     "better-auth": "^1.7.1",
     "echarts": "^6.1.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "katex": "^0.18.4",
     "lucide-react": "^1.33.0",
     "react": "^19.1.0",

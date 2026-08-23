@@ -8,6 +8,7 @@ type ComputeOperation =
   | "execute"
   | "inspect-data"
   | "fit-data"
+  | "fit-data-surrogate"
   | "serialize-surrogate"
   | "execute-surrogate";
 
@@ -22,6 +23,7 @@ function operationFor(path: string): ComputeOperation {
   if (path.endsWith("/execute")) return "execute";
   if (path.endsWith("/data/inspect")) return "inspect-data";
   if (path.endsWith("/data/fit")) return "fit-data";
+  if (path.endsWith("/data/surrogate")) return "fit-data-surrogate";
   if (path.endsWith("/surrogates/serialize")) return "serialize-surrogate";
   if (path.endsWith("/surrogates/execute")) return "execute-surrogate";
   throw new Error(`Unsupported compute path: ${path}`);

@@ -37,7 +37,7 @@ function encodeBase64(value: ArrayBuffer): string {
   return btoa(chunks.join(""));
 }
 
-class ComputeRequestError extends Error {
+export class ComputeRequestError extends Error {
   constructor(
     public readonly retryable: boolean,
     public readonly code: string,

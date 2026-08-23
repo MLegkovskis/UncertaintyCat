@@ -21,9 +21,12 @@ class MonteCarloConfig(StrictModel):
 class MonteCarloPlugin(AnalysisPlugin[MonteCarloConfig]):
     key = "monte_carlo"
     version = "2.0.0"
-    name = "Monte Carlo"
+    name = "Uncertainty Propagation"
     category = "Propagation"
-    description = "Propagate the input distribution through the model and summarize outputs."
+    description = (
+        "Use a Monte Carlo sampling design to propagate input uncertainty and "
+        "summarize the resulting output distributions."
+    )
     config_model = MonteCarloConfig
 
     def run(self, runtime: ModelRuntime, config: MonteCarloConfig) -> tuple[AnalysisPayload, int]:
@@ -33,7 +36,10 @@ class MonteCarloPlugin(AnalysisPlugin[MonteCarloConfig]):
         inputs, outputs = runtime.sample_and_evaluate(config.sample_size, config.seed)
         names = [runtime.metadata.outputs[target].name for target in targets]
         rows: list[list[float | str]] = []
-        metrics: dict[str, float | int | str | bool | None] = {"sample_size": config.sample_size}
+        metrics: dict[str, float | int | str | bool | None] = {
+            "sample_size": config.sample_size,
+            "sampling_design": "Monte Carlo",
+        }
         series: dict[str, SeriesData] = {}
         facts: dict[str, float | int | str | bool | None] = {}
         for name, target in zip(names, targets, strict=True):
@@ -103,6 +109,8 @@ class MonteCarloPlugin(AnalysisPlugin[MonteCarloConfig]):
                 truncated=inline_rows < config.sample_size,
             ),
         }
+        facts["purpose"] = "Output-distribution uncertainty propagation"
+        facts["sampling_design"] = "Monte Carlo"
         return AnalysisPayload(
             metrics=metrics, tables=tables, series=series, facts=facts
         ), config.sample_size

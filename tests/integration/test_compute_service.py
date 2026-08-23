@@ -88,6 +88,30 @@ def test_data_lab_and_promoted_surrogate_http_contracts() -> None:
     assert fitted.status_code == 200
     assert fitted.json()["fit"]["copula"]["className"] == "NormalCopula"
 
+    surrogate_rows = ["x1,x2,response"]
+    for index in range(40):
+        x1 = -2.0 + 4.0 * index / 39.0
+        x2 = ((index * 7) % 17) / 4.0 - 2.0
+        surrogate_rows.append(f"{x1},{x2},{x1 * x1 + 0.3 * x2}")
+    surrogate_content = base64.b64encode("\n".join(surrogate_rows).encode()).decode()
+    data_surrogate = client.post(
+        "/v1/data/surrogate",
+        json={
+            "content_base64": surrogate_content,
+            "source_kind": "paste",
+            "input_columns": ["x1", "x2"],
+            "output_column": "response",
+            "validation_fraction": 0.2,
+            "kernel": "MATERN_2_5",
+            "trend": "CONSTANT",
+            "seed": 42,
+        },
+    )
+    assert data_surrogate.status_code == 200
+    data_surrogate_body = data_surrogate.json()["surrogate"]
+    assert data_surrogate_body["validation"]["r2"] > 0.95
+    assert data_surrogate_body["artifact"]["resultType"] == ("GaussianProcessRegressionResult")
+
     source = Path("examples/Ishigami.py").read_text()
     validation = client.post("/v1/validate", json={"source": source}).json()
     serialized = client.post(

@@ -12,7 +12,7 @@ import { EXAMPLE_CATALOG } from "@uncertaintycat/contracts";
 import type { Page, Route } from "@playwright/test";
 
 export const catalog: AnalysisCatalogEntry[] = [
-  ["monte_carlo", "Monte Carlo Propagation", "Propagation", "lite"],
+  ["monte_carlo", "Uncertainty Propagation", "Propagation", "lite"],
   ["eda", "Exploratory Data Analysis", "Exploration", "lite"],
   ["correlation", "Correlation Analysis", "Sensitivity", "lite"],
   ["sobol", "Sobol Sensitivity", "Sensitivity", "standard"],
@@ -247,6 +247,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   let runs = options.runs ?? [];
   let models = options.authenticated && projects.length ? [savedModel] : [];
   let surrogates: Array<Record<string, unknown>> = [];
+  let dataSurrogates: Array<Record<string, unknown>> = [];
   const report = options.report ?? makeReport();
 
   await page.route("**/api/auth/get-session", (route) =>
@@ -327,6 +328,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   await page.route("**/api/v1/projects/*/surrogates", (route) =>
     json(route, { surrogates }),
   );
+  await page.route("**/api/v1/projects/*/data-surrogates", (route) =>
+    json(route, { surrogates: dataSurrogates }),
+  );
   await page.route("**/api/v1/datasets", async (route) =>
     json(route, { dataset }, 201),
   );
@@ -351,6 +355,32 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     });
     const generated = Object.keys(selected).length > 0;
     await json(route, { fitRun: { id: generated ? "fit-2" : "fit-1", datasetId: dataset.id, status: "succeeded", config: input, result: { openturnsVersion: "1.27.post1", columns: [makeColumn("temperature", [18, 19, 20, 21, 22, 23]), makeColumn("pressure", [1, 1.1, 1.2, 1.3, 1.4, 1.5])], copula: generated ? { kind: input.copula ?? "independent", className: "IndependentCopula" } : null, generatedSource: generated ? "import openturns as ot\nproblem = ot.JointDistribution([ot.Normal(), ot.Normal()])\n" : null, builderSpec: generated ? { inputs: [] } : null, assumptions: ["OpenTURNS authority"] }, generatedSource: generated ? "import openturns as ot" : null, openturnsVersion: "1.27.post1", createdAt: "2026-08-19T12:00:00Z", completedAt: "2026-08-19T12:00:01Z" } }, 201);
+  });
+  await page.route(/\/api\/v1\/datasets\/[^/]+\/surrogates$/, async (route) => {
+    const input = route.request().postDataJSON() as {
+      inputColumns: string[];
+      outputColumn: string;
+      kernel: string;
+      trend: string;
+      validationFraction: number;
+      seed: number;
+    };
+    const surrogate = {
+      id: "data-surrogate-1",
+      projectId: project.id,
+      datasetId: dataset.id,
+      method: "gpr",
+      pluginVersion: "1.0.0",
+      openturnsVersion: "1.27.post1",
+      inputColumns: input.inputColumns,
+      outputColumn: input.outputColumn,
+      config: { kernel: input.kernel, trend: input.trend, validationFraction: input.validationFraction, seed: input.seed },
+      validation: { trainingSize: 24, validationSize: 6, r2: 0.982, rmse: 0.12, normalizedRmse: 0.06, meetsDefault: true, observed: [18, 19, 20, 21, 22, 23], predicted: [18.1, 18.9, 20.2, 20.9, 22.1, 22.8] },
+      artifact: { sha256: "dataabcdef", sizeBytes: 2048, resultType: "GaussianProcessRegressionResult" },
+      createdAt: "2026-08-23T12:00:00Z",
+    };
+    dataSurrogates = [surrogate];
+    await json(route, { surrogate }, 201);
   });
   await page.route(/\/api\/v1\/runs\/[^/]+\/rerun$/, (route) =>
     json(route, { run: makeRun("queued") }, 202),

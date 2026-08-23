@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import openturns as ot
 import otmorris
 from pydantic import Field
@@ -17,19 +19,22 @@ class MorrisConfig(StrictModel):
     trajectories: int = Field(default=10, ge=4, le=1_000)
     levels: int = Field(default=6, ge=4, le=50)
     candidate_threshold_fraction: float = Field(default=0.05, ge=0, le=1)
+    tail_probability: float = Field(default=1.0e-6, gt=0.0, lt=0.1)
     seed: int = Field(default=42, ge=0)
     output_targets: list[int] = Field(default_factory=list, max_length=1)
 
 
 class MorrisPlugin(AnalysisPlugin[MorrisConfig]):
     key = "morris"
-    version = "2.0.0"
+    version = "2.1.0"
     name = "Morris Screening"
     category = "Sensitivity"
     description = "Screen inputs using the pinned official OTMorris experiment and estimator."
     assumptions = (
         "Inputs must be independent.",
         "Elementary effects are computed along OTMorris trajectories in probability space.",
+        "Unbounded marginals are evaluated over a declared central probability "
+        "interval so grid endpoints remain finite.",
         "The candidate threshold is a user-adjustable screening rule, not proof of irrelevance.",
     )
     supports_dependent_inputs = False
@@ -57,12 +62,18 @@ class MorrisPlugin(AnalysisPlugin[MorrisConfig]):
             physical_sample[row_index] = ot.Point(
                 [
                     runtime.problem.getMarginal(column).computeQuantile(
-                        min(max(float(unit_point[column]), 1e-12), 1.0 - 1e-12)
+                        config.tail_probability
+                        + (1.0 - 2.0 * config.tail_probability) * float(unit_point[column])
                     )[0]
                     for column in range(dimension)
                 ]
             )
         output_sample = runtime.model(physical_sample).getMarginal(target)
+        if not all(math.isfinite(float(row[0])) for row in output_sample):
+            raise IncompatibleAnalysisError(
+                "The model produced a non-finite response on the Morris design. "
+                "Review the input distributions or increase the tail-probability clipping."
+            )
         estimator = otmorris.Morris(
             unit_sample,
             output_sample,
@@ -95,6 +106,7 @@ class MorrisPlugin(AnalysisPlugin[MorrisConfig]):
                 "model_evaluations": evaluations,
                 "candidate_threshold_fraction": config.candidate_threshold_fraction,
                 "candidate_threshold": threshold,
+                "tail_probability": config.tail_probability,
             },
             tables={
                 "effects": TableData(
@@ -116,6 +128,9 @@ class MorrisPlugin(AnalysisPlugin[MorrisConfig]):
                 "largest_mean_absolute_effect": largest,
                 "threshold_is_proof_of_irrelevance": False,
                 "authority": f"otmorris {otmorris.__version__}",
+                "probability_domain": (
+                    f"[{config.tail_probability:g}, {1.0 - config.tail_probability:g}] per marginal"
+                ),
             },
         ), evaluations
 

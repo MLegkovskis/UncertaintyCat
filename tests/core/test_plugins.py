@@ -33,6 +33,23 @@ def test_monte_carlo_is_reproducible_and_multi_output() -> None:
     assert result_a.payload.tables["summary"].row_count == 2
     assert result_a.payload.tables["samples"].truncated is True
     assert len(result_a.payload.tables["samples"].rows) == 20
+    assert result_a.payload.facts["sampling_design"] == "Monte Carlo"
+
+
+def test_morris_handles_unbounded_borehole_marginals_without_endpoint_nan() -> None:
+    runtime = compile_model(Path("examples/Borehole.py").read_text())
+    result = run_analysis(
+        runtime,
+        AnalysisRequest(
+            analysis_key="morris",
+            config={"trajectories": 4, "levels": 6},
+            output_targets=[0],
+        ),
+        seed=42,
+    )
+    assert result.plugin_version == "2.1.0"
+    assert result.payload.metrics["tail_probability"] == 1.0e-6
+    assert "NaN" not in result.model_dump_json()
 
 
 def test_eda_reuses_named_outputs_and_returns_correlation_matrices() -> None:

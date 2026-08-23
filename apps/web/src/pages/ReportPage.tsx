@@ -4,12 +4,11 @@ import {
   Code2,
   Download,
   FileText,
-  Printer,
   RotateCcw,
   Share2,
   ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
@@ -82,7 +81,6 @@ function MorrisReduction({
   runId: string;
   projectId: string;
 }) {
-  const navigate = useNavigate();
   const table = result.payload.tables.effects;
   const rows = table?.rows ?? [];
   const defaults = Object.fromEntries(
@@ -94,6 +92,7 @@ function MorrisReduction({
   );
   const [displayName, setDisplayName] = useState("Morris-screened model");
   const [confirmed, setConfirmed] = useState(false);
+  const [createdModelId, setCreatedModelId] = useState<string>();
   const [error, setError] = useState<string>();
   const fixedVariables = model.inputs
     .filter((input) => !retained[input.name])
@@ -106,10 +105,14 @@ function MorrisReduction({
         fixedVariables,
         confirmed: true,
       }),
-    onSuccess: ({ modelVersion }) =>
-      navigate(`/studies/${projectId}/workspace?sourceModel=${modelVersion.id}`),
+    onSuccess: ({ modelVersion }) => setCreatedModelId(modelVersion.id),
     onError: (caught) =>
       setError(caught instanceof Error ? caught.message : "Could not create the derived model."),
+  });
+  const createdDefinition = useQuery({
+    queryKey: ["model-definition", createdModelId],
+    queryFn: () => api.getModelDefinition(createdModelId ?? ""),
+    enabled: Boolean(createdModelId),
   });
   if (!table) return null;
   return (
@@ -145,6 +148,21 @@ function MorrisReduction({
         <label className="confirmation-check"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I confirm these explicit fixed values and understand the original model remains unchanged.</span></label>
         <button className="button primary" disabled={!confirmed || !displayName.trim() || fixedVariables.length === 0 || fixedVariables.length >= model.input_dimension || mutation.isPending} onClick={() => mutation.mutate()}><Check /> {mutation.isPending ? "Validating derived model…" : "Create derived version"}</button>
       </div>
+      {createdModelId && (
+        <div className="reduced-model-result">
+          <Check />
+          <div>
+            <strong>Reduced model created</strong>
+            <p>The original model is unchanged. Continue with this explicit reduced model in the current project, or copy its complete Python definition into a new project.</p>
+          </div>
+          <div className="reduced-model-actions">
+            <Link className="button primary" to={`/studies/${projectId}/workspace?sourceModel=${createdModelId}`}>Analyse reduced model</Link>
+            <button className="button secondary" type="button" disabled={!createdDefinition.data?.definition.source} onClick={() => void navigator.clipboard.writeText(createdDefinition.data?.definition.source ?? "")}>Copy Python model</button>
+            <Link className="button secondary" to="/studies?new=1">Create another project</Link>
+          </div>
+          {createdDefinition.data?.definition.source && <pre><code>{createdDefinition.data.definition.source}</code></pre>}
+        </div>
+      )}
       {error && <div className="inline-error" role="alert">{error}</div>}
     </section>
   );
@@ -154,9 +172,11 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
   const { reportId = "" } = useParams();
   const { token = "" } = useParams();
   const navigate = useNavigate();
+  const reportDocument = useRef<HTMLElement>(null);
   const [shareUrl, setShareUrl] = useState<string>();
   const [shareOpen, setShareOpen] = useState(false);
   const [includeModelDefinition, setIncludeModelDefinition] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const query = useQuery({
     queryKey: [shared ? "shared-report" : "report", shared ? token : reportId],
     queryFn: () =>
@@ -187,6 +207,38 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
     mutationFn: () => api.rerun(report?.runId ?? reportId),
     onSuccess: ({ run }) => navigate(`/runs/${run.id}`),
   });
+  const downloadPdf = async () => {
+    if (!reportDocument.current || !report) return;
+    setDownloadingPdf(true);
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const canvas = await html2canvas(reportDocument.current, {
+        backgroundColor: "#ffffff",
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        useCORS: true,
+        onclone: (document) => document.documentElement.removeAttribute("data-theme"),
+      });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageHeight = canvas.height * pageWidth / canvas.width;
+      const image = canvas.toDataURL("image/jpeg", 0.92);
+      let offset = 0;
+      pdf.addImage(image, "JPEG", 0, offset, pageWidth, imageHeight, undefined, "FAST");
+      while (offset + imageHeight > pageHeight) {
+        offset -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(image, "JPEG", 0, offset, pageWidth, imageHeight, undefined, "FAST");
+      }
+      const safeName = report.modelVersion.displayName.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-|-$/g, "") || "uncertainty-report";
+      pdf.save(`${safeName}-report.pdf`);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
   if (query.isLoading)
     return (
       <div className="page">
@@ -201,7 +253,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
     );
   return (
     <div className="report-layout">
-      <article className="report-document">
+      <article className="report-document" ref={reportDocument}>
         <nav className="breadcrumbs" aria-label="Breadcrumb">
           <Link to="/studies">Studies</Link><span>/</span>
           <Link to={`/studies/${report.project.id}`}>{report.project.name}</Link><span>/</span>
@@ -248,9 +300,10 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
             )}
             <button
               className="button secondary small"
-              onClick={() => window.print()}
+              onClick={() => void downloadPdf()}
+              disabled={downloadingPdf}
             >
-              <Printer /> PDF
+              <Download /> {downloadingPdf ? "Preparing PDF…" : "Download PDF"}
             </button>
           </div>
         </header>
