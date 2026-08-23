@@ -12,7 +12,7 @@
 - `uncertaintycat_core/`: framework-independent Python model validation, strict contracts, orchestration, and analysis plugins.
 - `services/compute/`: private FastAPI/CLI adapter used inside the Cloudflare Sandbox boundary.
 - `apps/api/`: Hono Cloudflare Worker, Better Auth, D1/R2/Queue ownership and lifecycle, exports, sharing, and Workers AI.
-- `apps/web/`: React/Vite UI, route-level auth gate, workspace, studies, Data Lab, reports, and browser tests.
+- `apps/web/`: React/Vite UI, route-level auth gate, project dashboard, direct-analysis workspace, reduction/surrogate/distribution studios, reports, and browser tests.
 - `packages/contracts/`: shared Zod schemas, API client, types, and generated reference-model catalog.
 - `examples/`: canonical executable reference models used to generate the authenticated catalog.
 - `apps/api/migrations/`: forward-only D1 migrations. Never rewrite an applied migration.

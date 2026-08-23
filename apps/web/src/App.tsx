@@ -13,6 +13,16 @@ const StudyDetail = lazy(() =>
 const DataLab = lazy(() =>
   import("./pages/DataLab").then((module) => ({ default: module.DataLab })),
 );
+const DimensionalityReduction = lazy(() =>
+  import("./pages/DimensionalityReduction").then((module) => ({
+    default: module.DimensionalityReduction,
+  })),
+);
+const SurrogateStudio = lazy(() =>
+  import("./pages/SurrogateStudio").then((module) => ({
+    default: module.SurrogateStudio,
+  })),
+);
 const Home = lazy(() =>
   import("./pages/Home").then((module) => ({ default: module.Home })),
 );
@@ -45,6 +55,8 @@ export function App() {
           <Route path="/studies/:projectId" element={privatePage(<StudyDetail />)} />
           <Route path="/studies/:projectId/workspace" element={privatePage(<Workspace />)} />
           <Route path="/activity" element={privatePage(<Navigate to="/studies" replace />)} />
+          <Route path="/dimension-reduction" element={privatePage(<DimensionalityReduction />)} />
+          <Route path="/surrogates" element={privatePage(<SurrogateStudio />)} />
           <Route path="/data-lab" element={privatePage(<DataLab />)} />
           <Route path="/runs/:runId" element={privatePage(<RunPage />)} />
           <Route path="/reports/:reportId" element={privatePage(<ReportPage />)} />

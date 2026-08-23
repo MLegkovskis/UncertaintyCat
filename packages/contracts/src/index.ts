@@ -180,6 +180,10 @@ export interface ModelAssessment {
     pilot_sample_size: number;
     pilot_outputs: PilotOutputSummary[];
   };
+  workflow?: {
+    path: "direct" | "dimensionality_reduction" | "surrogate";
+    rationale_codes: string[];
+  };
   recommendations: AnalysisRecommendation[];
 }
 

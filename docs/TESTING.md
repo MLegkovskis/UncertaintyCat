@@ -12,11 +12,12 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 
 - the static public overview, absence of private navigation, private-route login wall, and Cloudflare sign-in initiation;
 - authenticated desktop/mobile navigation, account identity, sign-out, and theme persistence;
-- discovery and retained selection of all 23 reference models;
-- Python authoring and the multi-output symbolic OpenTURNS builder;
-- model validation success/failure and all 12 plugin configurations;
-- deterministic triage, streamed Model Understanding, surrogate promotion, Morris reduction, and Distribution Data Lab composition;
-- queued/running/terminal run states, cancellation, exact reruns, and retained study chronology;
+- discovery of all 23 reference models in the unified, immediately editable Python authoring view;
+- blank/manual model naming, resizable Python authoring, project creation from both onboarding and the workspace selector, and the multi-output symbolic OpenTURNS builder;
+- model validation success/failure, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
+- streamed concise Model Understanding, dedicated surrogate promotion, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
+- desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
+- queued/running/terminal run states, cancellation, exact reruns, and project-oriented history;
 - metrics, tables, truncation notices, series, heatmaps, facts, equations, assumptions, provenance, partial failures, sharing, export, and print wiring;
 - stored report chat, streaming Markdown, suggestions, citations, and quota failures;
 - authenticated read-only shared reports; and
@@ -30,7 +31,7 @@ The key regression contract is explicit: an unauthenticated browser cannot mount
 npm run test:e2e:full-stack
 ```
 
-Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated study; validates the Ishigami model; executes all 12 plugins; requires all task/report sections to succeed; downloads the real ZIP; creates and opens an authenticated share link; reloads study history; and verifies persisted D1 records through the API. Successful execution also proves immutable source round-tripping through R2.
+Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated project; validates the Ishigami model; executes the nine direct-analysis plugins through the direct workspace and exercises Morris/PCE/GPR through their dedicated studios; downloads the real ZIP; creates and opens an authenticated share link; reloads project history; and verifies persisted D1 records through the API. Successful execution also proves immutable source round-tripping through R2.
 
 The test Wrangler configurations use `DEV_AUTH_BYPASS=true` and the browser supplies a synthetic Better Auth session. This is intentionally test-only: CI must not hold a human Cloudflare password, session cookie, or MFA recovery material. Production configuration omits the bypass.
 

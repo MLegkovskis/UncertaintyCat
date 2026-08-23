@@ -104,9 +104,15 @@ class AnalysisRecommendation(StrictModel):
     compatibility_warnings: list[str] = Field(default_factory=list)
 
 
+class WorkflowRecommendation(StrictModel):
+    path: Literal["direct", "dimensionality_reduction", "surrogate"]
+    rationale_codes: list[str]
+
+
 class ModelAssessment(StrictModel):
-    version: str = "1.0.0"
+    version: str = "1.1.0"
     profile: ModelProfile
+    workflow: WorkflowRecommendation
     recommendations: list[AnalysisRecommendation]
 
 

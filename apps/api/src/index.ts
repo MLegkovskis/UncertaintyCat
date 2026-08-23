@@ -45,7 +45,7 @@ import { createReportBundle } from "./exports";
 type Variables = { requestId: string; identity?: Identity };
 type AppContext = Context<{ Bindings: Env; Variables: Variables }>;
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
-const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.0.0";
+const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.1.0";
 
 function jsonError(
   c: AppContext,
@@ -1582,12 +1582,21 @@ app.post(
     const workersai = createWorkersAI({ binding: c.env.AI });
     const result = streamText({
       model: workersai(AI_MODEL_ID),
-      system: `You explain a validated uncertainty model using structured Markdown. Separate sections named "Source facts", "Scientific inference", and "Unknown context and owner questions". Never invent units, physical meaning, industry, sensitivity rankings, or causal claims. Express an equation only when it is directly derivable from a supplied symbolic formula. Explain uncertainty propagation qualitatively. Do not repeat the source code.`,
+      maxOutputTokens: 650,
+      temperature: 0.2,
+      system: `Explain validated uncertainty metadata in at most 300 words of concise Markdown. Use exactly three sections: "Model in brief", "How uncertainty enters", and "Questions to confirm". Distinguish supplied facts from inference. Never invent an equation, units, physical meaning, industry, sensitivity rankings, or causal claims. State clearly when functional form or domain meaning is unavailable. Do not give deterministic workflow advice.`,
       prompt: JSON.stringify({
-        exactSource: definition.source,
-        builderSpec: definition.builderSpec,
-        metadata: definition.modelVersion.metadata,
-        assessment: definition.modelVersion.assessment,
+        facts: {
+          sourceKind: definition.modelVersion.sourceKind,
+          inputDimension: definition.modelVersion.metadata.input_dimension,
+          outputDimension: definition.modelVersion.metadata.output_dimension,
+          inputs: definition.modelVersion.metadata.inputs,
+          outputs: definition.modelVersion.metadata.outputs,
+          functionType: definition.modelVersion.metadata.function_type,
+          copula: definition.modelVersion.metadata.copula,
+          dependentInputs: definition.modelVersion.metadata.dependent_inputs,
+          pilotOutputs: definition.modelVersion.assessment?.profile.pilot_outputs,
+        },
       }),
     });
     const stream = new ReadableStream<Uint8Array>({

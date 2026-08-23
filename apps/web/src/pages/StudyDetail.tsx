@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Braces, Database, FlaskConical, Plus, Waves } from "lucide-react";
+import { ArrowRight, Braces, FlaskConical, Plus } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api";
@@ -8,83 +8,52 @@ import { EmptyState, StatusBadge } from "../components/Status";
 export function StudyDetail() {
   const { projectId = "" } = useParams();
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
-  const modelsQuery = useQuery({
-    queryKey: ["models", projectId],
-    queryFn: () => api.listModels(projectId),
-    enabled: Boolean(projectId),
-  });
+  const modelsQuery = useQuery({ queryKey: ["models", projectId], queryFn: () => api.listModels(projectId), enabled: Boolean(projectId) });
   const runsQuery = useQuery({ queryKey: ["runs"], queryFn: api.listRuns, refetchInterval: 5_000 });
-  const datasetsQuery = useQuery({ queryKey: ["datasets", projectId], queryFn: () => api.listDatasets(projectId), enabled: Boolean(projectId) });
-  const surrogatesQuery = useQuery({ queryKey: ["surrogates", projectId], queryFn: () => api.listSurrogates(projectId), enabled: Boolean(projectId) });
   const project = projectsQuery.data?.projects.find((item) => item.id === projectId);
   const models = modelsQuery.data?.modelVersions ?? [];
   const runs = (runsQuery.data?.runs ?? []).filter((run) => run.projectId === projectId);
-  const datasets = datasetsQuery.data?.datasets ?? [];
-  const surrogates = surrogatesQuery.data?.surrogates ?? [];
 
   return (
     <div className="page">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
-        <Link to="/studies">Studies</Link><span>/</span><span>{project?.name ?? "Study"}</span>
+        <Link to="/studies">Projects</Link><span>/</span><span>{project?.name ?? "Project"}</span>
       </nav>
       <div className="page-heading split">
         <div>
-          <span className="section-kicker">Study detail</span>
-          <h1>{project?.name ?? "Loading study…"}</h1>
-          <p>{project?.description || "Model versions and chronological numerical evidence."}</p>
+          <span className="section-kicker">Project</span>
+          <h1>{project?.name ?? "Loading project…"}</h1>
+          <p>{project?.description || "Saved models and previous numerical runs."}</p>
         </div>
-        <Link className="button primary" to={`/studies/${projectId}/workspace`}>
-          <Plus /> Prepare new version
-        </Link>
+        <Link className="button primary" to={`/studies/${projectId}/workspace`}><Plus /> New analysis in this project</Link>
       </div>
-      <div className="study-meta-strip">
-        <span><Braces /> {models.length} model versions</span>
-        <span><FlaskConical /> {runs.length} runs</span>
-        <span><Database /> {datasets.length} datasets</span>
-        <span><Waves /> {surrogates.length} surrogates</span>
-      </div>
-      <section className="activity-section">
-        <div className="section-copy"><span className="section-kicker">Models</span><h2>Immutable versions</h2></div>
+      <section className="activity-section compact-activity">
+        <div className="section-copy"><span className="section-kicker">Saved models</span><h2>Models ready to reuse</h2><p>Open a saved model to edit it or begin another analysis.</p></div>
         {models.length ? (
-          <div className="model-version-grid">
+          <div className="saved-model-list">
             {models.map((model) => (
-              <article className="model-version-card" key={model.id}>
-                <div><strong>{model.displayName}</strong><span>Version {model.version}</span></div>
-                <p>{model.metadata.input_dimension} inputs · {model.metadata.output_dimension} outputs · {model.sourceKind}</p>
-                <small>{new Date(model.createdAt).toLocaleString()} · {model.sourceHash.slice(0, 12)}</small>
-                <Link to={`/studies/${projectId}/workspace?sourceModel=${model.id}`}>Open as new version <ArrowRight /></Link>
-              </article>
+              <Link className="saved-model-row" to={`/studies/${projectId}/workspace?sourceModel=${model.id}`} key={model.id}>
+                <Braces />
+                <div><strong>{model.displayName}</strong><small>{model.metadata.input_dimension} inputs · saved {new Date(model.createdAt).toLocaleString()}</small></div>
+                <span>Edit and analyse</span><ArrowRight />
+              </Link>
             ))}
           </div>
-        ) : <EmptyState title="No model versions" body="Prepare and validate the first model version." />}
+        ) : <EmptyState title="No saved models" body="Define and validate the first model in this project." />}
       </section>
-      <section className="activity-section">
-        <div className="section-copy"><span className="section-kicker">Private assets</span><h2>Datasets and promoted surrogates</h2></div>
-        <div className="model-version-grid">
-          {datasets.map((dataset) => <article className="model-version-card" key={dataset.id}><div><strong>{dataset.name}</strong><span>Dataset</span></div><p>{dataset.rowCount} rows · {dataset.columns.length} columns</p><Link to={`/data-lab?projectId=${projectId}`}>Open Data Lab <ArrowRight /></Link></article>)}
-          {surrogates.map((surrogate) => <article className="model-version-card" key={surrogate.id}><div><strong>{surrogate.method.toUpperCase()} surrogate</strong><StatusBadge status={surrogate.status} /></div><p>Score {surrogate.validation.guidance.score.toPrecision(4)} · normalized RMSE {surrogate.validation.guidance.normalizedRmse.toPrecision(4)}</p>{surrogate.status === "promoted" && <a href={`/api/v1/surrogates/${surrogate.id}/artifact`} download>Download OpenTURNS XML <ArrowRight /></a>}</article>)}
-        </div>
-      </section>
-      <section className="activity-section">
-        <div className="section-copy"><span className="section-kicker">Chronology</span><h2>Runs and reports</h2></div>
+      <section className="activity-section compact-activity">
+        <div className="section-copy"><span className="section-kicker">Previous runs</span><h2>Numerical results</h2><p>Open any previous execution to inspect its retained report.</p></div>
         {runs.length ? (
           <div className="activity-runs">
             {runs.map((run) => (
-              <Link
-                className="activity-run"
-                to={["queued", "running"].includes(run.status) ? `/runs/${run.id}` : `/reports/${run.id}`}
-                key={run.id}
-              >
+              <Link className="activity-run" to={["queued", "running"].includes(run.status) ? `/runs/${run.id}` : `/reports/${run.id}`} key={run.id}>
                 <FlaskConical />
-                <div>
-                  <strong>{run.modelDisplayName} · v{run.modelVersion}</strong>
-                  <small>{run.tasks.map((task) => task.analysisKey).join(", ")} · seed {run.seed} · {new Date(run.createdAt).toLocaleString()}</small>
-                </div>
+                <div><strong>{run.modelDisplayName}</strong><small>{run.tasks.map((task) => task.analysisKey.replaceAll("_", " ")).join(", ")} · {new Date(run.createdAt).toLocaleString()}</small></div>
                 <StatusBadge status={run.status} /><ArrowRight />
               </Link>
             ))}
           </div>
-        ) : <EmptyState title="No runs yet" body="Select analyses from a validated model version." />}
+        ) : <EmptyState title="No previous runs" body="Run analyses from a validated model to see results here." />}
       </section>
     </div>
   );

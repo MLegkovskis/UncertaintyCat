@@ -9,8 +9,10 @@ import {
   Menu,
   Moon,
   PlusCircle,
+  ScanSearch,
   Sun,
   User,
+  Waves,
   X,
 } from "lucide-react";
 import {
@@ -144,10 +146,16 @@ export function Shell({ children }: PropsWithChildren) {
                 <PlusCircle size={18} /> New analysis
               </NavLink>
               <NavLink to="/studies">
-                <FolderKanban size={18} /> Studies
+                <FolderKanban size={18} /> Projects
+              </NavLink>
+              <NavLink to="/dimension-reduction">
+                <ScanSearch size={18} /> Dimension reduction
+              </NavLink>
+              <NavLink to="/surrogates">
+                <Waves size={18} /> Surrogate Studio
               </NavLink>
               <NavLink to="/data-lab">
-                <Database size={18} /> Data Lab
+                <Database size={18} /> Distribution fitting
               </NavLink>
             </>
           )}
@@ -238,7 +246,7 @@ export function Shell({ children }: PropsWithChildren) {
                         onClick={() =>
                           authClient.signIn.social({
                             provider: "cloudflare",
-                            callbackURL: window.location.href,
+                            callbackURL: `${window.location.origin}/`,
                           })
                         }
                       >

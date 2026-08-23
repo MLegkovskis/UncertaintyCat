@@ -18,6 +18,18 @@ The public site is a static product overview. Authentication through Cloudflare 
 - Cloudflare Workers AI explanations using the open-source Vercel AI SDK and `workers-ai-provider`. AI can query bounded persisted-result projections but cannot run calculations or mutate evidence.
 - Weekly OpenTURNS release discovery plus full Python, TypeScript, browser, local-stack, and image CI on every push to `main`.
 
+## Product workflow
+
+Authenticated users land on a project dashboard. A new analysis combines the 23 reference models and the editable Python model into one authoring surface; the model name starts blank, and choosing a reference loads both its name and source unless the name was already edited manually. The Guided Builder compiles its named formulas and distributions into an OpenTURNS [`SymbolicFunction`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.SymbolicFunction.html).
+
+`Validate & Assess` performs isolated sample evaluation and records a deterministic next-step route:
+
+- direct analysis when the measured projection makes repeated model evaluation practical;
+- Dimensionality Reduction Studio for models with at least 15 inputs, using OTMorris screening; or
+- Surrogate Studio when 1,000 direct evaluations project above five seconds and baseline surrogate eligibility is established.
+
+The threshold decision is versioned numerical metadata, not an AI decision. Workers AI provides a separate concise explanation from validated metadata. Direct analysis intentionally excludes Morris, PCE, and GPR: those methods live in the dedicated studios, and a promoted surrogate returns to analysis only through an explicit studio handoff. Distribution Fitting is a fourth standalone workflow and includes a meaningful simply-supported-beam sample (`E`, `F`, `L`, `I`) for exploration.
+
 ## Architecture
 
 ```text

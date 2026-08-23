@@ -5,38 +5,38 @@ import type {
   AnalysisCatalogEntry,
   ExampleCatalogEntry,
   ModelVersion,
-  Project,
-  SurrogateModel,
 } from "@uncertaintycat/contracts";
 import { AI_MODEL_LABEL } from "@uncertaintycat/contracts";
 import {
   Beaker,
+  ArrowRight,
   ArrowDown,
   ArrowUp,
   Check,
   ChevronRight,
   Code2,
   FlaskConical,
+  Gauge,
   Play,
   Plus,
   Save,
   SlidersHorizontal,
   Trash2,
   Search,
+  ScanSearch,
+  Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api, readTextStream } from "../api";
 import { Markdown } from "../components/Markdown";
-import { ResultView } from "../components/ResultView";
 import {
   buildSymbolicModel,
   createBuilderVariable,
   distributionDefinition,
   DISTRIBUTION_REGISTRY,
   identityCorrelation,
-  ISHIGAMI_SOURCE,
   validateBuilder,
   type BuilderSpec,
   type BuilderVariable,
@@ -44,7 +44,7 @@ import {
 import { EmptyState } from "../components/Status";
 import { useTheme } from "../components/Theme";
 
-type AuthorMode = "example" | "builder" | "code";
+type AuthorMode = "source" | "builder";
 
 const SCALAR_ANALYSES = new Set([
   "sobol",
@@ -52,14 +52,9 @@ const SCALAR_ANALYSES = new Set([
   "hsic",
   "taylor",
   "convergence",
-  "morris",
   "reliability",
-  "pce",
-  "gpr",
 ]);
 
-type GprKernel = "MATERN_1_5" | "MATERN_2_5" | "SQUARED_EXPONENTIAL";
-type GprTrend = "CONSTANT" | "LINEAR";
 type ReliabilityMethod =
   | "FORM"
   | "SORM"
@@ -77,148 +72,19 @@ function analysisConfig(
     maximum_evaluations: number;
     target_coefficient_of_variation: number;
   },
-  pceDegree: number,
-  gpr: { kernel: GprKernel; trend: GprTrend },
 ): Record<string, unknown> {
   switch (key) {
     case "sobol":
       return { base_sample_size: Math.max(64, sampleSize) };
     case "taylor":
       return { validation_size: Math.max(64, Math.min(sampleSize, 5_000)) };
-    case "morris":
-      return { trajectories: 10, levels: 6 };
     case "reliability":
       return reliability;
-    case "pce":
-      return {
-        training_size: Math.max(64, sampleSize),
-        validation_size: Math.max(64, Math.min(sampleSize, 1_000)),
-        degree: pceDegree,
-      };
-    case "gpr":
-      return {
-        training_size: Math.max(16, Math.min(sampleSize, 512)),
-        validation_size: Math.max(64, Math.min(sampleSize, 2_000)),
-        ...gpr,
-      };
     case "fast":
       return { sample_size: Math.max(65, sampleSize) };
     default:
       return { sample_size: sampleSize };
   }
-}
-
-function SurrogateStudio({
-  model,
-  projectId,
-  outputTarget,
-  sampleSize,
-  pceDegree,
-  gprKernel,
-  gprTrend,
-  selectedSurrogateId,
-  setSelectedSurrogateId,
-}: {
-  model: ModelVersion;
-  projectId: string;
-  outputTarget: number;
-  sampleSize: number;
-  pceDegree: number;
-  gprKernel: GprKernel;
-  gprTrend: GprTrend;
-  selectedSurrogateId: string;
-  setSelectedSurrogateId: (id: string) => void;
-}) {
-  const client = useQueryClient();
-  const [method, setMethod] = useState<"pce" | "gpr">("gpr");
-  const [current, setCurrent] = useState<SurrogateModel>();
-  const [acknowledge, setAcknowledge] = useState(false);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string>();
-  const query = useQuery({
-    queryKey: ["surrogates", projectId],
-    queryFn: () => api.listSurrogates(projectId),
-  });
-  const exact = (query.data?.surrogates ?? []).filter(
-    (item) => item.sourceModelVersionId === model.id,
-  );
-  const promoted = exact.filter((item) => item.status === "promoted");
-  const recommendation = model.assessment?.recommendations.find(
-    (item) => item.capability === method,
-  );
-  const build = useMutation({
-    mutationFn: () =>
-      api.createSurrogate(model.id, {
-        method,
-        config:
-          method === "pce"
-            ? {
-                degree: pceDegree,
-                training_size: Math.max(30, Math.min(sampleSize, 10_000)),
-                validation_size: Math.max(20, Math.min(sampleSize, 2_000)),
-                sparse: true,
-              }
-            : {
-                training_size: Math.max(16, Math.min(sampleSize, 512)),
-                validation_size: Math.max(20, Math.min(sampleSize, 2_000)),
-                kernel: gprKernel,
-                trend: gprTrend,
-              },
-        outputTarget,
-        seed: 42,
-      }),
-    onSuccess: async ({ surrogate }) => {
-      setCurrent(surrogate);
-      setAcknowledge(false);
-      setReason("");
-      setError(undefined);
-      await client.invalidateQueries({ queryKey: ["surrogates", projectId] });
-    },
-    onError: (caught) => setError(caught instanceof Error ? caught.message : "Surrogate build failed."),
-  });
-  const promote = useMutation({
-    mutationFn: () =>
-      api.promoteSurrogate(current?.id ?? "", {
-        acknowledgeOverride: acknowledge,
-        reason,
-      }),
-    onSuccess: async ({ surrogate }) => {
-      setCurrent(surrogate);
-      setSelectedSurrogateId(surrogate.id);
-      setError(undefined);
-      await client.invalidateQueries({ queryKey: ["surrogates", projectId] });
-    },
-    onError: (caught) => setError(caught instanceof Error ? caught.message : "Promotion failed."),
-  });
-  const guidance = current?.validation.guidance;
-  return (
-    <section className="surrogate-studio">
-      <div className="section-copy split">
-        <div><span className="section-kicker">Optional Surrogate Studio</span><h3>Approximate an expensive direct model</h3><p>{recommendation?.status ?? "available"} · {recommendation?.rationale_codes.join(", ") ?? "independent validation required"}</p></div>
-        <label><span>Method</span><select value={method} onChange={(event) => setMethod(event.target.value as "pce" | "gpr")}><option value="pce">Polynomial chaos</option><option value="gpr">Gaussian process regression</option></select></label>
-      </div>
-      <div className="surrogate-guidance">
-        <span>Measured direct projection <strong>{Math.round(model.assessment?.profile.projected_1000_evaluation_runtime_ms ?? 0)} ms / 1,000 evaluations</strong></span>
-        <span>Promotion defaults <strong>Q²/R² ≥ 0.95</strong> and <strong>normalized RMSE ≤ 0.10</strong></span>
-      </div>
-      <button className="button secondary" onClick={() => build.mutate()} disabled={build.isPending}>{build.isPending ? "Building and validating…" : `Build ${method.toUpperCase()} candidate`}</button>
-      {current && guidance && (
-        <div className={`surrogate-validation ${guidance.meetsDefault ? "accepted" : "review"}`}>
-          <div><span>{method === "pce" ? "Hold-out Q²" : "Hold-out R²"}</span><strong>{guidance.score.toPrecision(5)}</strong></div>
-          <div><span>Normalized RMSE</span><strong>{guidance.normalizedRmse.toPrecision(5)}</strong></div>
-          <div><span>Guidance</span><strong>{guidance.meetsDefault ? "Meets default" : "Override required"}</strong></div>
-          <details className="surrogate-evidence" open>
-            <summary>Independent hold-out evidence and assumptions</summary>
-            <ResultView result={current.validation.result} />
-          </details>
-          {!guidance.meetsDefault && <><label className="confirmation-check"><input type="checkbox" checked={acknowledge} onChange={(event) => setAcknowledge(event.target.checked)} /><span>I acknowledge the validation is below the default promotion guidance.</span></label><label><span>Recorded reason</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why this approximation is acceptable…" /></label></>}
-          <button className="button primary" onClick={() => promote.mutate()} disabled={promote.isPending || (!guidance.meetsDefault && (!acknowledge || reason.trim().length < 10))}>{promote.isPending ? "Serializing OpenTURNS XML…" : "Promote exact result"}</button>
-        </div>
-      )}
-      <label className="surrogate-selection"><span>Evidence source for downstream run</span><select value={selectedSurrogateId} onChange={(event) => setSelectedSurrogateId(event.target.value)}><option value="">Direct model</option>{promoted.map((item) => <option key={item.id} value={item.id}>Promoted {item.method.toUpperCase()} · {item.id.slice(0, 8)}</option>)}</select><small>A promoted surrogate is used only when selected here explicitly.</small></label>
-      {error && <div className="inline-error" role="alert">{error}</div>}
-    </section>
-  );
 }
 
 function GuidedBuilder({
@@ -249,8 +115,9 @@ function GuidedBuilder({
         <div>
           <h3>Guided model builder</h3>
           <p>
-            Define named symbolic outputs, stable OpenTURNS marginals, and
-            independent or correlated inputs. The registry generates the exact source.
+            Define formulas and input distributions that compile into an OpenTURNS{" "}
+            <a href="https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.SymbolicFunction.html" target="_blank" rel="noreferrer">SymbolicFunction</a>.
+            OpenTURNS evaluates named formulas and can provide analytical derivatives for symbolic models.
           </p>
         </div>
         <button
@@ -385,11 +252,11 @@ function GuidedBuilder({
 function ReferenceExamples({
   examples,
   selectedId,
-  setSelectedId,
+  onSelect,
 }: {
   examples: readonly ExampleCatalogEntry[];
   selectedId: string;
-  setSelectedId: (id: string) => void;
+  onSelect: (example: ExampleCatalogEntry) => void;
 }) {
   const [search, setSearch] = useState("");
   const needle = search.trim().toLocaleLowerCase();
@@ -399,15 +266,14 @@ function ReferenceExamples({
   return (
     <div className="examples-browser">
       <div className="examples-toolbar">
-        <div><h3>Reference-model catalog</h3><p>Canonical, hash-checked OpenTURNS models for authenticated workspaces.</p></div>
+        <div><h3>Reference models</h3><p>Select a model to load its editable Python source below.</p></div>
         <label className="study-search"><Search /><input aria-label="Search reference models" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search 23 examples" /></label>
       </div>
       <div className="examples-grid">
         {visible.map((example) => (
-          <button className={`example-card ${example.id === selectedId ? "selected" : ""}`} key={example.id} onClick={() => { setSelectedId(example.id); window.localStorage.setItem("uncertaintycat-last-example", example.id); }}>
+          <button className={`example-card ${example.id === selectedId ? "selected" : ""}`} key={example.id} onClick={() => onSelect(example)}>
             <span>{example.domain}</span><strong>{example.title}</strong><p>{example.summary}</p>
-            <small>{example.inputDimension} inputs · {example.outputDimension} output · {example.difficulty}</small>
-            <em>{example.suggestedAnalyses.map((analysis) => analysis.replaceAll("_", " ")).join(" · ")}</em>
+            <small>{example.inputDimension} inputs</small>
           </button>
         ))}
       </div>
@@ -500,7 +366,7 @@ function ModelUnderstandingPane({
     <aside className="understanding-pane" aria-label="Model Understanding">
       <header>
         <div>
-          <span className="section-kicker">Validate and understand</span>
+          <span className="section-kicker">AI explanation</span>
           <h2>Model Understanding</h2>
         </div>
         <small>{AI_MODEL_LABEL}</small>
@@ -528,24 +394,8 @@ function ModelUnderstandingPane({
             </dd>
           </div>
           <div>
-            <dt>Derivatives</dt>
-            <dd>
-              {model.metadata.exact_gradient_available
-                ? "Exact gradient and Hessian"
-                : "Not declared exact"}
-            </dd>
-          </div>
-          <div>
-            <dt>Batch evaluation</dt>
-            <dd>
-              {model.metadata.batch_evaluation_supported
-                ? "Supported"
-                : "Pointwise fallback"}
-            </dd>
-          </div>
-          <div>
-            <dt>Validation</dt>
-            <dd>{model.metadata.validation_runtime_ms.toFixed(1)} ms</dd>
+            <dt>Projected direct cost</dt>
+            <dd>{Math.round(assessment?.profile.projected_1000_evaluation_runtime_ms ?? 0).toLocaleString()} ms / 1,000</dd>
           </div>
         </dl>
         {assessment?.profile.pilot_outputs.map((output) => (
@@ -560,28 +410,6 @@ function ModelUnderstandingPane({
           </div>
         ))}
       </section>
-      {assessment && (
-        <section className="triage-list">
-          <h3>Deterministic triage</h3>
-          <p>Recommendations do not select analyses or alter variables.</p>
-          {assessment.recommendations.map((item) => (
-            <div
-              className={`triage-row ${item.status}`}
-              key={item.capability}
-            >
-              <strong>{item.capability.replaceAll("_", " ")}</strong>
-              <span>{item.status}</span>
-              <small>
-                {item.rationale_codes
-                  .map((code) =>
-                    code.replaceAll("_", " ").toLocaleLowerCase(),
-                  )
-                  .join(" · ")}
-              </small>
-            </div>
-          ))}
-        </section>
-      )}
       <section
         className="understanding-narrative"
         aria-live="polite"
@@ -589,7 +417,7 @@ function ModelUnderstandingPane({
       >
         {status === "streaming" && !content && (
           <div className="assistant-placeholder">
-            <span /> <span /> <span /> Building a source-grounded explanation…
+            <span /> <span /> <span /> Workers AI is drafting a concise explanation…
           </div>
         )}
         {content && <Markdown>{content}</Markdown>}
@@ -617,6 +445,60 @@ function ModelUnderstandingPane({
   );
 }
 
+function workflowPath(model: ModelVersion) {
+  if (model.assessment?.workflow?.path) return model.assessment.workflow.path;
+  const projected = model.assessment?.profile.projected_1000_evaluation_runtime_ms ?? 0;
+  const surrogateEligible = model.assessment?.recommendations.some(
+    (item) => ["gpr", "pce"].includes(item.capability) && item.status !== "incompatible",
+  );
+  if (model.metadata.input_dimension >= 15) return "dimensionality_reduction" as const;
+  if (projected > 5_000 && surrogateEligible) return "surrogate" as const;
+  return "direct" as const;
+}
+
+function WorkflowAssessment({ model, projectId }: { model: ModelVersion; projectId: string }) {
+  const path = workflowPath(model);
+  const projected = Math.round(model.assessment?.profile.projected_1000_evaluation_runtime_ms ?? 0);
+  const content = path === "dimensionality_reduction"
+    ? {
+        icon: <ScanSearch />,
+        kicker: "Screen dimensions first",
+        title: "Dimensionality reduction is the recommended next step.",
+        body: `${model.metadata.input_dimension} inputs cross the high-dimensional screening threshold. Run Morris screening before committing a large budget to global analyses.`,
+        href: `/dimension-reduction?projectId=${projectId}&modelId=${model.id}`,
+        action: "Open Dimension Reduction Studio",
+      }
+    : path === "surrogate"
+      ? {
+          icon: <Waves />,
+          kicker: "Approximate before scaling",
+          title: "A validated surrogate is the recommended next step.",
+          body: `Measured validation projects ${projected.toLocaleString()} ms for 1,000 direct evaluations. Build and validate an approximation before larger studies.`,
+          href: `/surrogates?projectId=${projectId}&modelId=${model.id}`,
+          action: "Open Surrogate Studio",
+        }
+      : {
+          icon: <Gauge />,
+          kicker: "Direct analysis recommended",
+          title: "This model is practical to evaluate directly.",
+          body: `Measured validation projects ${projected.toLocaleString()} ms for 1,000 evaluations. Continue with the direct OpenTURNS analyses below.`,
+          href: "#direct-analyses",
+          action: "Continue to direct analyses",
+        };
+  return (
+    <section className={`workflow-assessment ${path}`} aria-label="Recommended analysis route">
+      <div className="workflow-icon">{content.icon}</div>
+      <div><span className="section-kicker">{content.kicker}</span><h2>{content.title}</h2><p>{content.body}</p></div>
+      <a className="button primary" href={content.href}>{content.action} <ArrowRight /></a>
+      <div className="workflow-alternatives">
+        <span>Other tools remain available by choice:</span>
+        {path !== "dimensionality_reduction" && <Link to={`/dimension-reduction?projectId=${projectId}&modelId=${model.id}`}>screen dimensions</Link>}
+        {path !== "surrogate" && <Link to={`/surrogates?projectId=${projectId}&modelId=${model.id}`}>build a surrogate</Link>}
+      </div>
+    </section>
+  );
+}
+
 export function Workspace() {
   const { theme } = useTheme();
   const client = useQueryClient();
@@ -625,6 +507,9 @@ export function Workspace() {
   const [searchParams] = useSearchParams();
   const sourceModelId = searchParams.get("sourceModel") ?? "";
   const dataFitId = searchParams.get("dataFit") ?? "";
+  const requestedExampleId = searchParams.get("example") ?? "";
+  const requestedNext = searchParams.get("next") ?? "";
+  const requestedSurrogateId = searchParams.get("surrogate") ?? "";
   const projectsQuery = useQuery({
     queryKey: ["projects"],
     queryFn: api.listProjects,
@@ -636,18 +521,18 @@ export function Workspace() {
   const examplesQuery = useQuery({ queryKey: ["examples"], queryFn: api.examples });
   const [projectId, setProjectId] = useState<string | undefined>(routeProjectId);
   const [projectName, setProjectName] = useState("My UQ study");
-  const [modelName, setModelName] = useState("Ishigami reference model");
+  const [showProjectCreator, setShowProjectCreator] = useState(false);
+  const [modelName, setModelName] = useState("");
+  const [modelNameEdited, setModelNameEdited] = useState(false);
   const [parentVersionId, setParentVersionId] = useState<string>();
   const [dataFitProvenance, setDataFitProvenance] = useState<{
     fitRunId: string;
     datasetId: string;
     builderSpec?: Record<string, unknown>;
   }>();
-  const [mode, setMode] = useState<AuthorMode>("example");
-  const [selectedExampleId, setSelectedExampleId] = useState(
-    () => window.localStorage.getItem("uncertaintycat-last-example") ?? "ishigami",
-  );
-  const [source, setSource] = useState<string>(ISHIGAMI_SOURCE);
+  const [mode, setMode] = useState<AuthorMode>("source");
+  const [selectedExampleId, setSelectedExampleId] = useState("");
+  const [source, setSource] = useState<string>("");
   const [builderSpec, setBuilderSpec] = useState<BuilderSpec>(() => ({
     variables: [
       { id: crypto.randomUUID(), name: "x1", distribution: "Normal", parameters: [0, 1] },
@@ -673,16 +558,12 @@ export function Workspace() {
   const [reliabilityMaximumEvaluations, setReliabilityMaximumEvaluations] =
     useState(20_000);
   const [reliabilityTargetCov, setReliabilityTargetCov] = useState(0.05);
-  const [pceDegree, setPceDegree] = useState(3);
-  const [gprKernel, setGprKernel] = useState<GprKernel>("MATERN_2_5");
-  const [gprTrend, setGprTrend] = useState<GprTrend>("CONSTANT");
-  const [selectedSurrogateId, setSelectedSurrogateId] = useState("");
+  const [analysisSurrogateId, setAnalysisSurrogateId] = useState(requestedSurrogateId);
   const [error, setError] = useState<string>();
   const projects = projectsQuery.data?.projects ?? [];
   const activeProjectId = projectId ?? projects[0]?.id;
   const activeProject = projects.find((item) => item.id === activeProjectId);
   const examples = examplesQuery.data?.examples ?? [];
-  const selectedExample = examples.find((example) => example.id === selectedExampleId);
   const definitionQuery = useQuery({
     queryKey: ["model-definition", sourceModelId],
     queryFn: () => api.getModelDefinition(sourceModelId),
@@ -693,11 +574,13 @@ export function Workspace() {
     if (!definition) return;
     setProjectId(definition.project.id);
     setSource(definition.source);
-    setMode("code");
-    setModelName(`${definition.modelVersion.displayName} copy`);
+    setMode("source");
+    setModelName(requestedSurrogateId ? definition.modelVersion.displayName : `${definition.modelVersion.displayName} copy`);
+    setModelNameEdited(true);
     setParentVersionId(definition.modelVersion.id);
-    setSavedModel(undefined);
-  }, [definitionQuery.data]);
+    setSavedModel(requestedSurrogateId ? definition.modelVersion : undefined);
+    setAnalysisSurrogateId(requestedSurrogateId);
+  }, [definitionQuery.data, requestedSurrogateId]);
   useEffect(() => {
     if (!dataFitId) return;
     try {
@@ -716,8 +599,9 @@ export function Workspace() {
       )
         return;
       setSource(draft.source);
-      setMode("code");
+      setMode("source");
       setModelName("Data-fit model draft");
+      setModelNameEdited(true);
       setParentVersionId(undefined);
       setDataFitProvenance({
         fitRunId: draft.fitRunId,
@@ -729,10 +613,36 @@ export function Workspace() {
       setError("The Data Lab draft could not be restored. Reopen it from Data Lab.");
     }
   }, [dataFitId]);
+  useEffect(() => {
+    if (!requestedExampleId || !examples.length || sourceModelId || dataFitId) return;
+    const example = examples.find((item) => item.id === requestedExampleId);
+    if (!example) return;
+    setSelectedExampleId(example.id);
+    setSource(example.source);
+    setModelName(example.title);
+    setModelNameEdited(false);
+    setMode("source");
+    setSavedModel(undefined);
+  }, [dataFitId, examples, requestedExampleId, sourceModelId]);
   const generatedSource = useMemo(
     () => validateBuilder(builderSpec).length === 0 ? buildSymbolicModel(builderSpec) : "",
     [builderSpec],
   );
+  const directAnalyses = useMemo(
+    () => (catalogQuery.data?.analyses ?? []).filter((analysis) => !["morris", "pce", "gpr"].includes(analysis.key)),
+    [catalogQuery.data],
+  );
+  const selectExample = (example: ExampleCatalogEntry) => {
+    setSelectedExampleId(example.id);
+    setSource(example.source);
+    if (!modelNameEdited) setModelName(example.title);
+    setParentVersionId(undefined);
+    setDataFitProvenance(undefined);
+    setSavedModel(undefined);
+    setAnalysisSurrogateId("");
+    setMode("source");
+    window.localStorage.setItem("uncertaintycat-last-example", example.id);
+  };
 
   const createProject = useMutation({
     mutationFn: () =>
@@ -743,22 +653,20 @@ export function Workspace() {
     onSuccess: async ({ project }) => {
       await client.invalidateQueries({ queryKey: ["projects"] });
       setProjectId(project.id);
+      setShowProjectCreator(false);
+      setProjectName("My UQ study");
     },
   });
   const saveModel = useMutation({
     mutationFn: async () => {
       if (!activeProjectId) throw new Error("Create a project first.");
-      const modelSource = mode === "code" ? source : mode === "example" ? selectedExample?.source ?? "" : generatedSource;
+      const modelSource = mode === "source" ? source : generatedSource;
       if (!modelSource) throw new Error("Complete the model definition before validation.");
+      if (!modelName.trim()) throw new Error("Enter a model name before validation.");
       return api.createModel(activeProjectId, {
         source: modelSource,
-        displayName: mode === "example" ? selectedExample?.title ?? modelName : modelName,
-        sourceKind:
-          mode === "builder"
-            ? "builder"
-            : mode === "example"
-              ? "example"
-              : "python",
+        displayName: modelName.trim(),
+        sourceKind: mode === "builder" ? "builder" : examples.some((example) => example.id === selectedExampleId && example.source === source) ? "example" : "python",
         ...(mode === "builder"
           ? { builderSpec: builderSpec as unknown as Record<string, unknown> }
           : {}),
@@ -779,7 +687,6 @@ export function Workspace() {
     },
     onSuccess: ({ modelVersion }) => {
       setSavedModel(modelVersion);
-      setSelectedSurrogateId("");
       setError(undefined);
     },
     onError: (caught) =>
@@ -797,16 +704,13 @@ export function Workspace() {
       };
       const analyses = selected.map((key) => ({
         analysisKey: key,
-        config: analysisConfig(key, sampleSize, reliability, pceDegree, {
-          kernel: gprKernel,
-          trend: gprTrend,
-        }),
+        config: analysisConfig(key, sampleSize, reliability),
         outputTargets: SCALAR_ANALYSES.has(key) ? [outputTarget] : [],
       }));
       return api.createRun({
         modelVersionId: savedModel.id,
-        ...(selectedSurrogateId
-          ? { surrogateModelId: selectedSurrogateId }
+        ...(analysisSurrogateId
+          ? { surrogateModelId: analysisSurrogateId }
           : {}),
         analyses,
         seed: 42,
@@ -832,7 +736,7 @@ export function Workspace() {
           <span className="section-kicker">New workspace</span>
           <h1>Start with a durable project.</h1>
           <p>
-            Models, runs, reports, exports, and conversations are versioned
+            Models, runs, reports, exports, and conversations stay together
             inside a project.
           </p>
         </div>
@@ -861,17 +765,21 @@ export function Workspace() {
         <div>
           <span className="section-kicker">Model studio</span>
           <h1>{activeProject?.name ?? "Loading project…"}</h1>
-          <p>Author, validate, and run an immutable OpenTURNS model.</p>
+          <p>Define an OpenTURNS model, validate it, and follow the assessed scientific route.</p>
         </div>
         <div className="project-select">
           <label>
             Project
             <select
-              value={activeProjectId}
+              value={activeProjectId ?? ""}
               onChange={(event) => {
+                if (event.target.value === "__create__") {
+                  setShowProjectCreator(true);
+                  return;
+                }
                 setProjectId(event.target.value);
                 setSavedModel(undefined);
-                setSelectedSurrogateId("");
+                setAnalysisSurrogateId("");
               }}
             >
               {projects.map((project) => (
@@ -879,8 +787,15 @@ export function Workspace() {
                   {project.name}
                 </option>
               ))}
+              <option value="__create__">＋ Create new project</option>
             </select>
           </label>
+          {showProjectCreator && (
+            <div className="inline-project-creator">
+              <label><span>New project name</span><input autoFocus value={projectName} onChange={(event) => setProjectName(event.target.value)} /></label>
+              <div><button className="button primary small" disabled={!projectName.trim() || createProject.isPending} onClick={() => createProject.mutate()}>{createProject.isPending ? "Creating…" : "Create project"}</button><button className="button secondary small" onClick={() => setShowProjectCreator(false)}>Cancel</button></div>
+            </div>
+          )}
         </div>
       </div>
       <div className="stepper">
@@ -904,22 +819,19 @@ export function Workspace() {
             Define an OpenTURNS <code>model</code> before validation; the original dataset and fit remain unchanged.
           </div>
         )}
+        {requestedNext && !dataFitProvenance && (
+          <div className="provenance-note">This reference model was opened from {requestedNext === "surrogates" ? "Surrogate Studio" : "Dimension Reduction Studio"}. Validate and assess it before continuing.</div>
+        )}
         <label className="model-name-field">
           <span>Model name</span>
-          <input value={modelName} onChange={(event) => setModelName(event.target.value)} />
+          <input value={modelName} placeholder="Enter your model name here" onChange={(event) => { setModelName(event.target.value); setModelNameEdited(true); setSavedModel(undefined); setAnalysisSurrogateId(""); }} />
         </label>
         <div className="mode-tabs">
           <button
-            className={mode === "example" ? "active" : ""}
-            onClick={() => setMode("example")}
+            className={mode === "source" ? "active" : ""}
+            onClick={() => setMode("source")}
           >
-            <FlaskConical /> Examples
-          </button>
-          <button
-            className={mode === "code" ? "active" : ""}
-            onClick={() => setMode("code")}
-          >
-            <Code2 /> Python model
+            <Code2 /> Examples &amp; Python model
           </button>
           <button
             className={mode === "builder" ? "active" : ""}
@@ -928,54 +840,29 @@ export function Workspace() {
             <SlidersHorizontal /> Guided builder
           </button>
         </div>
-        {mode === "example" ? (
+        {mode === "source" ? (
           <>
-            <ReferenceExamples examples={examples} selectedId={selectedExampleId} setSelectedId={setSelectedExampleId} />
-            {selectedExample && (
-              <div className="example-copy-actions">
-                <button
-                  className="button secondary"
-                  onClick={() => {
-                    setSource(selectedExample.source);
-                    setModelName(`${selectedExample.title} copy`);
-                    setParentVersionId(undefined);
-                    setSavedModel(undefined);
-                    setMode("code");
-                  }}
-                >
-                  <Code2 /> Copy selected example to editable Python
-                </button>
-                <small>The catalog source stays immutable; saving creates a study-scoped model version.</small>
+            <ReferenceExamples examples={examples} selectedId={selectedExampleId} onSelect={selectExample} />
+            <div className="editor-shell resizable-editor">
+              <div className="editor-title">
+                <span>model.py</span>
+                <small>Editable Python · define <code>model</code> and <code>problem</code></small>
               </div>
-            )}
-          </>
-        ) : mode === "code" ? (
-          <div className="editor-shell">
-            <div className="editor-title">
-              <span>model.py</span>
-              <small>OpenTURNS · NumPy · SciPy</small>
+              <CodeMirror
+                onCreateEditor={(view) => view.contentDOM.setAttribute("aria-label", "Python model source")}
+                height="100%"
+                theme={theme}
+                value={source}
+                extensions={[python()]}
+                onChange={(value) => { setSource(value); setSavedModel(undefined); setAnalysisSurrogateId(""); }}
+                basicSetup={{ foldGutter: true, highlightActiveLine: true, autocompletion: true, bracketMatching: true }}
+              />
             </div>
-            <CodeMirror
-              onCreateEditor={(view) =>
-                view.contentDOM.setAttribute("aria-label", "Python model source")
-              }
-              height="520px"
-              theme={theme}
-              value={source}
-              extensions={[python()]}
-              onChange={setSource}
-              basicSetup={{
-                foldGutter: true,
-                highlightActiveLine: true,
-                autocompletion: true,
-                bracketMatching: true,
-              }}
-            />
-          </div>
+          </>
         ) : (
           <GuidedBuilder
             spec={builderSpec}
-            setSpec={setBuilderSpec}
+            setSpec={(spec) => { setBuilderSpec(spec); setSavedModel(undefined); setAnalysisSurrogateId(""); }}
           />
         )}
         <div className="studio-footer">
@@ -1008,9 +895,9 @@ export function Workspace() {
           <button
             className="button primary"
             onClick={() => saveModel.mutate()}
-            disabled={saveModel.isPending}
+            disabled={saveModel.isPending || !modelName.trim() || (mode === "source" ? !source.trim() : !generatedSource)}
           >
-            <Save /> {saveModel.isPending ? "Validating…" : "Validate & save"}
+            <Save /> {saveModel.isPending ? "Validating and assessing…" : "Validate & Assess"}
           </button>
         </div>
         </div>
@@ -1019,26 +906,18 @@ export function Workspace() {
         )}
       </section>
       {error && <div className="error-banner">{error}</div>}
-      {savedModel && activeProjectId && (
-        <SurrogateStudio
-          model={savedModel}
-          projectId={activeProjectId}
-          outputTarget={outputTarget}
-          sampleSize={sampleSize}
-          pceDegree={pceDegree}
-          gprKernel={gprKernel}
-          gprTrend={gprTrend}
-          selectedSurrogateId={selectedSurrogateId}
-          setSelectedSurrogateId={setSelectedSurrogateId}
-        />
+      {savedModel && activeProjectId && <WorkflowAssessment model={savedModel} projectId={activeProjectId} />}
+      {savedModel && analysisSurrogateId && (
+        <div className="surrogate-source-banner"><Waves /><div><strong>Promoted surrogate selected in Surrogate Studio</strong><small>This run will use that explicit approximation as its evidence source. Edit the model to return to direct evaluation.</small></div></div>
       )}
       <section
+        id="direct-analyses"
         className={`analysis-composer ${savedModel ? "" : "disabled-panel"}`}
       >
         <div className="composer-heading">
           <div>
             <span className="section-kicker">Run composer</span>
-            <h2>Choose the evidence you need.</h2>
+            <h2>Choose direct OpenTURNS analyses.</h2>
           </div>
           <div className="composer-controls">
             <label className="sample-budget">
@@ -1071,9 +950,7 @@ export function Workspace() {
             )}
           </div>
         </div>
-        {(selected.includes("reliability") ||
-          selected.includes("pce") ||
-          selected.includes("gpr")) && (
+        {selected.includes("reliability") && (
           <div className="analysis-settings">
             {selected.includes("reliability") && (
               <div className="reliability-studio">
@@ -1127,54 +1004,11 @@ export function Workspace() {
                 <label><span>Target coefficient of variation</span><input type="number" min="0.001" max="1" step="0.01" value={reliabilityTargetCov} onChange={(event) => setReliabilityTargetCov(Number(event.target.value))} /></label>
               </div>
             )}
-            {selected.includes("pce") && (
-              <label>
-                <span>PCE total degree</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={pceDegree}
-                  onChange={(event) => setPceDegree(Number(event.target.value))}
-                />
-              </label>
-            )}
-            {selected.includes("gpr") && (
-              <>
-                <label>
-                  <span>GPR covariance kernel</span>
-                  <select
-                    value={gprKernel}
-                    onChange={(event) =>
-                      setGprKernel(event.target.value as GprKernel)
-                    }
-                  >
-                    <option value="MATERN_1_5">Matérn 3/2</option>
-                    <option value="MATERN_2_5">Matérn 5/2</option>
-                    <option value="SQUARED_EXPONENTIAL">
-                      Squared exponential
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span>GPR trend</span>
-                  <select
-                    value={gprTrend}
-                    onChange={(event) =>
-                      setGprTrend(event.target.value as GprTrend)
-                    }
-                  >
-                    <option value="CONSTANT">Constant</option>
-                    <option value="LINEAR">Linear</option>
-                  </select>
-                </label>
-              </>
-            )}
           </div>
         )}
-        {catalogQuery.data?.analyses.length ? (
+        {directAnalyses.length ? (
           <div className="analysis-options">
-            {catalogQuery.data.analyses.map(
+            {directAnalyses.map(
               (analysis: AnalysisCatalogEntry) => (
                 <label
                   className={`analysis-option ${selected.includes(analysis.key) ? "selected" : ""}`}
