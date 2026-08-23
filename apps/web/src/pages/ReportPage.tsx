@@ -162,20 +162,11 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
     queryFn: () =>
       shared ? api.getSharedReport(token) : api.getReport(reportId),
   });
-  const sessionQuery = useQuery({
-    queryKey: ["session-policy"],
-    queryFn: api.session,
-    enabled: !shared,
-    staleTime: 60_000,
-  });
   const report = query.data?.report;
   const definitionQuery = useQuery({
     queryKey: ["model-definition", report?.modelVersion.id],
     queryFn: () => api.getModelDefinition(report?.modelVersion.id ?? ""),
-    enabled:
-      !shared &&
-      Boolean(report?.modelVersion.id) &&
-      sessionQuery.data?.identity.authenticated === true,
+    enabled: !shared && Boolean(report?.modelVersion.id),
   });
   const share = useMutation({
     mutationFn: () =>
@@ -368,9 +359,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
           </section>
         ))}
       </article>
-      {!shared && sessionQuery.data?.identity.authenticated === true && (
-        <ChatPanel reportId={report.id} />
-      )}
+      {!shared && <ChatPanel reportId={report.id} />}
     </div>
   );
 }

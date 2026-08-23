@@ -1,6 +1,7 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { AuthenticatedRoute } from "./components/AuthenticatedRoute";
 import { Shell } from "./components/Shell";
 
 const Studies = lazy(() =>
@@ -28,6 +29,9 @@ const Workspace = lazy(() =>
 );
 
 export function App() {
+  const privatePage = (page: ReactNode) => (
+    <AuthenticatedRoute>{page}</AuthenticatedRoute>
+  );
   return (
     <Shell>
       <Suspense
@@ -35,16 +39,16 @@ export function App() {
       >
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/new-analysis" element={<Workspace />} />
-          <Route path="/workspace" element={<Navigate to="/new-analysis" replace />} />
-          <Route path="/studies" element={<Studies />} />
-          <Route path="/studies/:projectId" element={<StudyDetail />} />
-          <Route path="/studies/:projectId/workspace" element={<Workspace />} />
-          <Route path="/activity" element={<Navigate to="/studies" replace />} />
-          <Route path="/data-lab" element={<DataLab />} />
-          <Route path="/runs/:runId" element={<RunPage />} />
-          <Route path="/reports/:reportId" element={<ReportPage />} />
-          <Route path="/shared/:token" element={<ReportPage shared />} />
+          <Route path="/new-analysis" element={privatePage(<Workspace />)} />
+          <Route path="/workspace" element={privatePage(<Navigate to="/new-analysis" replace />)} />
+          <Route path="/studies" element={privatePage(<Studies />)} />
+          <Route path="/studies/:projectId" element={privatePage(<StudyDetail />)} />
+          <Route path="/studies/:projectId/workspace" element={privatePage(<Workspace />)} />
+          <Route path="/activity" element={privatePage(<Navigate to="/studies" replace />)} />
+          <Route path="/data-lab" element={privatePage(<DataLab />)} />
+          <Route path="/runs/:runId" element={privatePage(<RunPage />)} />
+          <Route path="/reports/:reportId" element={privatePage(<ReportPage />)} />
+          <Route path="/shared/:token" element={privatePage(<ReportPage shared />)} />
         </Routes>
       </Suspense>
     </Shell>

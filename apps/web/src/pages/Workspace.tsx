@@ -399,7 +399,7 @@ function ReferenceExamples({
   return (
     <div className="examples-browser">
       <div className="examples-toolbar">
-        <div><h3>Reference-model catalog</h3><p>Canonical, hash-checked OpenTURNS models available to guests and retained users.</p></div>
+        <div><h3>Reference-model catalog</h3><p>Canonical, hash-checked OpenTURNS models for authenticated workspaces.</p></div>
         <label className="study-search"><Search /><input aria-label="Search reference models" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search 23 examples" /></label>
       </div>
       <div className="examples-grid">
@@ -417,10 +417,8 @@ function ReferenceExamples({
 
 function ModelUnderstandingPane({
   model,
-  authenticated,
 }: {
   model: ModelVersion;
-  authenticated: boolean;
 }) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<
@@ -470,7 +468,7 @@ function ModelUnderstandingPane({
   );
 
   useEffect(() => {
-    if (!authenticated || startedModel.current === model.id) return;
+    if (startedModel.current === model.id) return;
     startedModel.current = model.id;
     let active = true;
     void api
@@ -496,7 +494,7 @@ function ModelUnderstandingPane({
     return () => {
       active = false;
     };
-  }, [authenticated, generate, model.id]);
+  }, [generate, model.id]);
 
   return (
     <aside className="understanding-pane" aria-label="Model Understanding">
@@ -584,44 +582,37 @@ function ModelUnderstandingPane({
           ))}
         </section>
       )}
-      {!authenticated ? (
-        <div className="ai-unavailable">
-          Sign in to generate and retain the AI explanation. Deterministic
-          validation remains available.
-        </div>
-      ) : (
-        <section
-          className="understanding-narrative"
-          aria-live="polite"
-          aria-busy={status === "streaming"}
-        >
-          {status === "streaming" && !content && (
-            <div className="assistant-placeholder">
-              <span /> <span /> <span /> Building a source-grounded explanation…
-            </div>
-          )}
-          {content && <Markdown>{content}</Markdown>}
-          {error && <div className="inline-error">{error}</div>}
-          <div className="understanding-actions">
-            {status === "failed" && (
-              <button
-                className="button secondary small"
-                onClick={() => void generate(false)}
-              >
-                Retry
-              </button>
-            )}
-            {status === "ready" && (
-              <button
-                className="button secondary small"
-                onClick={() => void generate(true)}
-              >
-                Regenerate
-              </button>
-            )}
+      <section
+        className="understanding-narrative"
+        aria-live="polite"
+        aria-busy={status === "streaming"}
+      >
+        {status === "streaming" && !content && (
+          <div className="assistant-placeholder">
+            <span /> <span /> <span /> Building a source-grounded explanation…
           </div>
-        </section>
-      )}
+        )}
+        {content && <Markdown>{content}</Markdown>}
+        {error && <div className="inline-error">{error}</div>}
+        <div className="understanding-actions">
+          {status === "failed" && (
+            <button
+              className="button secondary small"
+              onClick={() => void generate(false)}
+            >
+              Retry
+            </button>
+          )}
+          {status === "ready" && (
+            <button
+              className="button secondary small"
+              onClick={() => void generate(true)}
+            >
+              Regenerate
+            </button>
+          )}
+        </div>
+      </section>
     </aside>
   );
 }
@@ -643,10 +634,6 @@ export function Workspace() {
     queryFn: api.catalog,
   });
   const examplesQuery = useQuery({ queryKey: ["examples"], queryFn: api.examples });
-  const sessionQuery = useQuery({
-    queryKey: ["session-policy"],
-    queryFn: api.session,
-  });
   const [projectId, setProjectId] = useState<string | undefined>(routeProjectId);
   const [projectName, setProjectName] = useState("My UQ study");
   const [modelName, setModelName] = useState("Ishigami reference model");
@@ -944,7 +931,7 @@ export function Workspace() {
         {mode === "example" ? (
           <>
             <ReferenceExamples examples={examples} selectedId={selectedExampleId} setSelectedId={setSelectedExampleId} />
-            {sessionQuery.data?.identity.authenticated === true && selectedExample && (
+            {selectedExample && (
               <div className="example-copy-actions">
                 <button
                   className="button secondary"
@@ -1028,12 +1015,7 @@ export function Workspace() {
         </div>
         </div>
         {savedModel && (
-          <ModelUnderstandingPane
-            model={savedModel}
-            authenticated={
-              sessionQuery.data?.identity.authenticated === true
-            }
-          />
+          <ModelUnderstandingPane model={savedModel} />
         )}
       </section>
       {error && <div className="error-banner">{error}</div>}

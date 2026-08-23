@@ -20,23 +20,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-legacy = [
-    "matplotlib",
-    "seaborn",
-    "SALib",
-    "scikit-learn",
-    "llvmlite",
-    "shap",
-    "streamlit",
-    "openai==0.28",
-    "plotly",
-    "astor",
-    "tabulate",
-    "IPython",
-    "squarify",
-    "requests>=2.32",
-    "chaospy",
-]
 dev = [
     "black",
     "colorama>=0.4.6",
@@ -53,10 +36,6 @@ package = true
 
 [tool.setuptools]
 packages = [
-    "app",
-    "pages",
-    "modules",
-    "utils",
     "uncertaintycat_core",
     "uncertaintycat_core.plugins",
     "services",
@@ -83,7 +62,6 @@ python_version = "3.10"
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 disallow_untyped_defs = true
-exclude = ["^(app|modules|pages|utils)/"]
 
 [[tool.mypy.overrides]]
 module = ["openturns", "otmorris", "scipy", "scipy.*", "pandas", "openpyxl", "openpyxl.*"]

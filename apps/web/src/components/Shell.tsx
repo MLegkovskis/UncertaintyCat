@@ -32,7 +32,7 @@ interface IdentityClaims {
 
 export function formatIdentity(claims?: IdentityClaims | null) {
   if (!claims?.authenticated) {
-    return { initials: "UC", label: "Guest workspace", fallbackIcon: false };
+    return { initials: "UC", label: "Sign in", fallbackIcon: false };
   }
   const name = claims.name?.trim() ?? "";
   const email = claims.email?.trim() ?? "";
@@ -136,17 +136,21 @@ export function Shell({ children }: PropsWithChildren) {
         </div>
         <nav aria-label="Primary navigation">
           <NavLink to="/" end>
-            <BookOpen size={18} /> Dashboard
+            <BookOpen size={18} /> {signedIn ? "Dashboard" : "Overview"}
           </NavLink>
-          <NavLink to="/new-analysis">
-            <PlusCircle size={18} /> New analysis
-          </NavLink>
-          <NavLink to="/studies">
-            <FolderKanban size={18} /> Studies
-          </NavLink>
-          <NavLink to="/data-lab">
-            <Database size={18} /> Data Lab
-          </NavLink>
+          {signedIn && (
+            <>
+              <NavLink to="/new-analysis">
+                <PlusCircle size={18} /> New analysis
+              </NavLink>
+              <NavLink to="/studies">
+                <FolderKanban size={18} /> Studies
+              </NavLink>
+              <NavLink to="/data-lab">
+                <Database size={18} /> Data Lab
+              </NavLink>
+            </>
+          )}
         </nav>
         <div className="sidebar-footer">
           <div className="runtime-pill">
@@ -223,10 +227,10 @@ export function Shell({ children }: PropsWithChildren) {
                   </>
                 ) : (
                   <>
-                    <strong>Keep custom models private</strong>
+                    <strong>Sign in to use the workspace</strong>
                     <small>
-                      Sign in to keep projects, executions, reports, and report
-                      conversations across devices.
+                      Authentication is required for every model, dataset,
+                      execution, report, share link, and AI conversation.
                     </small>
                     {providers.includes("cloudflare") && (
                       <button

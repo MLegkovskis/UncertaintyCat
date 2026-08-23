@@ -1,128 +1,96 @@
 # Deployment runbook
 
-This is the production runbook for `uncertaintycat.com`. The backing resources and Cloudflare Access OIDC
-application were created on 2026-08-19. The Worker is attached to the live domain only by the verified
-production workflow.
+This is the production runbook for [uncertaintycat.com](https://uncertaintycat.com). The application is delivered as one Cloudflare Worker origin with React assets, Hono APIs, Better Auth, D1, R2, Queues, Workers AI, and Cloudflare Sandbox compute.
 
-## Target topology
+## Production topology
 
-- `uncertaintycat.com`: React static assets and Hono API in one Cloudflare Worker.
-- D1: auth, projects, versions, runs, tasks, reports, chat, quotas, share links.
-- R2: immutable model sources and large artifacts.
-- Queues + DLQ: analysis task delivery and terminal failures.
-- Per-run [Cloudflare Sandbox SDK](https://developers.cloudflare.com/sandbox/) container (Workers Paid):
-  Python/OpenTURNS compute protocol with public egress disabled.
+- `uncertaintycat.com`: canonical Worker origin for static assets, API, auth cookies, and OAuth callbacks.
+- `www.uncertaintycat.com`: permanent redirect to the apex.
+- D1: Better Auth, studies, model versions, assessments, datasets, surrogates, runs, tasks, reports, conversations, usage, and hashed share links.
+- R2: immutable Python source, original private datasets, and promoted OpenTURNS XML artifacts.
+- Queue and dead-letter queue: analysis-task delivery and retry exhaustion.
+- Per-run Cloudflare Sandbox container: Python/OpenTURNS compute with egress disabled.
+- Workers AI binding: Model Understanding and report explanations; no external model-provider key.
 
-Keeping web and API on one origin simplifies cookies and CORS. If separate origins are used, set
-`PUBLIC_WEB_ORIGIN`, `BETTER_AUTH_URL`, cookie policy, trusted origins, and OAuth callbacks explicitly.
+Keeping one origin is intentional. If that changes, review `PUBLIC_WEB_ORIGIN`, `BETTER_AUTH_URL`, trusted origins, cookie policy, CORS, and the OIDC callback as one security change.
 
-## Local release rehearsal
+## Authentication boundary
 
-```bash
-./start_local.sh
-uv run pytest
-npm run typecheck
-npm run test:ts
-npm run build
-npm run test:e2e
-npm run test:e2e:full-stack
-docker build -f services/compute/Dockerfile -t uncertaintycat-compute:local .
+Cloudflare Access is the OIDC provider presented by Better Auth. The production callback is:
+
+```text
+https://uncertaintycat.com/api/auth/callback/cloudflare
 ```
 
-## Cloudflare resource state and bootstrap
+The authorization-code flow uses PKCE and the `openid`, `email`, and `profile` scopes. The site itself is not wrapped in a Cloudflare Access self-hosted application because the static overview remains public. Users explicitly select **Continue with Cloudflare**; after authentication, Better Auth stores the session in D1.
 
-Already created in account `062711e4730b4f1bfc21801a71cfe589`:
+The Worker permits anonymous access only to static assets and SPA HTML, `/health`, `/api/auth/*`, and `/api/v1/session`. Middleware rejects every other `/api/v1/*` request with HTTP 401, including catalogs, example source, shared reports, and exports. Production must never define `DEV_AUTH_BYPASS`.
 
-- private R2 bucket `uncertaintycat-artifacts-production`;
-- queue `uncertaintycat-runs-production`;
-- dead-letter queue `uncertaintycat-runs-dlq-production`;
-- D1 database `uncertaintycat-production` (`ececff7c-67ee-4f74-bd96-3a8f10784fbc`) in Western Europe, with
-  `0001_initial.sql` applied;
-- active full Cloudflare zone `uncertaintycat.com`;
-- Workers Paid with Containers/Sandbox enabled;
-- Zero Trust organization `uncertaintycat.cloudflareaccess.com`;
-- Cloudflare identity provider and OIDC SaaS application for the Better Auth callback;
-- GitHub `production` environment with the account/D1 variables and Access OIDC secrets;
-- scoped GitHub deployment token and generated Better Auth session secret.
+## GitHub configuration
 
-Still required:
+Required production secrets:
 
-1. Run `Deploy production` once and complete the live smoke test.
+- `CLOUDFLARE_API_TOKEN`;
+- `BETTER_AUTH_SECRET` with at least 32 random bytes;
+- `CLOUDFLARE_ACCESS_CLIENT_ID`;
+- `CLOUDFLARE_ACCESS_CLIENT_SECRET`.
 
-`.github/scripts/prepare-cloudflare-config.mjs` replaces the checked-in all-zero D1 placeholder in an ignored
-generated config. Resource IDs and secrets are never committed.
+Required repository variables:
 
-## Secrets and variables
+- `CLOUDFLARE_ACCOUNT_ID`;
+- `CLOUDFLARE_D1_DATABASE_ID`.
 
-Secrets:
+Non-secret production origins and the Access issuer are checked into `apps/api/wrangler.production.jsonc`. `.github/scripts/prepare-cloudflare-config.mjs` creates an ignored deployment config containing the repository-provided D1 ID. Secrets are passed to Wrangler through an ephemeral permission-restricted file and removed in an `always()` step.
 
-- `BETTER_AUTH_SECRET` (at least 32 random bytes);
-- `CLOUDFLARE_API_TOKEN` for GitHub deployment;
-- `CLOUDFLARE_ACCESS_CLIENT_ID` and `CLOUDFLARE_ACCESS_CLIENT_SECRET`.
+The deployment token should remain scoped to the UncertaintyCat Cloudflare account/zone and only the Workers Scripts, Containers, D1, R2, Queues, Workers AI, and Workers Routes capabilities needed by the workflow. Never store the global API key in GitHub or the Worker.
 
-Non-secret environment-specific values:
+## Automatic delivery
 
-- `BETTER_AUTH_URL` and `PUBLIC_WEB_ORIGIN` are fixed to the apex in the production config;
-- `CLOUDFLARE_ACCOUNT_ID=062711e4730b4f1bfc21801a71cfe589`;
-- `CLOUDFLARE_D1_DATABASE_ID=ececff7c-67ee-4f74-bd96-3a8f10784fbc`;
-- `CLOUDFLARE_ACCESS_ISSUER` is fixed to the OIDC application issuer in the production config;
-- exact SHA-256 allowlist generated from the canonical `examples/*.py` catalog.
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request, and manual dispatch. It has no repository-variable gate or skip path. The required jobs are:
 
-Workers AI uses the `AI` binding; there is no model API key in the Worker. The local legacy Streamlit
-utility can use the Workers AI REST API, but it is not part of production.
+1. Python formatting, lint, typing, unit/scientific/integration tests, and all 23 reference models;
+2. TypeScript typing, unit tests, and production build;
+3. mocked-browser navigation and accessibility;
+4. real local Worker/D1/R2/Queue/compute browser journey;
+5. local compute and Cloudflare Sandbox image builds.
 
-## Cloudflare sign-in
+`.github/workflows/deploy.yml` listens for successful `CI` completion on `main`. It checks out the exact successful commit, builds web assets, generates the Wrangler config, validates secrets, applies forward-only D1 migrations, deploys the Worker/assets/bindings/queue consumer/Sandbox image, checks production health, and runs the read-only production Playwright suite.
 
-Cloudflare Access is the OIDC provider presented to Better Auth. Its only upstream identity method is
-Cloudflare account authentication, and the allow policy accepts any user who successfully authenticates
-through that method. It is configured with:
+There is deliberately no `AUTOMATION_ENABLED` variable, pause script, manual-only release path, or commit-message bypass. GitHub workflow concurrency may cancel an older in-progress CI run for the same ref; production deployments are serialized and are not cancelled mid-flight.
 
-- team domain: `uncertaintycat.cloudflareaccess.com`;
-- callback: `https://uncertaintycat.com/api/auth/callback/cloudflare`;
-- authorization-code flow with PKCE;
-- scopes: `openid`, `email`, and `profile`;
-- one-hour Access token lifetime.
+Dependabot pull requests follow the same full CI path. `dependabot-automerge.yml` runs only after a successful
+`CI` `workflow_run`, verifies the open PR is authored by `dependabot[bot]`, targets `main`, and still points
+to the exact tested SHA, then approves and squash-merges it. It explicitly dispatches `CI` on the resulting
+`main` revision; successful post-merge CI triggers deployment and production browser verification. A moved
+head waits for its newer CI run; failed CI, non-Dependabot PRs, and stale workflow runs cannot merge through
+this zero-touch update path.
 
-The public site is not placed behind an Access self-hosted application: guests can still browse and execute
-approved examples. Access is used only as the OIDC broker for an explicit **Continue with Cloudflare** flow.
-Better Auth stores users, accounts, and sessions in D1. Projects and runs use the authenticated Better Auth
-user ID as owner, so the Activity screen restores prior executions after a user signs back in.
+## Migration rules
 
-Production must not define `DEV_AUTH_BYPASS`. Rotate secrets through Cloudflare secret management rather
-than committing `.dev.vars` or editing `wrangler.jsonc` with real values.
+- Add a new numbered SQL file under `apps/api/migrations/` for every schema change.
+- Never edit or delete a migration already applied to production.
+- Keep migrations forward-compatible with the currently deployed Worker when a staged rollout could overlap versions.
+- Back up or export material production data before a destructive schema/data migration.
+- A code rollback must not require reversing a D1 migration.
 
-## GitHub delivery
+## Release verification
 
-CI tests Python, TypeScript, browser navigation, the real local stack, and both container images. Every automatic job is gated by the repository variable `AUTOMATION_ENABLED`. A manual CI dispatch always runs the full suite, and `.github/workflows/deploy.yml` runs after successful eligible CI on `main`, then:
+The automatic production suite verifies health, security headers, unauthenticated session discovery, absence of guest cookies, HTTP 401 across representative private APIs, the static overview, private-route login wall, accessibility, and the exact Cloudflare OIDC authorization request/callback/PKCE contract.
 
-1. builds the React assets;
-2. generates the production Wrangler file from the D1 repository variable;
-3. checks all required secrets;
-4. applies forward-only D1 migrations;
-5. deploys the Worker, assets, bindings, queue consumer, and Sandbox image;
-6. smoke-tests `https://uncertaintycat.com/health`.
+For an authenticated manual release audit:
 
-Use `scripts/automation.sh pause|resume|status`. For a release while automatic automation is paused, commit and push a clean `main` that exactly equals `origin/main`, then run `scripts/automation.sh release`; it dispatches full CI for that commit and prints the authoritative workflow URL.
+- sign in through Cloudflare and confirm the account identity is visible;
+- verify a separate unauthenticated browser cannot read catalogs, examples, studies, runs, reports, share tokens, or exports;
+- create a study, validate a reference model and custom model, and run a small multi-analysis suite;
+- observe queued/running/terminal states and a partial-failure report;
+- upload a small dataset, rank distributions, and retain a generated model draft;
+- build and promote a surrogate, then explicitly select it for a downstream run;
+- download and inspect the evidence bundle and exact source;
+- create and open a share link while authenticated, then expire or revoke it;
+- ask report chat for a numerical value and confirm the persisted-result citation;
+- inspect logs for request/run/task identifiers without source or secrets;
+- confirm the Sandbox has no egress/secrets and is destroyed after execution.
 
-The deployment token is scoped to this account and zone with Account permissions for Workers Scripts,
-Containers, D1, R2, Queues, and Workers AI plus Zone Workers Routes. The account-wide global API key is not
-stored in GitHub or exposed to the Worker.
+## Incident and rollback notes
 
-## Release smoke test
-
-- sign in with Cloudflare and verify guest isolation in another browser profile;
-- save the curated example, reject modified guest source, and save authenticated custom source;
-- run a small multi-analysis suite and observe queued/running/terminal states;
-- force one invalid task and verify `partially_succeeded` report behavior;
-- download and inspect the ZIP manifest/JSON/CSV files;
-- create, open, expire, and revoke a share link;
-- ask chat for a number and verify its result-field citation;
-- validate security headers, CORS, cookies, logs, quotas, and no secret/source leakage;
-- confirm compute has no egress/secrets and is destroyed after execution;
-- verify the previous Worker/static deployment can be restored without reversing a D1 migration.
-
-## Domain cutover
-
-The Worker declares custom domains for the apex and `www`; the Worker permanently redirects `www` to the
-apex. Wrangler creates the required custom-domain DNS records on the first successful deployment. Do not
-run that deployment until the release smoke test can exercise D1 and Sandbox end to end.
+If CI fails, no deployment should start. If deployment or production verification fails, inspect the exact Actions run and Cloudflare Worker/Sandbox logs, fix forward on `main`, and let the normal chain redeploy. Restore a prior Worker/static revision only when it remains compatible with every applied D1 migration. Rotate a suspected secret in Cloudflare/GitHub first, then redeploy; never commit replacement credentials.

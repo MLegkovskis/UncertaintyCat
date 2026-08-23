@@ -37,7 +37,7 @@ export const catalog: AnalysisCatalogEntry[] = [
   config_schema: {},
 }));
 
-export const modelMetadata: ModelMetadata = {
+const modelMetadata: ModelMetadata = {
   source_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   input_dimension: 3,
   output_dimension: 1,
@@ -53,7 +53,7 @@ export const modelMetadata: ModelMetadata = {
   warnings: [],
 };
 
-export const modelAssessment: ModelAssessment = {
+const modelAssessment: ModelAssessment = {
   version: "1.0.0",
   profile: {
     input_dimension: 3,
@@ -75,7 +75,7 @@ export const modelAssessment: ModelAssessment = {
   ],
 };
 
-export const dataset: Dataset = {
+const dataset: Dataset = {
   id: "dataset-1",
   projectId: "project-1",
   name: "Fixture observations.csv",
@@ -256,7 +256,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     json(route, {
       identity: options.authenticated
         ? { ownerId: "user-1", authenticated: true, name: "Mark Legkovskis", email: "mlegkovskis@gmail.com" }
-        : { ownerId: "guest:test", authenticated: false },
+        : { ownerId: "", authenticated: false },
       providers: ["cloudflare"],
     }),
   );

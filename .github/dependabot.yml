@@ -3,6 +3,7 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
+    rebase-strategy: auto
     groups:
       frontend-and-worker:
         patterns: ["*"]
@@ -14,9 +15,14 @@ updates:
   - package-ecosystem: pip
     directory: /
     schedule: { interval: weekly }
+    rebase-strategy: auto
     groups:
       python-runtime:
         patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    rebase-strategy: auto
+    groups:
+      github-actions:
+        patterns: ["*"]

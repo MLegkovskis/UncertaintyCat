@@ -7,31 +7,15 @@ This directory is a clean source export of the original Streamlit application fr
 - source commit: `f1fe78202ffcd0252a7e079bd99b88837e47293f`
 - source commit date: `2026-01-13T18:23:29+00:00`
 
-The source tree is unchanged from that commit except for this provenance file and
-`start_streamlit.sh`, which were added on the modern application's `main` branch for local reference.
-It deliberately retains the backup's OpenTURNS 1.25 dependency and runs in its own `.venv`, so it does not
-alter the modern application's OpenTURNS 1.27 environment.
+The archived source tree is unchanged from that commit except for this provenance file. It deliberately
+retains the backup's OpenTURNS 1.25 dependency and lockfile, but it is excluded from the modern package,
+CI, and deployment graphs.
 
-## Start the backup
+## Reference-only policy
 
-From the modern UncertaintyCat repository root:
-
-```bash
-./Streamlit_Backup/start_streamlit.sh
-```
-
-Then open <http://127.0.0.1:8502>. Stop the foreground server with `Ctrl+C`.
-Running the launcher again automatically stops the previous backup instance first, ensuring a clean launch.
-It does not stop unrelated Streamlit applications.
-
-To use another port:
-
-```bash
-STREAMLIT_PORT=8510 ./Streamlit_Backup/start_streamlit.sh
-```
-
-The numerical features run without an AI key. The original AI commentary controls still expect the legacy
-provider configuration described in `readme.md`; no legacy AI secret is bundled or inherited from production.
+This folder exists only for historical behavior and prompt comparison. Do not import it from modern code,
+add it to root dependencies, patch it as part of product work, or create repository launch scripts for it.
+New functionality belongs in `uncertaintycat_core`, `services/compute`, `apps/api`, or `apps/web`.
 
 ## Archived example check
 
@@ -43,4 +27,5 @@ cd Streamlit_Backup
 uv run --frozen --with colorama python test_all_examples.py
 ```
 
-All 23 archived examples passed this check when the backup was imported.
+All 23 archived examples passed this check when the backup was imported. This is historical evidence, not
+part of the modern release gate.

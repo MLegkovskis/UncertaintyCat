@@ -4,15 +4,46 @@ import {
   Blocks,
   Braces,
   ChartNoAxesCombined,
+  Cloud,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
+import { authClient } from "../auth-client";
+
+const featuredMethods = [
+  {
+    key: "monte_carlo",
+    name: "Monte Carlo propagation",
+    category: "Propagation",
+    description: "Estimate output distributions, intervals, and convergence from the declared input uncertainty.",
+    resource: "lite",
+  },
+  {
+    key: "sobol",
+    name: "Sobol sensitivity",
+    category: "Sensitivity",
+    description: "Separate first-order and interaction effects for compatible independent-input models.",
+    resource: "standard",
+  },
+  {
+    key: "reliability",
+    name: "Reliability analysis",
+    category: "Reliability",
+    description: "Define a limit state and estimate failure probability with explicit method assumptions.",
+    resource: "heavy",
+  },
+] as const;
+
+const referenceExamples = [
+  ["Ishigami", "Nonlinear sensitivity benchmark", "3 uncertain inputs"],
+  ["Cantilever beam", "Engineering deflection model", "Geometry, load, and material uncertainty"],
+  ["Flood model", "Hydraulic risk benchmark", "Mixed physical distributions"],
+] as const;
 
 export function Home() {
-  const catalog = useQuery({ queryKey: ["catalog"], queryFn: api.catalog });
   const session = useQuery({ queryKey: ["session-policy"], queryFn: api.session });
   const projects = useQuery({
     queryKey: ["projects"],
@@ -86,9 +117,18 @@ export function Home() {
           durable report.
         </p>
         <div className="hero-actions">
-          <Link className="button primary" to="/new-analysis">
-            Start a new analysis <ArrowRight size={17} />
-          </Link>
+          <button
+            className="button primary"
+            type="button"
+            onClick={() =>
+              authClient.signIn.social({
+                provider: "cloudflare",
+                callbackURL: `${window.location.origin}/new-analysis`,
+              })
+            }
+          >
+            <Cloud size={17} /> Sign in to analyse
+          </button>
           <a
             className="button secondary"
             href="https://openturns.github.io/openturns/latest/"
@@ -112,7 +152,7 @@ export function Home() {
       </section>
       <section className="architecture-strip">
         <div>
-          <strong>{catalog.data?.analyses.length ?? "—"}</strong>
+          <strong>12</strong>
           <span>versioned analysis plugins</span>
         </div>
         <div>
@@ -135,11 +175,7 @@ export function Home() {
           </p>
         </div>
         <div className="catalog-grid">
-          {catalog.isLoading &&
-            [1, 2, 3].map((item) => (
-              <div className="catalog-card skeleton" key={item} />
-            ))}
-          {catalog.data?.analyses.map((analysis) => (
+          {featuredMethods.map((analysis) => (
             <article className="catalog-card" key={analysis.key}>
               <div className="catalog-icon">
                 <Blocks />
@@ -148,13 +184,31 @@ export function Home() {
               <h3>{analysis.name}</h3>
               <p>{analysis.description}</p>
               <footer>
-                <code>
-                  {analysis.key}@{analysis.version}
-                </code>
-                <span className={`resource ${analysis.resource_class}`}>
-                  {analysis.resource_class}
+                <code>{analysis.key}</code>
+                <span className={`resource ${analysis.resource}`}>
+                  {analysis.resource}
                 </span>
               </footer>
+            </article>
+          ))}
+        </div>
+      </section>
+      <section className="feature-section public-examples">
+        <div className="section-copy">
+          <span className="section-kicker">Static model examples</span>
+          <h2>See the kind of engineering models the workspace understands.</h2>
+          <p>
+            These examples are explanatory previews. Sign-in is required before
+            any source is validated, persisted, or executed.
+          </p>
+        </div>
+        <div className="catalog-grid">
+          {referenceExamples.map(([name, purpose, scope]) => (
+            <article className="catalog-card" key={name}>
+              <span>Reference model</span>
+              <h3>{name}</h3>
+              <p>{purpose}</p>
+              <footer><span>{scope}</span></footer>
             </article>
           ))}
         </div>

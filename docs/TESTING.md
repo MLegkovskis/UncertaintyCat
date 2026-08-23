@@ -1,93 +1,64 @@
 # Browser and end-to-end testing
 
-UncertaintyCat uses three complementary Playwright suites. They deliberately
-separate fast UI feedback from real numerical and production infrastructure
-checks.
+UncertaintyCat uses three complementary Playwright suites. Fast fixture-driven UI evidence is separated from real numerical infrastructure and deployed read-only checks.
 
-## 1. UI contract suite
-
-Run with:
+## UI contract suite
 
 ```bash
 npm run test:e2e
 ```
 
-This suite uses stateful HTTP fixtures but the real React application. It runs
-on every pull request and every push to `main`, and covers:
+This suite uses stateful HTTP fixtures with the real React application. It covers:
 
-- desktop and mobile navigation;
-- guest, Cloudflare sign-in initiation, retained-user account, and sign-out;
-- discovery and retained selection of all 23 examples, Python authoring, and multi-output symbolic builder authoring;
-- validation success and failure;
-- selection and method-specific configuration of all 12 plugins;
-- run progress, task persistence, terminal state, and cancellation;
-- unified study empty/history/detail states and exact reruns;
-- deterministic model assessment, streamed Model Understanding states, surrogate promotion, Morris reduction, and Distribution Data Lab composition;
-- report metrics, tables, truncated-data notices, series, heatmaps, facts,
-  assumptions, partial failures, contents links, sharing, export wiring, and
-  print-to-PDF wiring;
-- authenticated stored chat history, suggestions, keyboard submission,
-  streamed answers, citations, quota errors, and guest denial at both UI and
-  API boundaries;
-- read-only shared reports; and
-- automated WCAG A/AA scans for every routed screen in light and dark themes,
-  expanded builder/account states, and the mobile drawer.
+- the static public overview, absence of private navigation, private-route login wall, and Cloudflare sign-in initiation;
+- authenticated desktop/mobile navigation, account identity, sign-out, and theme persistence;
+- discovery and retained selection of all 23 reference models;
+- Python authoring and the multi-output symbolic OpenTURNS builder;
+- model validation success/failure and all 12 plugin configurations;
+- deterministic triage, streamed Model Understanding, surrogate promotion, Morris reduction, and Distribution Data Lab composition;
+- queued/running/terminal run states, cancellation, exact reruns, and retained study chronology;
+- metrics, tables, truncation notices, series, heatmaps, facts, equations, assumptions, provenance, partial failures, sharing, export, and print wiring;
+- stored report chat, streaming Markdown, suggestions, citations, and quota failures;
+- authenticated read-only shared reports; and
+- automated WCAG A/AA scans in light/dark themes, private and public states, expanded controls, and mobile navigation.
 
-## 2. Real local Cloudflare-stack suite
+The key regression contract is explicit: an unauthenticated browser cannot mount a model, data, run, report, or shared-report page.
 
-Run with:
+## Real Cloudflare-compatible stack suite
 
 ```bash
 npm run test:e2e:full-stack
 ```
 
-Playwright starts a fresh isolated local D1/R2/Queues state, the Hono Worker,
-the FastAPI/OpenTURNS compute service, and Vite. The browser creates a retained
-project, validates the curated Ishigami model, selects all 12 analysis plugins,
-and requires all 12 tasks and report sections to succeed. It then downloads the
-real ZIP, creates and opens a default-source-private share link, reloads study history, and verifies
-the persisted D1 records through the API. Successful task execution also proves
-the immutable source was written to and reread from R2.
+Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated study; validates the Ishigami model; executes all 12 plugins; requires all task/report sections to succeed; downloads the real ZIP; creates and opens an authenticated share link; reloads study history; and verifies persisted D1 records through the API. Successful execution also proves immutable source round-tripping through R2.
 
-The local Worker uses `DEV_AUTH_BYPASS=true` and the browser supplies a clearly
-labelled synthetic retained-user session. This is intentional: CI never holds a
-human Cloudflare password, cookie, or MFA recovery material.
+The test Wrangler configurations use `DEV_AUTH_BYPASS=true` and the browser supplies a synthetic Better Auth session. This is intentionally test-only: CI must not hold a human Cloudflare password, session cookie, or MFA recovery material. Production configuration omits the bypass.
 
-## 3. Deployed production suite
-
-Run the read-only checks with:
+## Deployed production suite
 
 ```bash
 npm run test:e2e:production
 ```
 
-These checks run after the gated deployment. They verify production health
-and security headers, the live 12-plugin Sandbox catalog, all 23 exact-hash examples, guest tamper rejection, guest session policy,
-all public screens, deployed WCAG results, and the real Cloudflare Access OIDC
-authorization request including PKCE and the exact callback URI.
+This suite runs automatically after deployment and is deliberately read-only. It verifies:
 
-A mutation test is available for release verification:
+- health and security headers;
+- unauthenticated session discovery and the configured Cloudflare provider;
+- no generated guest-identity cookie;
+- HTTP 401 and `authentication_required` across representative catalog, example, project, run, and shared-report endpoints;
+- the static method/model overview without protected API data;
+- the login wall on direct private-route navigation;
+- WCAG A/AA results for public and gated pages; and
+- the real Cloudflare OIDC authorization origin, callback, and PKCE challenge.
 
-```bash
-E2E_LIVE_MUTATIONS=true npm run test:e2e:production -- --grep "optional live mutation"
-```
-
-It performs one low-cost curated guest analysis through production D1, R2,
-Queues, Cloudflare Sandbox, and report/export/share endpoints. It also proves
-the report-chat UI is absent and a direct chat API request receives HTTP 401.
-It is opt-in because it writes real production data and consumes paid services.
-Any test project should be deleted from D1 and its exact model object deleted
-from R2 after verification.
+Production mutation is not automated because analysis requires a real authenticated account. Authenticated application behavior is exercised by the full-stack suite; an owner can perform the focused manual audit in [DEPLOYMENT.md](DEPLOYMENT.md) when needed.
 
 ## Failure evidence
 
-All suites retain a trace, screenshot, and video on failure. GitHub Actions
-uploads those artifacts for 14 days. Open a trace locally with:
+All suites retain trace, screenshot, and video evidence on failure. GitHub Actions uploads the relevant result and HTML-report directories for 14 days.
 
 ```bash
 npx playwright show-trace path/to/trace.zip
 ```
 
-The suites use role- and label-based locators instead of CSS coordinates except
-where the coordinate itself is under test (clicking outside the mobile drawer).
-This makes failures correspond to user-observable regressions.
+Tests use roles and labels instead of screen coordinates except where the coordinate itself is the behavior under test, such as dismissing the mobile drawer. Update tests with observable product behavior whenever the UI or auth contract changes; do not weaken assertions merely to match a regression.

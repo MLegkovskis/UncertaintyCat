@@ -9,12 +9,12 @@ imports/calls, but AST filtering is not a security boundary and must never be de
 
 | Boundary          | Current control                                                               | Production requirement                                |
 | ----------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Browser to Worker | strict Zod inputs, ownership checks, secure headers, quota, cookies           | custom domain, abuse controls, CSP review             |
-| Guest models      | server allowlist of exact source hashes                                       | curated examples only; authenticated custom source    |
-| Worker to compute | private Sandbox Durable Object binding or local bearer token                  | keep the Sandbox binding private                      |
-| Python execution  | fresh non-root Sandbox, no secrets, egress disabled, timeout + forced destroy | paid-plan activation and adversarial verification     |
+| Browser to Worker | authenticated API middleware, strict Zod inputs, ownership checks, secure headers, quota, cookies | abuse controls and CSP review                         |
+| Public surface    | static homepage, health, auth handlers, and session discovery only            | regression tests for the explicit allowlist           |
+| Worker to compute | private Sandbox Durable Object binding or test-only local bearer token        | keep the Sandbox binding private                      |
+| Python execution  | fresh non-root Sandbox, no secrets, egress disabled, timeout + forced destroy | adversarial verification                              |
 | Results/chat      | structured stored facts and tool-only numerical access                        | prompt-injection evals, rate limits, retention policy |
-| Sharing           | 256-bit random token, SHA-256 stored, expiry/revocation                       | audit log and owner-visible link management           |
+| Sharing           | authentication plus 256-bit token, SHA-256 stored, expiry/revocation          | audit log and owner-visible link management           |
 
 ## Production compute launch gate
 
@@ -35,18 +35,24 @@ the Workers Paid deployment and adversarial verification confirm these propertie
 
 `IsolatedComputeSandbox` disables internet egress, receives no Worker secrets, runs as an unprivileged user,
 has a fixed instance class, executes a constant command with a three-minute timeout, and is scoped to one
-run. Finalization/cancellation destroys it; failures destroy it immediately. The included Compose profile
-remains the local adapter and hardening aid.
+run. Finalization/cancellation destroys it; failures destroy it immediately. There is no repository Compose
+launcher; container hardening is verified through the production Sandbox image and CI builds.
 
 ## Authentication and authorization
 
 Better Auth is wired to D1 with Cloudflare Access as its OIDC provider. Every project/model/run/report/chat
-operation resolves an owner and applies ownership in SQL. Development bypass is enabled only in the local
-Wrangler file; production configuration must remove `DEV_AUTH_BYPASS` entirely and use a strong
-`BETTER_AUTH_SECRET`.
+operation resolves an authenticated owner and applies ownership in SQL. Middleware covers every
+`/api/v1/*` route except `/api/v1/session`, so catalog/example reads, shared reports, exports, and all
+compute-adjacent operations fail with HTTP 401 before route-specific validation or storage access. The
+browser repeats the boundary with an authenticated route wrapper, but server enforcement is authoritative.
 
-Unauthenticated users receive an HTTP-only, SameSite guest identity. They can save only a source whose
-SHA-256 is present in the checked generated example catalog; changing `sourceKind` alone cannot bypass this rule.
+Unauthenticated session discovery returns `authenticated: false` with an empty owner ID. It does not create
+a guest cookie, project, quota ledger, or any other durable identity. The public homepage uses hard-coded
+descriptive examples and never receives executable source from the API.
+
+`DEV_AUTH_BYPASS=true` exists only in Wrangler configurations used by the isolated full-stack CI suite,
+where no human Cloudflare credential is available. Production configuration must omit it and use a strong
+`BETTER_AUTH_SECRET`.
 
 ## AI boundary
 
@@ -62,9 +68,10 @@ bundle contains no external model-provider endpoint. Workers AI uses a binding, 
 
 ## Secrets
 
-Local placeholders live in `.dev.vars.example`; real `.dev.vars` and environment files are ignored. In
-production use Cloudflare secrets for auth and OAuth. Never put secrets in
-`wrangler.jsonc`, model source, R2 custom metadata, logs, report bundles, or client-side environment vars.
+Real `.dev.vars` and environment files are ignored. The full-stack test configuration contains only
+non-secret synthetic values. In production use Cloudflare secrets for auth and OAuth. Never put secrets in
+checked-in Wrangler configuration, model source, R2 custom metadata, logs, report bundles, or client-side
+environment variables.
 
 ## Remaining launch work
 

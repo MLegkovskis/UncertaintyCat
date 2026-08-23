@@ -3,7 +3,6 @@ import { betterAuth } from "better-auth/minimal";
 import { genericOAuth } from "better-auth/plugins";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
 
 import { authSchema } from "./auth-schema";
 import type { Env, Identity } from "./env";
@@ -71,18 +70,8 @@ export async function identityFor(
       };
     }
   } catch {
-    // Invalid or absent sessions continue as a restricted guest.
+    // Treat invalid and absent sessions identically. Private API middleware
+    // rejects both before any application resource is read or mutated.
   }
-  let guestId = getCookie(c, "uncertaintycat_guest");
-  if (!guestId) {
-    guestId = crypto.randomUUID();
-    setCookie(c, "uncertaintycat_guest", guestId, {
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: new URL(c.req.url).protocol === "https:",
-      maxAge: 60 * 60 * 24 * 30,
-      path: "/",
-    });
-  }
-  return { ownerId: `guest:${guestId}`, authenticated: false };
+  return { ownerId: "", authenticated: false };
 }

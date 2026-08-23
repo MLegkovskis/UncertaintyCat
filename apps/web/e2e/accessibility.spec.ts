@@ -16,7 +16,7 @@ const routes = [
 
 for (const theme of ["light", "dark"] as const) {
   test(
-    `guest workspace has no automatically detectable serious accessibility violations in ${theme} theme`,
+    `authentication gate has no automatically detectable serious accessibility violations in ${theme} theme`,
     async ({ page }) => {
       await installMockApi(page);
       await page.addInitScript((selectedTheme) => {
@@ -24,7 +24,7 @@ for (const theme of ["light", "dark"] as const) {
       }, theme);
       await page.goto("/workspace");
       await expect(
-        page.getByRole("heading", { name: "Start with a durable project." }),
+        page.getByRole("heading", { name: "Sign in before starting an analysis." }),
       ).toBeVisible();
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])

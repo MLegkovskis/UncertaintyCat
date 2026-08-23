@@ -1,8 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const stateDirectory = `.wrangler/e2e-${process.pid}`;
-const wrangler =
-  "npx --yes node@22 apps/api/node_modules/wrangler/bin/wrangler.js";
+const wrangler = "node apps/api/node_modules/wrangler/bin/wrangler.js";
 
 export default defineConfig({
   testDir: "./e2e/full-stack",

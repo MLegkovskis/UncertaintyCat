@@ -185,7 +185,6 @@ export function DataLab() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
-  const sessionQuery = useQuery({ queryKey: ["session-policy"], queryFn: api.session });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const projects = projectsQuery.data?.projects ?? [];
   const [projectId, setProjectId] = useState(searchParams.get("projectId") ?? "");
@@ -193,7 +192,7 @@ export function DataLab() {
   const datasetsQuery = useQuery({
     queryKey: ["datasets", activeProjectId],
     queryFn: () => api.listDatasets(activeProjectId),
-    enabled: Boolean(activeProjectId) && sessionQuery.data?.identity.authenticated === true,
+    enabled: Boolean(activeProjectId),
   });
   const datasets = datasetsQuery.data?.datasets ?? [];
   const [datasetId, setDatasetId] = useState("");
@@ -256,15 +255,6 @@ export function DataLab() {
     significanceLevel: 0.05,
   }), [candidates, copula, selectedColumns]);
   const selectionComplete = selectedColumns.length > 0 && selectedColumns.every((column) => selections[column]);
-
-  if (sessionQuery.data && !sessionQuery.data.identity.authenticated) {
-    return (
-      <div className="page narrow-page">
-        <div className="page-heading"><span className="section-kicker">Distribution Data Lab</span><h1>Private empirical data requires sign-in.</h1></div>
-        <EmptyState title="Sign in to continue" body="Uploaded source files, fit evidence, and generated model drafts are owner-only." />
-      </div>
-    );
-  }
 
   return (
     <div className="page data-lab-page">

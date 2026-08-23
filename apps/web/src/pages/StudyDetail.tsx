@@ -14,9 +14,8 @@ export function StudyDetail() {
     enabled: Boolean(projectId),
   });
   const runsQuery = useQuery({ queryKey: ["runs"], queryFn: api.listRuns, refetchInterval: 5_000 });
-  const sessionQuery = useQuery({ queryKey: ["session-policy"], queryFn: api.session });
-  const datasetsQuery = useQuery({ queryKey: ["datasets", projectId], queryFn: () => api.listDatasets(projectId), enabled: Boolean(projectId) && sessionQuery.data?.identity.authenticated === true });
-  const surrogatesQuery = useQuery({ queryKey: ["surrogates", projectId], queryFn: () => api.listSurrogates(projectId), enabled: Boolean(projectId) && sessionQuery.data?.identity.authenticated === true });
+  const datasetsQuery = useQuery({ queryKey: ["datasets", projectId], queryFn: () => api.listDatasets(projectId), enabled: Boolean(projectId) });
+  const surrogatesQuery = useQuery({ queryKey: ["surrogates", projectId], queryFn: () => api.listSurrogates(projectId), enabled: Boolean(projectId) });
   const project = projectsQuery.data?.projects.find((item) => item.id === projectId);
   const models = modelsQuery.data?.modelVersions ?? [];
   const runs = (runsQuery.data?.runs ?? []).filter((run) => run.projectId === projectId);
@@ -59,15 +58,13 @@ export function StudyDetail() {
           </div>
         ) : <EmptyState title="No model versions" body="Prepare and validate the first model version." />}
       </section>
-      {sessionQuery.data?.identity.authenticated === true && (
-        <section className="activity-section">
-          <div className="section-copy"><span className="section-kicker">Private assets</span><h2>Datasets and promoted surrogates</h2></div>
-          <div className="model-version-grid">
-            {datasets.map((dataset) => <article className="model-version-card" key={dataset.id}><div><strong>{dataset.name}</strong><span>Dataset</span></div><p>{dataset.rowCount} rows · {dataset.columns.length} columns</p><Link to={`/data-lab?projectId=${projectId}`}>Open Data Lab <ArrowRight /></Link></article>)}
-            {surrogates.map((surrogate) => <article className="model-version-card" key={surrogate.id}><div><strong>{surrogate.method.toUpperCase()} surrogate</strong><StatusBadge status={surrogate.status} /></div><p>Score {surrogate.validation.guidance.score.toPrecision(4)} · normalized RMSE {surrogate.validation.guidance.normalizedRmse.toPrecision(4)}</p>{surrogate.status === "promoted" && <a href={`/api/v1/surrogates/${surrogate.id}/artifact`} download>Download OpenTURNS XML <ArrowRight /></a>}</article>)}
-          </div>
-        </section>
-      )}
+      <section className="activity-section">
+        <div className="section-copy"><span className="section-kicker">Private assets</span><h2>Datasets and promoted surrogates</h2></div>
+        <div className="model-version-grid">
+          {datasets.map((dataset) => <article className="model-version-card" key={dataset.id}><div><strong>{dataset.name}</strong><span>Dataset</span></div><p>{dataset.rowCount} rows · {dataset.columns.length} columns</p><Link to={`/data-lab?projectId=${projectId}`}>Open Data Lab <ArrowRight /></Link></article>)}
+          {surrogates.map((surrogate) => <article className="model-version-card" key={surrogate.id}><div><strong>{surrogate.method.toUpperCase()} surrogate</strong><StatusBadge status={surrogate.status} /></div><p>Score {surrogate.validation.guidance.score.toPrecision(4)} · normalized RMSE {surrogate.validation.guidance.normalizedRmse.toPrecision(4)}</p>{surrogate.status === "promoted" && <a href={`/api/v1/surrogates/${surrogate.id}/artifact`} download>Download OpenTURNS XML <ArrowRight /></a>}</article>)}
+        </div>
+      </section>
       <section className="activity-section">
         <div className="section-copy"><span className="section-kicker">Chronology</span><h2>Runs and reports</h2></div>
         {runs.length ? (

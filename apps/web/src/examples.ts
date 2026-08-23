@@ -13,7 +13,7 @@ export type DistributionName =
   | "Beta"
   | "Triangular";
 
-export interface DistributionParameter {
+interface DistributionParameter {
   key: string;
   label: string;
   defaultValue: number;
@@ -134,7 +134,7 @@ export interface BuilderVariable {
   parameters: number[];
 }
 
-export interface BuilderOutput {
+interface BuilderOutput {
   id: string;
   name: string;
   formula: string;

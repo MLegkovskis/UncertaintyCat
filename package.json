@@ -6,9 +6,6 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:web": "npm run dev --workspace @uncertaintycat/web",
-    "dev:api": "npm run dev --workspace @uncertaintycat/api",
-    "dev:compute": "uv run uvicorn services.compute.main:app --reload --port 8080",
     "build": "npm run build --workspaces --if-present",
     "build:production": "npm run build --workspace @uncertaintycat/web && npm run build:production --workspace @uncertaintycat/api",
     "typecheck": "npm run typecheck --workspaces --if-present",

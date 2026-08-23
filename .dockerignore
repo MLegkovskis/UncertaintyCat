@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+**/__pycache__
+*.pyc
+*.egg-info
+node_modules
+apps
+packages
+tests
+examples
+Streamlit_Backup
+docs
+artifacts
+playwright-report*
+test-results

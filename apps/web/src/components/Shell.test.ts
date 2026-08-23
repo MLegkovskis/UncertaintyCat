@@ -23,10 +23,10 @@ describe("formatIdentity", () => {
     });
   });
 
-  it("keeps the cat identity for a guest", () => {
+  it("uses a clear sign-in identity when no account is active", () => {
     expect(formatIdentity({ authenticated: false, name: "", email: "" })).toEqual({
       initials: "UC",
-      label: "Guest workspace",
+      label: "Sign in",
       fallbackIcon: false,
     });
   });

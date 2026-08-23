@@ -58,13 +58,13 @@ Read these files before designing anything:
 | Provenance and deterministic seeds | `uncertaintycat_core/runner.py` |
 | Compute HTTP/process boundary | `services/compute/main.py`, `services/compute/cli.py` |
 | Run composer and safe UI defaults | `apps/web/src/pages/Workspace.tsx` |
-| Generic result rendering | `apps/web/src/pages/Report.tsx` and report components |
+| Generic result rendering | `apps/web/src/pages/ReportPage.tsx` and report components |
 | API/queue/D1/R2 orchestration | `apps/api/src/` |
 | Scientific regression tests | `tests/core/test_plugins.py` |
 | Service boundary tests | `tests/integration/test_compute_service.py` |
 | Mocked browser suite | `apps/web/e2e/ui-flows.spec.ts` |
 | Real local full-stack suite | `apps/web/e2e/full-stack/journey.spec.ts` |
-| Live non-mutating/mutating checks | `apps/web/e2e/production/smoke.spec.ts` |
+| Live non-mutating auth-boundary checks | `apps/web/e2e/production/smoke.spec.ts` |
 | CI and post-CI production deployment | `.github/workflows/ci.yml`, `.github/workflows/deploy.yml` |
 | Review checkpoint | `docs/openturns-sync/state.json` |
 
@@ -104,7 +104,8 @@ At this checkpoint the application has 12 plugins:
 | `pce` | polynomial-chaos surrogate and hold-out validation | validation Q2 controls trust |
 | `gpr` | GP surrogate, hold-out accuracy, and conditional intervals | continuous inputs; bounded exact GPR |
 
-The legacy Streamlit `modules/` and `pages/` folders are migration references, not the target architecture.
+The legacy Streamlit source is isolated under `Streamlit_Backup/` as a read-only historical reference. It is
+not part of the root dependency, test, package, or deployment graphs.
 
 ## 3. Upstream authority hierarchy
 
@@ -322,7 +323,8 @@ uv run python -c 'import openturns as ot; print(ot.__version__)'
 ```
 
 Run all bundled model validations and scientific tests. Search ChangeLog for removed/deprecated names used in
-core, tests, examples, and legacy code. Installation alone is not compatibility evidence.
+the modern core, services, tests, and canonical examples. Consult `Streamlit_Backup/` only when historical
+behavior is relevant. Installation alone is not compatibility evidence.
 
 ## 6. Required evidence and tests
 
@@ -331,7 +333,9 @@ invalid applicability; output/dependence behavior; constant/non-finite behavior;
 evaluation accounting; table truncation; and realistic default/maximum runtime evidence where practical.
 
 Product evidence: catalog schema; `/v1/execute`; mocked UI configuration/request; generic report rendering;
-real local full-stack execution/report/export; production catalog; and, when authorized, one live mutation.
+real full-stack execution/report/export; production health and authentication boundary; and, when a real
+owner session is explicitly available, a focused authenticated live audit. Production APIs never expose the
+analysis catalog to an unauthenticated scout.
 
 Mandatory local commands:
 
@@ -510,13 +514,15 @@ Perform one complete intake cycle:
 8. Implement through AnalysisPlugin. Prefer stable OpenTURNS algorithms over custom numerical work. Emit
    strict bounded generic payloads. Add safe UI/catalog wiring and preserve persistence/export/chat contracts.
 9. Add fixed-seed, benchmark, applicability, dependence/output, degeneracy, strict JSON, accounting, service,
-   mocked browser, real full-stack, and production catalog evidence as applicable.
+   mocked browser, real full-stack, and production auth-boundary evidence as applicable.
 10. Update readme.md, scientific/method docs, every catalog count, and state.json. Record deferred/rejected
     candidates so the next run does not rediscover them without new evidence.
 11. Run every Python, TypeScript, build, Playwright, full-stack, and container gate in the README. Inspect the
     full diff. Never weaken evidence merely to pass.
 12. Only when all gates pass, commit explicit files and push directly to main. Observe GitHub CI and the
-    post-CI Cloudflare deployment to terminal success. Verify health, catalog, public UI, and new capability.
+    post-CI Cloudflare deployment to terminal success. Verify health, the static public overview, the
+    unauthenticated API boundary, and the new capability through full-stack CI. Record any separately
+    authorized authenticated production audit.
 13. Diagnose failures and fix forward. Never rewrite deployed history or reverse D1 migrations. If completion
     is unsafe, leave the repository recoverable, do not push unverified code, and report the exact blocker.
 14. Return the section 8 evidence report with direct primary-source links, files, commits, workflow results,

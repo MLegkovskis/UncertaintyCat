@@ -1,89 +1,63 @@
 # UncertaintyCat
 
-UncertaintyCat is an open-source uncertainty-quantification workspace built on
-[OpenTURNS](https://openturns.github.io/openturns/latest/). It turns a versioned Python model into
-reproducible analysis runs, interactive reports, portable evidence bundles, and tool-grounded report
-conversations.
+[UncertaintyCat](https://uncertaintycat.com) is an open-source uncertainty-quantification workspace built on [OpenTURNS](https://openturns.github.io/openturns/latest/). It turns a versioned OpenTURNS model into reproducible analyses, durable engineering studies, interactive reports, portable evidence bundles, and tool-grounded report conversations.
 
-This branch contains the successor to the original Streamlit application. The legacy entry point is
-still present for comparison, while the new system is split into a React application, a Cloudflare
-Worker-compatible control plane, and an isolated Python compute service.
+The public site is a static product overview. Authentication through Cloudflare is required before the application exposes an analysis catalog or reference-model source, validates a model, accepts a dataset, starts computation, or reads any retained result.
 
-## What is implemented
+## Current capabilities
 
-- Immutable model versions with deterministic assessment, lineage, exact source hashes, and OpenTURNS provenance.
-- A generated, hash-checked catalog for all 23 reference models plus a multi-output symbolic OpenTURNS builder.
-- Twelve schema-driven analysis plugins: Monte Carlo, EDA, correlation, Sobol, FAST, HSIC, Taylor,
-  Morris, expectation convergence, reliability, polynomial chaos, and Gaussian-process regression.
-- Multi-output propagation and exploration; scalar-output methods require an explicit output target.
-- Durable projects, queued/idempotent runs, partial-failure reports, cancellation, quotas, and retries.
-- Lazy-loaded Apache ECharts results with exact table fallbacks, browser-print PDF reports, ZIP JSON/CSV evidence bundles, and expiring,
-  revocable share links.
-- Study-scoped distribution fitting, explicit Morris-derived versions, promoted PCE/GPR surrogates, and a guided reliability workflow.
-- Cached, owner-only Model Understanding and report chat using safe Markdown/math rendering and the centrally configured GLM-4.7-Flash model.
-- Cloudflare-hosted Workers AI chat, built on the open-source Vercel AI SDK and Cloudflare provider,
-  constrained to five read-only persisted-report tools; it does not execute numerical calculations.
-- Better Auth wiring for Cloudflare Access OIDC login, D1-backed cross-device history, persisted report
-  conversations, and restricted guest access to server-approved examples.
-- A weekly OpenTURNS release scout and CI gates for Python, TypeScript, browser smoke tests, and the
-  compute image.
+- Immutable Python and symbolic-builder model versions with exact source hashes, deterministic assessment, lineage, and OpenTURNS provenance.
+- Twenty-three hash-checked reference models available inside authenticated workspaces.
+- Twelve versioned analysis plugins: Monte Carlo, exploratory data analysis, correlation, Sobol, FAST, HSIC, Taylor, Morris, expectation convergence, reliability, polynomial chaos, and Gaussian-process regression.
+- Multi-output propagation and exploration with explicit output targeting for scalar methods.
+- D1-backed studies, datasets, runs, task state, reports, quotas, model explanations, and report conversations.
+- R2-backed immutable model source, private uploaded data, and promoted OpenTURNS surrogate artifacts.
+- Queue-driven, idempotent computation in isolated Cloudflare Sandbox containers with retry, cancellation, and partial-result handling.
+- Apache ECharts reports with exact data fallbacks, printable PDF layout, ZIP/JSON/CSV exports, and authenticated read-only share links.
+- Study-scoped distribution fitting, explicit Morris-derived model versions, promoted PCE/GPR surrogates, and reliability guidance.
+- Cloudflare Workers AI explanations using the open-source Vercel AI SDK and `workers-ai-provider`. AI can query bounded persisted-result projections but cannot run calculations or mutate evidence.
+- Weekly OpenTURNS release discovery plus full Python, TypeScript, browser, local-stack, and image CI on every push to `main`.
 
 ## Architecture
 
 ```text
 React/Vite web  ->  Hono Worker API  ->  D1 metadata
-                         |           ->  R2 model/artifact storage
+                         |           ->  R2 sources and artifacts
                          |           ->  Queue task lifecycle
+                         |           ->  Workers AI narrative
                          v
-                 disposable Cloudflare Sandbox  ->  uncertaintycat_core  ->  OpenTURNS
+                 Cloudflare Sandbox  ->  uncertaintycat_core  ->  OpenTURNS
 ```
 
-The stable extension point is `uncertaintycat_core.plugins.base.AnalysisPlugin`. Each plugin owns a
-strict configuration model and emits the same JSON-safe result envelope; the web UI consumes the
-catalog instead of importing algorithm-specific Python.
+The stable numerical extension point is `uncertaintycat_core.plugins.base.AnalysisPlugin`. Plugins declare strict configuration, applicability, assumptions, resource class, implementation version, and a common JSON-safe result envelope. The Worker and UI consume the catalog rather than importing algorithm-specific code.
 
-See [Architecture](docs/ARCHITECTURE.md), [plugin guide](docs/ANALYSIS_PLUGIN_GUIDE.md),
-[security model](docs/SECURITY.md), [scientific validation](docs/SCIENTIFIC_VALIDATION.md), and
-[deployment runbook](docs/DEPLOYMENT.md). The complete upstream review and scheduled-agent operating
-procedure is in the [OpenTURNS synchronization README](docs/openturns-sync/README.md).
-
-## Local development
-
-Prerequisites: Python 3.12, [uv](https://docs.astral.sh/uv/), npm, and optionally Docker. The launcher uses an isolated Node 22 runtime for Wrangler if the system Node is older.
-
-```bash
-./start_local.sh
-```
-
-Open `http://127.0.0.1:5173`. The launcher synchronizes dependencies, applies migrations to persistent local-only D1 state, starts FastAPI, Wrangler, and Vite, and enables a clearly labelled retained development identity. D1, R2, and Queues stay local; only Workers AI is remote when Wrangler is authenticated. To
-exercise the hardened container boundary instead of the host compute process:
-
-```bash
-docker compose up --build compute
-```
+Read [Architecture](docs/ARCHITECTURE.md), [plugin development](docs/ANALYSIS_PLUGIN_GUIDE.md), [security](docs/SECURITY.md), [scientific validation](docs/SCIENTIFIC_VALIDATION.md), [testing](docs/TESTING.md), and [deployment](docs/DEPLOYMENT.md). The upstream evaluation and scheduled-agent procedure is in the [OpenTURNS synchronization guide](docs/openturns-sync/README.md). Repository-wide agent rules are in [AGENTS.md](AGENTS.md).
 
 ## Quality gates
 
+Prerequisites are Python 3.12, [uv](https://docs.astral.sh/uv/), Node.js 22, and npm. There is intentionally no repository launcher script; package commands and Playwright own the test processes they need.
+
 ```bash
+uv sync --frozen --extra dev
+npm ci
+npm run check:examples
 npm run typecheck
 npm run test:ts
 npm run build
 uv run ruff format --check uncertaintycat_core services tests test_all_examples.py
 uv run ruff check uncertaintycat_core services tests test_all_examples.py
+uv run mypy uncertaintycat_core services
 uv run pytest
 uv run python test_all_examples.py
-npm run test:e2e       # first run: npx playwright install chromium
+npm run test:e2e
 npm run test:e2e:full-stack
 ```
 
-The local gate validates every model under `examples/`, contract strictness, multi-output behavior,
-dependent-input rejection, the known Ishigami Sobol structure, Gaussian-process validation on smooth and
-dependent-input benchmarks, FORM on a standard-normal half-space, all catalog plugins, and the FastAPI
-boundary.
+The suites cover all reference models, strict serialization, multi-output behavior, dependency restrictions, sensitivity/reliability benchmarks, surrogate validation, the compute HTTP boundary, authenticated UI journeys, D1/R2/Queue persistence, report/export behavior, accessibility, and the deployed authentication boundary.
 
 ## Model contract
 
-A model source defines exactly the OpenTURNS objects `model` and `problem`:
+Executable source defines exactly the OpenTURNS objects `model` and `problem`:
 
 ```python
 import openturns as ot
@@ -94,34 +68,13 @@ problem = ot.JointDistribution([ot.Normal(), ot.Uniform(-1.0, 1.0)])
 problem.setDescription(["normal_input", "uniform_input"])
 ```
 
-The AST preflight is useful feedback, not a sandbox. Never expose the compute service to untrusted
-custom source without the isolation controls described in the security document.
+AST preflight provides useful feedback; it is not a security boundary. User-authored Python is executed only after authentication and inside the isolation controls described in [docs/SECURITY.md](docs/SECURITY.md).
 
-## Deployment status
+## Delivery
 
-The production Worker/static-assets configuration, D1 migrations, R2/Queue bindings, Workers AI binding,
-Sandbox image, custom-domain routes, and post-CI deployment workflow are implemented. The live Cloudflare
-account has D1, R2, Queues, Workers Paid, the Cloudflare Access OIDC application, and a fully configured
-GitHub production environment. Automatic CI/deployment is controlled by the repository variable
-`AUTOMATION_ENABLED`; while paused, `scripts/automation.sh release` dispatches the complete authoritative
-CI suite for the exact clean `main` commit, whose success alone triggers deployment and production verification.
+Every push to `main` starts the complete CI workflow. A successful CI run for that exact commit automatically applies forward-only D1 migrations, deploys the Worker, static assets, bindings, queue consumer, and Sandbox image to `uncertaintycat.com`, then runs production Playwright verification. There is no repository-wide pause variable or manual release script.
 
-## Legacy application
-
-The original Streamlit application remains runnable during migration:
-
-```bash
-uv run streamlit run UncertaintyCat.py
-```
-
-New analysis work should target `uncertaintycat_core`; the legacy `modules/` package is retained as a
-behavior reference and migration source.
-
-Install the legacy-only visualization and Streamlit dependencies before running it:
-
-```bash
-uv sync --extra legacy
-```
+The original Streamlit source is preserved only as a historical reference in `Streamlit_Backup/`; it is excluded from the modern dependency graph and delivery path.
 
 ## License
 

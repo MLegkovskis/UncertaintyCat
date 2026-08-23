@@ -10,7 +10,7 @@ import {
 } from "./fixtures";
 
 test.describe("application shell and identity", () => {
-  test("all primary routes, the mobile drawer, and Cloudflare sign-in are operable", async ({
+  test("the public overview, private-route gate, mobile drawer, and Cloudflare sign-in are operable", async ({
     page,
   }) => {
     await installMockApi(page);
@@ -21,11 +21,12 @@ test.describe("application shell and identity", () => {
 
     await expect(page.getByRole("heading", { name: /Turn uncertain inputs/ })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
-    await page.getByRole("link", { name: "New analysis", exact: true }).click();
-    await expect(page).toHaveURL(/\/new-analysis$/);
-    await page.getByRole("link", { name: "Studies" }).click();
-    await expect(page).toHaveURL(/\/studies$/);
-    await page.getByRole("link", { name: "Dashboard" }).click();
+    await expect(page.getByRole("link", { name: "New analysis", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Ishigami", { exact: true })).toBeVisible();
+    await page.goto("/new-analysis");
+    await expect(page.getByRole("heading", { name: "Sign in before starting an analysis." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue with Cloudflare" })).toBeVisible();
+    await page.goto("/");
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("button", { name: "Open navigation" }).click();
@@ -35,8 +36,8 @@ test.describe("application shell and identity", () => {
       .click({ position: { x: 330, y: 100 } });
     await expect(page.locator(".sidebar")).not.toHaveClass(/sidebar-open/);
 
-    await page.getByRole("button", { name: /Guest workspace/ }).click();
-    await expect(page.getByText("Keep custom models private")).toBeVisible();
+    await page.getByRole("button", { name: "Not signed in Sign in" }).click();
+    await expect(page.getByText("Sign in to use the workspace")).toBeVisible();
     await page.getByRole("menuitem", { name: "Continue with Cloudflare" }).click();
     await expect(page).toHaveURL(/uncertaintycat\.cloudflareaccess\.com/);
     await expect(page.getByRole("heading", { name: "Cloudflare identity" })).toBeVisible();
@@ -157,7 +158,7 @@ test.describe("model studio", () => {
   });
 
   test("surfaces model validation and catalog failures without enabling a run", async ({ page }) => {
-    await installMockApi(page, { projects: [project] });
+    await installMockApi(page, { authenticated: true, projects: [project] });
     await page.route("**/api/v1/analyses/catalog", (route) =>
       route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "offline" } }) }),
     );
@@ -190,7 +191,7 @@ test.describe("model studio", () => {
 
 test.describe("run lifecycle", () => {
   test("renders live task progress and sends cancellation", async ({ page }) => {
-    await installMockApi(page, { projects: [project], runs: [makeRun("running")] });
+    await installMockApi(page, { authenticated: true, projects: [project], runs: [makeRun("running")] });
     let cancelRequested = false;
     await page.route("**/api/v1/runs/run-1/cancel", async (route) => {
       cancelRequested = true;
@@ -204,7 +205,7 @@ test.describe("run lifecycle", () => {
   });
 
   test("opens the report from a terminal run", async ({ page }) => {
-    await installMockApi(page, { projects: [project], runs: [makeRun("succeeded")] });
+    await installMockApi(page, { authenticated: true, projects: [project], runs: [makeRun("succeeded")] });
     await page.goto("/runs/run-1");
     await expect(page.getByText("The report is ready.")).toBeVisible();
     await page.getByRole("link", { name: /Open report/ }).click();
@@ -250,7 +251,7 @@ test.describe("reports and grounded chat", () => {
   });
 
   test("shared reports are read-only and hide owner chat", async ({ page }) => {
-    await installMockApi(page, { report: makeReport() });
+    await installMockApi(page, { authenticated: true, report: makeReport() });
     await page.goto("/shared/share-token");
     await expect(page.getByRole("heading", { name: "Verification report" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
@@ -275,12 +276,12 @@ test.describe("reports and grounded chat", () => {
     await expect(page.getByText("Summarise the result")).toBeVisible();
   });
 
-  test("guest-owned reports do not expose report chat", async ({ page }) => {
+  test("an unauthenticated visitor cannot open any report", async ({ page }) => {
     await installMockApi(page, { report: makeReport() });
     await page.goto("/reports/report-1");
-    await expect(page.getByRole("heading", { name: "Verification report" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in before starting an analysis." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Verification report" })).toHaveCount(0);
     await expect(page.getByText("Ask this report")).toHaveCount(0);
-    await expect(page.getByLabel("Question about report")).toHaveCount(0);
   });
 });
 
@@ -323,12 +324,12 @@ test.describe("dimensionality screening", () => {
 
 test.describe("durable activity", () => {
   test("shows empty states and later links retained projects and runs", async ({ page }) => {
-    await installMockApi(page);
+    await installMockApi(page, { authenticated: true });
     await page.goto("/activity");
     await expect(page.getByText("No studies yet")).toBeVisible();
 
     const secondPage = await page.context().newPage();
-    await installMockApi(secondPage, { projects: [project], runs: [makeRun()] });
+    await installMockApi(secondPage, { authenticated: true, projects: [project], runs: [makeRun()] });
     await secondPage.goto("/activity");
     await expect(secondPage.getByText(project.name)).toBeVisible();
     await secondPage.locator(".study-row").click();

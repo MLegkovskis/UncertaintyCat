@@ -39,10 +39,10 @@ import {
   now,
   parseJson,
 } from "./db";
-import type { Env, RunTaskMessage } from "./env";
+import type { Env, Identity, RunTaskMessage } from "./env";
 import { createReportBundle } from "./exports";
 
-type Variables = { requestId: string };
+type Variables = { requestId: string; identity?: Identity };
 type AppContext = Context<{ Bindings: Env; Variables: Variables }>;
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.0.0";
@@ -57,6 +57,14 @@ function jsonError(
     { error: { code, message }, requestId: c.get("requestId") },
     status,
   );
+}
+
+function authenticatedIdentity(c: AppContext): Identity {
+  const identity = c.get("identity");
+  if (!identity?.authenticated) {
+    throw new Error("Authenticated API middleware did not resolve an identity.");
+  }
+  return identity;
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -157,6 +165,7 @@ app.use("*", async (c, next) => {
   }
   await next();
 });
+
 app.use(
   "*",
   cors({
@@ -175,6 +184,24 @@ app.use("*", async (c, next) => {
   const requestId = c.req.header("cf-ray") ?? crypto.randomUUID();
   c.set("requestId", requestId);
   c.header("X-Request-Id", requestId);
+  await next();
+});
+
+app.use("/api/v1/*", async (c, next) => {
+  if (c.req.path === "/api/v1/session") {
+    await next();
+    return;
+  }
+  const identity = await identityFor(c);
+  if (!identity.authenticated) {
+    return jsonError(
+      c,
+      401,
+      "authentication_required",
+      "Sign in with Cloudflare to access UncertaintyCat analyses.",
+    );
+  }
+  c.set("identity", identity);
   await next();
 });
 
@@ -351,7 +378,7 @@ const surrogateColumns = `id, project_id, source_model_version_id,
   validation_json, acknowledgement_json, object_key, created_at, promoted_at`;
 
 app.get("/api/v1/projects", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const rows = await c.env.DB.prepare(
     "SELECT id, name, description, created_at, updated_at FROM projects WHERE owner_id = ? ORDER BY updated_at DESC",
   )
@@ -378,7 +405,7 @@ app.post(
   "/api/v1/projects",
   zValidator("json", createProjectSchema),
   async (c) => {
-    const identity = await identityFor(c);
+    const identity = authenticatedIdentity(c);
     const input = c.req.valid("json");
     const id = crypto.randomUUID();
     const timestamp = now();
@@ -410,14 +437,7 @@ app.post(
 );
 
 app.get("/api/v1/projects/:projectId/datasets", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      401,
-      "authentication_required",
-      "Sign in to access private datasets.",
-    );
+  const identity = authenticatedIdentity(c);
   const projectId = c.req.param("projectId");
   const ownership = await c.env.DB.prepare(
     "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
@@ -441,14 +461,7 @@ app.post(
   "/api/v1/datasets",
   zValidator("json", uploadDatasetSchema),
   async (c) => {
-    const identity = await identityFor(c);
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to upload private datasets.",
-      );
+    const identity = authenticatedIdentity(c);
     const input = c.req.valid("json");
     const project = await c.env.DB.prepare(
       "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
@@ -572,14 +585,7 @@ app.post(
 );
 
 app.get("/api/v1/datasets/:datasetId/fits", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      401,
-      "authentication_required",
-      "Sign in to access private distribution fits.",
-    );
+  const identity = authenticatedIdentity(c);
   const dataset = await c.env.DB.prepare(
     "SELECT id FROM datasets WHERE id = ? AND owner_id = ?",
   )
@@ -603,14 +609,7 @@ app.post(
   "/api/v1/datasets/:datasetId/fits",
   zValidator("json", distributionFitSchema),
   async (c) => {
-    const identity = await identityFor(c);
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to fit private datasets.",
-      );
+    const identity = authenticatedIdentity(c);
     const dataset = await c.env.DB.prepare(
       `SELECT id, source_kind, object_key FROM datasets
        WHERE id = ? AND owner_id = ?`,
@@ -719,7 +718,7 @@ app.post(
 );
 
 app.get("/api/v1/projects/:projectId/models", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const ownership = await c.env.DB.prepare(
     "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
   )
@@ -773,22 +772,8 @@ app.post(
   "/api/v1/projects/:projectId/models",
   zValidator("json", createModelVersionSchema),
   async (c) => {
-    const identity = await identityFor(c);
+    const identity = authenticatedIdentity(c);
     const input = c.req.valid("json");
-    if (!identity.authenticated) {
-      const publicHashes = new Set<string>(
-        EXAMPLE_CATALOG.map((example) => example.sha256),
-      );
-      const sourceHash = await sha256Hex(input.source);
-      if (input.sourceKind !== "example" || !publicHashes.has(sourceHash)) {
-        return jsonError(
-          c,
-          403,
-          "authentication_required",
-          "Sign in to execute custom Python models.",
-        );
-      }
-    }
     const projectId = c.req.param("projectId");
     const project = await c.env.DB.prepare(
       "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
@@ -827,7 +812,7 @@ app.post(
     }
     const metadata = validationBody.metadata;
     const assessment = validationBody.assessment;
-    if (assessment && identity.authenticated) {
+    if (assessment) {
       const attached = await c.env.DB.prepare(
         "SELECT COUNT(*) AS count FROM datasets WHERE project_id = ? AND owner_id = ?",
       )
@@ -969,14 +954,7 @@ app.post(
 );
 
 app.get("/api/v1/model-versions/:modelVersionId/definition", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      403,
-      "authentication_required",
-      "Sign in to retrieve an exact model definition.",
-    );
+  const identity = authenticatedIdentity(c);
   const definition = await loadModelDefinition(
     c.env,
     c.req.param("modelVersionId"),
@@ -989,14 +967,7 @@ app.get("/api/v1/model-versions/:modelVersionId/definition", async (c) => {
 });
 
 app.get("/api/v1/model-versions/:modelVersionId/source", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      403,
-      "authentication_required",
-      "Sign in to download exact model source.",
-    );
+  const identity = authenticatedIdentity(c);
   const definition = await loadModelDefinition(
     c.env,
     c.req.param("modelVersionId"),
@@ -1017,14 +988,7 @@ app.post(
   "/api/v1/model-versions/:modelVersionId/derived-reduction",
   zValidator("json", createReducedModelSchema),
   async (c) => {
-    const identity = await identityFor(c);
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to create a derived model version.",
-      );
+    const identity = authenticatedIdentity(c);
     const modelVersionId = c.req.param("modelVersionId");
     const definition = await loadModelDefinition(
       c.env,
@@ -1138,14 +1102,7 @@ problem.setDescription(${JSON.stringify(retainedVariables)})
 );
 
 app.get("/api/v1/projects/:projectId/surrogates", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      401,
-      "authentication_required",
-      "Sign in to access private surrogate models.",
-    );
+  const identity = authenticatedIdentity(c);
   const projectId = c.req.param("projectId");
   const project = await c.env.DB.prepare(
     "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
@@ -1168,14 +1125,7 @@ app.post(
   "/api/v1/model-versions/:modelVersionId/surrogates",
   zValidator("json", createSurrogateSchema),
   async (c) => {
-    const identity = await identityFor(c);
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to build a private surrogate.",
-      );
+    const identity = authenticatedIdentity(c);
     const definition = await loadModelDefinition(
       c.env,
       c.req.param("modelVersionId"),
@@ -1329,14 +1279,7 @@ app.post(
   "/api/v1/surrogates/:surrogateId/promote",
   zValidator("json", promoteSurrogateSchema),
   async (c) => {
-    const identity = await identityFor(c);
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to promote a private surrogate.",
-      );
+    const identity = authenticatedIdentity(c);
     const row = await c.env.DB.prepare(
       `SELECT ${surrogateColumns} FROM surrogate_models
        WHERE id = ? AND owner_id = ?`,
@@ -1491,14 +1434,7 @@ app.post(
 );
 
 app.get("/api/v1/surrogates/:surrogateId/artifact", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      401,
-      "authentication_required",
-      "Sign in to download a private surrogate.",
-    );
+  const identity = authenticatedIdentity(c);
   const row = await c.env.DB.prepare(
     "SELECT object_key, method FROM surrogate_models WHERE id = ? AND owner_id = ? AND status = 'promoted'",
   )
@@ -1544,14 +1480,7 @@ function understandingPayload(row: UnderstandingRow) {
 }
 
 app.get("/api/v1/model-versions/:modelVersionId/understanding", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      401,
-      "authentication_required",
-      "Sign in to use Model Understanding.",
-    );
+  const identity = authenticatedIdentity(c);
   const definition = await loadModelDefinition(
     c.env,
     c.req.param("modelVersionId"),
@@ -1575,14 +1504,7 @@ app.post(
   "/api/v1/model-versions/:modelVersionId/understanding",
   zValidator("json", understandingSchema),
   async (c) => {
-    const identity = await identityFor(c);
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to use Model Understanding.",
-      );
+    const identity = authenticatedIdentity(c);
     if (!c.env.AI)
       return jsonError(
         c,
@@ -1706,7 +1628,7 @@ app.post(
 );
 
 app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const input = c.req.valid("json");
   const model = await c.env.DB.prepare(
     `SELECT m.id, m.project_id FROM model_versions m
@@ -1717,13 +1639,6 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
   if (!model)
     return jsonError(c, 404, "model_not_found", "Model version not found.");
   if (input.surrogateModelId) {
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to execute a promoted surrogate.",
-      );
     const surrogate = await c.env.DB.prepare(
       `SELECT id, validation_json FROM surrogate_models
        WHERE id = ? AND owner_id = ? AND project_id = ?
@@ -1790,7 +1705,7 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
   )
     .bind(identity.ownerId, midnight.toISOString())
     .first<{ units: number }>();
-  const dailyLimit = identity.authenticated ? 20 : 5;
+  const dailyLimit = 20;
   if (Number(usage?.units ?? 0) + input.analyses.length > dailyLimit) {
     return jsonError(
       c,
@@ -1864,7 +1779,7 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
 });
 
 app.get("/api/v1/runs", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const rows = await c.env.DB.prepare(
     "SELECT id FROM runs WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50",
   )
@@ -1877,21 +1792,14 @@ app.get("/api/v1/runs", async (c) => {
 });
 
 app.get("/api/v1/runs/:runId", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const run = await loadOwnedRun(c.env, c.req.param("runId"), identity.ownerId);
   if (!run) return jsonError(c, 404, "run_not_found", "Run not found.");
   return c.json({ run });
 });
 
 app.post("/api/v1/runs/:runId/rerun", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      403,
-      "authentication_required",
-      "Sign in to rerun retained analysis configurations.",
-    );
+  const identity = authenticatedIdentity(c);
   const sourceRun = await loadOwnedRun(
     c.env,
     c.req.param("runId"),
@@ -1918,7 +1826,7 @@ app.post("/api/v1/runs/:runId/rerun", async (c) => {
 });
 
 app.post("/api/v1/runs/:runId/cancel", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const timestamp = now();
   const updated = await c.env.DB.prepare(
     `UPDATE runs SET status = 'cancelled', cancelled_at = ?, completed_at = ?
@@ -1938,7 +1846,7 @@ app.post("/api/v1/runs/:runId/cancel", async (c) => {
 });
 
 app.get("/api/v1/runs/:runId/events", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const runId = c.req.param("runId");
   if (!(await loadOwnedRun(c.env, runId, identity.ownerId))) {
     return jsonError(c, 404, "run_not_found", "Run not found.");
@@ -1969,7 +1877,7 @@ app.get("/api/v1/runs/:runId/events", async (c) => {
 });
 
 app.get("/api/v1/reports/:reportId", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const reportRow = await c.env.DB.prepare(
     `SELECT reports.id, reports.run_id, reports.title, reports.status, reports.updated_at
      FROM reports JOIN runs ON runs.id = reports.run_id
@@ -2030,7 +1938,7 @@ app.get("/api/v1/reports/:reportId", async (c) => {
 });
 
 app.get("/api/v1/reports/:reportId/export", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const reportRow = await c.env.DB.prepare(
     `SELECT reports.id, reports.run_id FROM reports JOIN runs ON runs.id = reports.run_id
      WHERE (reports.id = ? OR reports.run_id = ?) AND runs.owner_id = ?`,
@@ -2077,7 +1985,7 @@ app.post(
   "/api/v1/reports/:reportId/share-links",
   zValidator("json", shareLinkSchema),
   async (c) => {
-    const identity = await identityFor(c);
+    const identity = authenticatedIdentity(c);
     const report = await c.env.DB.prepare(
       `SELECT reports.id FROM reports JOIN runs ON runs.id = reports.run_id
        WHERE (reports.id = ? OR reports.run_id = ?) AND runs.owner_id = ?`,
@@ -2123,7 +2031,7 @@ app.post(
 );
 
 app.delete("/api/v1/reports/:reportId/share-links/:linkId", async (c) => {
-  const identity = await identityFor(c);
+  const identity = authenticatedIdentity(c);
   const updated = await c.env.DB.prepare(
     `UPDATE report_share_links SET revoked_at = ? WHERE id = ? AND report_id IN (
        SELECT reports.id FROM reports JOIN runs ON runs.id = reports.run_id
@@ -2226,14 +2134,7 @@ app.get("/api/v1/shared-reports/:token", async (c) => {
 
 const chatSchema = z.object({ message: z.string().trim().min(1).max(4_000) });
 app.get("/api/v1/reports/:reportId/chat", async (c) => {
-  const identity = await identityFor(c);
-  if (!identity.authenticated)
-    return jsonError(
-      c,
-      401,
-      "authentication_required",
-      "Sign in to ask questions about a report.",
-    );
+  const identity = authenticatedIdentity(c);
   const report = await c.env.DB.prepare(
     `SELECT reports.id FROM reports JOIN runs ON runs.id = reports.run_id
      WHERE (reports.id = ? OR reports.run_id = ?) AND runs.owner_id = ?`,
@@ -2267,14 +2168,7 @@ app.post(
   "/api/v1/reports/:reportId/chat",
   zValidator("json", chatSchema),
   async (c) => {
-    const identity = await identityFor(c);
-    if (!identity.authenticated)
-      return jsonError(
-        c,
-        401,
-        "authentication_required",
-        "Sign in to ask questions about a report.",
-      );
+    const identity = authenticatedIdentity(c);
     if (!c.env.AI)
       return jsonError(
         c,
@@ -2537,5 +2431,6 @@ export default {
   },
 };
 
+export { app };
 export { ContainerProxy } from "@cloudflare/sandbox";
 export { IsolatedComputeSandbox } from "./sandbox";

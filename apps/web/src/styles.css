@@ -300,7 +300,9 @@ code {
   cursor: pointer;
   font-weight: 700;
   font-size: 13px;
-  transition: 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 .button svg {
   width: 17px;
@@ -1595,6 +1597,38 @@ tbody tr:hover td {
   place-items: center;
   min-height: calc(100vh - 72px);
   color: #70859c;
+}
+.auth-required-page {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 72px);
+}
+.auth-required-card {
+  width: min(100%, 620px);
+  padding: 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px #02091338;
+}
+.auth-required-card h1 {
+  margin: 12px 0;
+  font-size: clamp(30px, 5vw, 46px);
+  letter-spacing: -0.045em;
+}
+.auth-required-card p {
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.auth-required-card .catalog-icon {
+  margin-bottom: 22px;
+}
+.auth-required-card .button {
+  width: fit-content;
+}
+.error-copy {
+  color: #ff9da3 !important;
 }
 .empty-state {
   align-content: center;
