@@ -35,7 +35,7 @@ export function AuthenticatedRoute({ children }: PropsWithChildren) {
             onClick={() =>
               authClient.signIn.social({
                 provider: "cloudflare",
-                callbackURL: window.location.href,
+                callbackURL: `${window.location.origin}/`,
               })
             }
           >

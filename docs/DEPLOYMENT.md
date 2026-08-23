@@ -61,9 +61,10 @@ There is deliberately no `AUTOMATION_ENABLED` variable, pause script, manual-onl
 Dependabot pull requests follow the same full CI path. `dependabot-automerge.yml` runs only after a successful
 `CI` `workflow_run`, verifies the open PR is authored by `dependabot[bot]`, targets `main`, and still points
 to the exact tested SHA, then approves and squash-merges it. It explicitly dispatches `CI` on the resulting
-`main` revision; successful post-merge CI triggers deployment and production browser verification. A moved
-head waits for its newer CI run; failed CI, non-Dependabot PRs, and stale workflow runs cannot merge through
-this zero-touch update path.
+`main` revision. Because GitHub suppresses chained workflow events created by `GITHUB_TOKEN`, that bot-triggered
+CI dispatches `deploy.yml` directly for its exact tested SHA after all five jobs pass. Direct pushes and human
+dispatches retain the normal `workflow_run` release path. A moved head waits for its newer CI run; failed CI,
+non-Dependabot PRs, and stale workflow runs cannot merge through this zero-touch update path.
 
 ## Migration rules
 

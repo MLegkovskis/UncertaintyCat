@@ -77,9 +77,26 @@ records, so a failed section does not destroy successful evidence.
 React Router, TanStack Query, CodeMirror, and a lazy Apache ECharts adapter provide the product UI. The
 public home route renders static explanatory method/model examples without calling protected analysis
 APIs. Every other application route is wrapped by `AuthenticatedRoute`, independently enforcing the same
-boundary as the Worker. The guided builder emits the same Python model contract as code mode. The run
-composer is catalog-driven, while analysis-specific default configurations remain a small explicit mapping
-until a full JSON-schema form renderer is added.
+boundary as the Worker. Cloudflare authentication returns to the project dashboard. Reference examples and
+editable Python are one authoring mode; the guided builder emits the same Python model contract using
+OpenTURNS `SymbolicFunction`.
+
+The application has four deliberately distinct scientific workspaces:
+
+- model authoring and direct analysis;
+- OTMorris dimensionality screening;
+- validated PCE/GPR surrogate construction; and
+- empirical distribution fitting.
+
+The direct run composer is catalog-driven but filters Morris, PCE, and GPR because those capabilities need
+their own scientific sequence and controls. A promoted surrogate is passed back to direct analysis only by
+an explicit Surrogate Studio link, which preserves evidence-source provenance without presenting
+surrogation as an ordinary analysis checkbox.
+
+Model validation records a versioned workflow recommendation. The deterministic rule prioritizes Morris at
+15 or more inputs, recommends an eligible surrogate above a measured five-second projection per 1,000
+evaluations, and otherwise recommends direct analysis. Workers AI explains validated metadata separately;
+it does not choose the route and does not receive Python source.
 
 Routes are split so the Python editor is loaded only in the model workspace. Reports are responsive HTML,
 lazy-load the plotting runtime, retain exact table/text fallbacks, and print cleanly to PDF; machine-readable evidence is a separate ZIP.
@@ -134,7 +151,9 @@ The model receives conversation history and can read only these projections of p
 - a bounded page from a named series;
 - a bounded row/column window from a named matrix.
 
-It cannot read model source, call compute, run code, write D1, or mutate a report. Chat messages and daily
+It cannot read model source, call compute, run code, write D1, or mutate a report. Model Understanding is
+also source-isolated: it receives compact validated metadata, has a 300-word response contract and a bounded
+output budget, and streams its response while D1 caches it by model hash and prompt version. Chat messages and daily
 usage are persisted in D1, so an authenticated user can resume a report conversation on another device.
 
 ## Data ownership and retention

@@ -19,6 +19,7 @@ from uncertaintycat_core.contracts import (
     OutputMetadata,
     PilotOutputSummary,
     VariableMetadata,
+    WorkflowRecommendation,
 )
 from uncertaintycat_core.errors import InvalidModelError, UnsafeModelError
 
@@ -31,6 +32,29 @@ ALLOWED_IMPORT_ROOTS = {
     "scipy",
 }
 BLOCKED_CALLS = {"__import__", "compile", "eval", "exec", "input", "open"}
+
+
+def recommend_workflow(
+    *,
+    input_dimension: int,
+    projected_1000_evaluation_runtime_ms: float,
+    surrogate_eligible: bool,
+) -> WorkflowRecommendation:
+    """Choose the next scientific workspace from measured model properties."""
+    if input_dimension >= 15:
+        return WorkflowRecommendation(
+            path="dimensionality_reduction",
+            rationale_codes=["HIGH_DIMENSION_SCREENING"],
+        )
+    if projected_1000_evaluation_runtime_ms > 5_000 and surrogate_eligible:
+        return WorkflowRecommendation(
+            path="surrogate",
+            rationale_codes=["DIRECT_MODEL_RUNTIME_EXCEEDS_FIVE_SECONDS"],
+        )
+    return WorkflowRecommendation(
+        path="direct",
+        rationale_codes=["DIRECT_EVALUATION_PRACTICAL"],
+    )
 
 
 def _source_hash(source: str) -> str:
@@ -236,6 +260,13 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
     discrete = sum(item.kind == "discrete" for item in inputs)
     smooth_candidate = symbolic and continuous == input_dimension and not dependent_inputs
     expensive = projected_runtime_ms > 5_000
+    workflow = recommend_workflow(
+        input_dimension=input_dimension,
+        projected_1000_evaluation_runtime_ms=projected_runtime_ms,
+        surrogate_eligible=(
+            (continuous == input_dimension and input_dimension <= 10) or smooth_candidate
+        ),
+    )
     recommendations = [
         AnalysisRecommendation(
             capability="monte_carlo",
@@ -328,6 +359,7 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
         ),
     ]
     assessment = ModelAssessment(
+        workflow=workflow,
         profile=ModelProfile(
             input_dimension=input_dimension,
             output_dimension=output_dimension,

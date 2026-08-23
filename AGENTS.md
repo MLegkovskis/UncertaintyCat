@@ -12,7 +12,7 @@
 - `uncertaintycat_core/`: framework-independent Python model validation, strict contracts, orchestration, and analysis plugins.
 - `services/compute/`: private FastAPI/CLI adapter used inside the Cloudflare Sandbox boundary.
 - `apps/api/`: Hono Cloudflare Worker, Better Auth, D1/R2/Queue ownership and lifecycle, exports, sharing, and Workers AI.
-- `apps/web/`: React/Vite UI, route-level auth gate, workspace, studies, Data Lab, reports, and browser tests.
+- `apps/web/`: React/Vite UI, route-level auth gate, project dashboard, direct-analysis workspace, reduction/surrogate/distribution studios, reports, and browser tests.
 - `packages/contracts/`: shared Zod schemas, API client, types, and generated reference-model catalog.
 - `examples/`: canonical executable reference models used to generate the authenticated catalog.
 - `apps/api/migrations/`: forward-only D1 migrations. Never rewrite an applied migration.
@@ -53,7 +53,7 @@ Run `npm run test:e2e:full-stack` for changes that cross the browser, Worker, D1
 
 - `main` is the delivery branch. For user-authorized implementation work, commit and push directly to `main`; do not open a pull request unless asked.
 - Every push to `main` must run the complete CI workflow. Successful CI for that exact commit triggers production deployment and production Playwright verification. Never add path filters, repository-variable gates, commit-message skips, or manual-only release logic that weakens this chain.
-- Dependabot updates are approved and squash-merged only by the post-CI workflow after it verifies the PR author, base branch, open state, and exact tested head SHA. Do not weaken those checks.
+- Dependabot updates are approved and squash-merged only by the post-CI workflow after it verifies the PR author, base branch, open state, and exact tested head SHA. The bot-dispatched post-merge CI explicitly dispatches deployment for its exact successful SHA because `GITHUB_TOKEN` suppresses chained workflow events. Do not weaken these checks or remove that explicit release handoff.
 - After pushing, verify the CI run is attached to the expected commit. If CI or deployment fails, inspect the logs, fix the cause, rerun local evidence, and push the repair.
 
 ## Code review rules

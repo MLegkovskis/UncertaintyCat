@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from uncertaintycat_core.errors import InvalidModelError, UnsafeModelError
-from uncertaintycat_core.model import compile_model
+from uncertaintycat_core.model import compile_model, recommend_workflow
 
 EXAMPLES = sorted(Path("examples").glob("*.py"))
 
@@ -36,3 +36,37 @@ problem = ot.Normal()
 """
     with pytest.raises(InvalidModelError, match="dimension"):
         compile_model(source)
+
+
+@pytest.mark.parametrize(
+    ("dimension", "projected_ms", "surrogate_eligible", "expected"),
+    [
+        (3, 120.0, True, "direct"),
+        (15, 120.0, True, "dimensionality_reduction"),
+        (20, 20_000.0, True, "dimensionality_reduction"),
+        (6, 8_000.0, True, "surrogate"),
+        (6, 8_000.0, False, "direct"),
+    ],
+)
+def test_workflow_recommendation_is_deterministic(
+    dimension: int,
+    projected_ms: float,
+    surrogate_eligible: bool,
+    expected: str,
+) -> None:
+    recommendation = recommend_workflow(
+        input_dimension=dimension,
+        projected_1000_evaluation_runtime_ms=projected_ms,
+        surrogate_eligible=surrogate_eligible,
+    )
+    assert recommendation.path == expected
+
+
+def test_reference_models_receive_expected_workflow_routes() -> None:
+    ishigami = compile_model(Path("examples/Ishigami.py").read_text(), validation_sample_size=3)
+    morris = compile_model(
+        Path("examples/Morris_Function.py").read_text(), validation_sample_size=3
+    )
+    assert ishigami.assessment.version == "1.1.0"
+    assert ishigami.assessment.workflow.path == "direct"
+    assert morris.assessment.workflow.path == "dimensionality_reduction"

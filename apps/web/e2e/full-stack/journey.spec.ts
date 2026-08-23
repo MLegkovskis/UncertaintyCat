@@ -25,36 +25,38 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.getByRole("heading", { name: studyName })).toBeVisible();
 
   // Exercise both authoring modes; execute the curated Ishigami Python model so
-  // every analysis receives a stable, well-understood scalar test function.
+  // every direct analysis receives a stable, well-understood scalar test function.
+  await page.getByLabel("Search reference models").fill("Ishigami");
+  await page.locator(".example-card").click();
   await page.getByRole("button", { name: "Guided builder" }).click();
   await page.getByRole("button", { name: "Add variable" }).click();
   await expect(page.getByLabel("Variable 3 name")).toBeVisible();
-  await page.getByRole("button", { name: "Python model" }).click();
+  await page.getByRole("button", { name: "Examples & Python model" }).click();
   await expect(page.getByRole("textbox", { name: "Python model source" })).toBeVisible();
-  await page.getByRole("button", { name: "Validate & save" }).click();
+  await page.getByRole("button", { name: "Validate & Assess" }).click();
   await expect(page.getByText(/Validated as version 1/)).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText(/3 inputs · 1 outputs/)).toBeVisible();
 
   const analysisOptions = page.locator(".analysis-option");
-  await expect(analysisOptions).toHaveCount(12);
+  await expect(analysisOptions).toHaveCount(9);
   const checkboxes = analysisOptions.locator("input[type=checkbox]");
-  for (let index = 0; index < 12; index += 1) {
+  for (let index = 0; index < 9; index += 1) {
     await checkboxes.nth(index).check();
   }
   await page.getByLabel("Standard sample budget").fill("64");
-  await expect(page.getByText("12 analysis tasks")).toBeVisible();
+  await expect(page.getByText("9 analysis tasks")).toBeVisible();
   await page.getByRole("button", { name: "Run analyses" }).click();
   await expect(page).toHaveURL(/\/runs\/[0-9a-f-]+$/);
   const runId = page.url().split("/").at(-1)!;
 
   await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 7 * 60_000 });
-  await expect(page.locator(".task-row")).toHaveCount(12);
-  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(12);
+  await expect(page.locator(".task-row")).toHaveCount(9);
+  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(9);
   await page.getByRole("link", { name: /Open report/ }).click();
 
   await expect(page.getByRole("heading", { name: "Uncertainty Quantification Report" })).toBeVisible();
-  await expect(page.locator(".report-section")).toHaveCount(12);
-  await expect(page.locator(".report-section .status-succeeded")).toHaveCount(12);
+  await expect(page.locator(".report-section")).toHaveCount(9);
+  await expect(page.locator(".report-section .status-succeeded")).toHaveCount(9);
   await expect(page.getByText(/OpenTURNS/).first()).toBeVisible();
   await expect(page.locator(".metrics-grid, .result-block, .plot-panel").first()).toBeVisible();
   await expect(page.getByText("Ask this report")).toBeVisible();
@@ -78,9 +80,25 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
   await expect(page.getByText("Ask this report")).toHaveCount(0);
 
+  // The three methods intentionally removed from the direct composer are
+  // exercised through their dedicated scientific workspaces.
+  await page.goto("/dimension-reduction");
+  await expect(page.getByRole("heading", { name: "Screen inputs before expensive analysis." })).toBeVisible();
+  await page.getByRole("button", { name: "Run Morris screening" }).click();
+  await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 7 * 60_000 });
+  await expect(page.locator(".task-row")).toHaveCount(1);
+
+  await page.goto("/surrogates");
+  await expect(page.getByRole("heading", { name: "Approximate an expensive model deliberately." })).toBeVisible();
+  await page.getByRole("button", { name: "Build GPR candidate" }).click();
+  await expect(page.getByText("Hold-out R²")).toBeVisible({ timeout: 7 * 60_000 });
+  await page.getByLabel("Method").selectOption("pce");
+  await page.getByRole("button", { name: "Build PCE candidate" }).click();
+  await expect(page.getByText("Hold-out Q²")).toBeVisible({ timeout: 7 * 60_000 });
+
   await page.goto("/activity");
   await expect(page.getByText(studyName)).toBeVisible();
-  await expect(page.locator(".study-row")).toHaveCount(1);
+  await expect(page.locator(".project-row")).toHaveCount(1);
   await page.reload();
   await expect(page.getByText(studyName)).toBeVisible();
 

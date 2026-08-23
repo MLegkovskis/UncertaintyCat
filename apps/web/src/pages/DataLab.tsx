@@ -31,6 +31,38 @@ const CANDIDATES = [
   "KernelSmoothing",
 ] as const;
 
+const BEAM_SAMPLE_CSV = `E,F,L,I
+34359951.21260305,21373.816129377272,253.30596872570482,397.88130837467713
+28057355.742907558,30617.791560420934,253.61292155138702,403.4412280138856
+35431982.11609094,34967.84428462613,253.18989774837783,371.9317609626851
+28041948.68744233,21315.022018381096,250.94796999240342,366.9290196269449
+36444562.18607961,26905.249605116507,252.8766960385893,377.62193952816585
+32950211.408753864,31469.358723163783,251.49617198482918,345.7680011092174
+33677615.77853969,26997.73301158137,256.37362522786367,408.4063413130727
+31834518.543026865,23339.72271578812,252.35290689487118,359.5817317946926
+28161856.421815425,31068.600024391148,259.1431665172396,382.2666962937509
+35060848.40812222,27555.065901060505,257.05175477014944,367.28420402594907
+33354364.845005997,24828.70269255394,253.50862841887505,345.0763173318328
+32650036.582528695,53321.48491239969,252.51017732171073,414.9274064196715
+31760377.08707273,34937.858468744904,257.6311315822481,340.28593650735166
+32321024.64565009,20504.113025865678,257.4377496313702,373.25560204725014
+40480798.857369,22558.58388028789,256.47255779337155,355.2800073040295
+40143213.0470579,22229.65890564795,253.61837159264246,397.64449171332876
+29241084.37305043,21022.119848015464,255.41206776536532,339.7936733322751
+35948475.09559152,30486.29962848546,253.14320123388524,383.7108728726487
+40332295.4311597,38288.9911272209,253.06103816644242,327.9031490269908
+42878117.60289985,34599.749892857115,253.0475822307583,348.51918605201456
+28917407.48150608,32391.62514913473,257.92338089448367,340.0480896185756
+31124461.501452688,37326.20297954747,254.36194254454924,339.94152981659533
+28102348.784948435,23932.159217643522,256.3260137381918,388.43591698148145
+34510293.02632851,27236.86580021063,251.96030298968432,401.81672134221003
+30678059.64601908,41836.36403213085,259.8298329366686,331.60670950206725
+28304220.129013382,21257.526247229827,255.9109881215413,313.13466368006584
+31603114.40831752,21404.793980640985,258.47968745329126,338.4672971089906
+32467849.909416374,37964.710300525665,256.2989255933696,347.86857537574633
+29982074.795751978,30463.040249978054,254.3339949054922,433.7465660056944
+36148382.16508266,33058.36309138205,257.29636883851657,326.3142753120113`;
+
 async function blobBase64(blob: Blob): Promise<string> {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -197,7 +229,7 @@ export function DataLab() {
   const datasets = datasetsQuery.data?.datasets ?? [];
   const [datasetId, setDatasetId] = useState("");
   const dataset = datasets.find((item) => item.id === datasetId) ?? datasets[0];
-  const [pasted, setPasted] = useState("temperature,pressure\n18.2,1.04\n19.1,1.01\n20.0,1.08\n21.3,1.11\n22.1,1.15");
+  const [pasted, setPasted] = useState(BEAM_SAMPLE_CSV);
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [candidates, setCandidates] = useState<DistributionFitInput["candidates"]>([
     ...CANDIDATES,
@@ -260,12 +292,12 @@ export function DataLab() {
     <div className="page data-lab-page">
       <div className="page-heading split">
         <div>
-          <span className="section-kicker">Distribution Data Lab</span>
+          <span className="section-kicker">Distribution Fitting</span>
           <h1>Fit uncertainty from empirical data.</h1>
           <p>Validate private observations, compare OpenTURNS fits, then explicitly compose a problem definition.</p>
         </div>
         <label className="project-select">
-          <span>Study</span>
+          <span>Project</span>
           <select value={activeProjectId} onChange={(event) => {
             const next = event.target.value;
             setProjectId(next);
@@ -278,8 +310,8 @@ export function DataLab() {
       </div>
       {!projects.length && !projectsQuery.isLoading ? (
         <div className="empty-state">
-          <EmptyState title="Create a study first" body="Data provenance is always scoped to an owned study." />
-          <Link to="/new-analysis" className="button primary">Create study</Link>
+          <EmptyState title="Create a project first" body="Data provenance is always scoped to an owned project." />
+          <Link to="/new-analysis" className="button primary">Create project</Link>
         </div>
       ) : (
         <div className="data-lab-layout">
@@ -300,9 +332,9 @@ export function DataLab() {
             <button className="button primary" disabled={upload.isPending} onClick={() => fileRef.current?.click()}><Upload /> Upload CSV/XLSX</button>
             <label>
               <span>Or paste comma-separated data</span>
-              <textarea value={pasted} onChange={(event) => setPasted(event.target.value)} rows={7} />
+              <textarea value={pasted} onChange={(event) => setPasted(event.target.value)} rows={12} />
             </label>
-            <button className="button secondary" disabled={upload.isPending || !pasted.trim()} onClick={() => upload.mutate({ blob: new Blob([pasted], { type: "text/csv" }), name: `Pasted data ${new Date().toLocaleDateString()}`, sourceKind: "paste" })}><FileSpreadsheet /> Validate pasted data</button>
+            <button className="button secondary" disabled={upload.isPending || !pasted.trim()} onClick={() => upload.mutate({ blob: new Blob([pasted], { type: "text/csv" }), name: `Beam uncertainty sample ${new Date().toLocaleDateString()}`, sourceKind: "paste" })}><FileSpreadsheet /> Validate pasted data</button>
             <div className="dataset-list">
               {datasets.map((item) => (
                 <button key={item.id} className={dataset?.id === item.id ? "active" : ""} onClick={() => setDatasetId(item.id)}>

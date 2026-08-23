@@ -54,7 +54,7 @@ const modelMetadata: ModelMetadata = {
 };
 
 const modelAssessment: ModelAssessment = {
-  version: "1.0.0",
+  version: "1.1.0",
   profile: {
     input_dimension: 3,
     output_dimension: 1,
@@ -69,10 +69,23 @@ const modelAssessment: ModelAssessment = {
     pilot_sample_size: 8,
     pilot_outputs: [{ output_index: 0, output_name: "Y", minimum: -6, maximum: 8, mean: 1.2, standard_deviation: 2.1, quantile_05: -4.5, quantile_95: 6.8, variable: true }],
   },
+  workflow: { path: "direct", rationale_codes: ["DIRECT_EVALUATION_PRACTICAL"] },
   recommendations: [
     { capability: "gpr", status: "available", priority: 3, rationale_codes: ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"], compatibility_warnings: [] },
     { capability: "pce", status: "available", priority: 3, rationale_codes: ["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"], compatibility_warnings: [] },
   ],
+};
+
+const savedModel = {
+  id: "model-1",
+  projectId: "project-1",
+  version: 1,
+  sourceKind: "example" as const,
+  displayName: "Ishigami reference model",
+  sourceHash: modelMetadata.source_hash,
+  metadata: modelMetadata,
+  assessment: modelAssessment,
+  createdAt: "2026-08-19T12:00:00Z",
 };
 
 const dataset: Dataset = {
@@ -231,6 +244,7 @@ export interface MockApiOptions {
 export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   let projects = options.projects ?? [];
   let runs = options.runs ?? [];
+  let models = options.authenticated && projects.length ? [savedModel] : [];
   let surrogates: Array<Record<string, unknown>> = [];
   const report = options.report ?? makeReport();
 
@@ -278,26 +292,19 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   });
   await page.route("**/api/v1/projects/*/models", async (route) => {
     if (route.request().method() === "POST") {
+      const input = route.request().postDataJSON() as { displayName?: string; sourceKind?: "python" | "builder" | "example" };
+      const createdModel = { ...savedModel, sourceKind: input.sourceKind ?? "builder", displayName: input.displayName ?? "Browser model" };
+      models = [createdModel, ...models];
       await json(
         route,
         {
-          modelVersion: {
-            id: "model-1",
-            projectId: project.id,
-            version: 1,
-            sourceKind: "builder",
-            displayName: "Browser model",
-            sourceHash: modelMetadata.source_hash,
-            metadata: modelMetadata,
-            assessment: modelAssessment,
-            createdAt: "2026-08-19T12:00:00Z",
-          },
+          modelVersion: createdModel,
         },
         201,
       );
       return;
     }
-    await json(route, { modelVersions: [] });
+    await json(route, { modelVersions: models });
   });
   await page.route("**/api/v1/runs", async (route) => {
     if (route.request().method() === "POST") {

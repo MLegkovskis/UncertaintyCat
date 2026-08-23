@@ -51,6 +51,8 @@ test.describe("application shell and identity", () => {
       await route.fulfill({ contentType: "application/json", body: JSON.stringify({ success: true }) });
     });
     await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Your projects." })).toBeVisible();
+    await expect(page.getByText("Recent executions")).toHaveCount(0);
     const accountButton = page.getByRole("button", { name: /Mark Legkovskis/ });
     await accountButton.click();
     await expect(page.getByText("mlegkovskis@gmail.com")).toBeVisible();
@@ -79,22 +81,60 @@ test.describe("application shell and identity", () => {
 });
 
 test.describe("model studio", () => {
-  test("discovers all 23 canonical examples and retains the selected model", async ({ page }) => {
+  test("unifies all 23 examples with an editable Python model", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     await page.goto("/new-analysis");
     await expect(page.locator(".example-card")).toHaveCount(23);
-    await expect(page.locator(".example-card.selected")).toContainText("Ishigami");
+    await expect(page.getByLabel("Model name")).toHaveValue("");
+    await expect(page.getByRole("textbox", { name: "Python model source" })).toBeVisible();
     await page.getByLabel("Search reference models").fill("rocket");
     await expect(page.locator(".example-card")).toHaveCount(1);
     await page.locator(".example-card").click();
-    await page.reload();
     await expect(page.locator(".example-card.selected")).toContainText("Rocket");
-    await page.getByRole("button", { name: /Copy selected example to editable Python/ }).click();
     await expect(page.getByRole("textbox", { name: "Python model source" })).toBeVisible();
-    await expect(page.getByLabel("Model name")).toHaveValue("Rocket trajectory copy");
+    await expect(page.getByLabel("Model name")).toHaveValue("Rocket trajectory");
+    await page.getByLabel("Model name").fill("My adapted rocket");
+    await page.getByLabel("Search reference models").fill("beam");
+    await page.locator(".example-card").first().click();
+    await expect(page.getByLabel("Model name")).toHaveValue("My adapted rocket");
   });
 
-  test("creates a project, authors with the guided builder, configures all plugins, and queues the suite", async ({
+  test("creates a new project from the workspace project selector", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.goto("/new-analysis");
+    await page.getByLabel("Project").selectOption("__create__");
+    await page.getByLabel("New project name").fill("Fresh engineering project");
+    await page.getByRole("button", { name: "Create project", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Fresh engineering project" })).toBeVisible();
+  });
+
+  test("keeps the validated understanding header inside its panel", async ({ page }, testInfo) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.setViewportSize({ width: 1920, height: 1200 });
+    await page.goto("/new-analysis");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByRole("heading", { name: "Model Understanding" })).toBeVisible();
+    await page.locator(".validated-studio").evaluate((element) => {
+      window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 86, behavior: "auto" });
+    });
+    const pane = await page.locator(".understanding-pane").boundingBox();
+    const header = await page.locator(".understanding-pane > header").boundingBox();
+    expect(pane).not.toBeNull();
+    expect(header).not.toBeNull();
+    expect(header!.x).toBeGreaterThanOrEqual(pane!.x);
+    expect(header!.x + header!.width).toBeLessThanOrEqual(pane!.x + pane!.width + 1);
+    expect(header!.y).toBeGreaterThanOrEqual(pane!.y);
+    await expect(page.locator(".understanding-pane > header")).toHaveCSS("position", "static");
+    const screenshot = await page.screenshot({ fullPage: true });
+    await testInfo.attach("validated-workspace", { body: screenshot, contentType: "image/png" });
+    if (process.env.UI_REVIEW_PATH) {
+      await page.screenshot({ path: process.env.UI_REVIEW_PATH, fullPage: true });
+    }
+  });
+
+  test("creates a project, authors with the guided builder, configures all direct plugins, and queues the suite", async ({
     page,
   }) => {
     await installMockApi(page, { authenticated: true });
@@ -112,26 +152,25 @@ test.describe("model studio", () => {
     await expect(page.getByRole("heading", { name: "Complete browser study" })).toBeVisible();
 
     await expect(page.getByRole("button", { name: /Run analyses/ })).toBeDisabled();
+    await page.getByLabel("Model name").fill("Guided browser model");
     await page.getByRole("button", { name: "Guided builder" }).click();
     await page.getByRole("button", { name: "Add variable" }).click();
     await page.getByLabel("Variable 3 name").fill("pressure");
     await page.getByLabel("Output 1 formula").fill("x1 + x2^2 + pressure");
-    await page.getByRole("button", { name: "Validate & save" }).click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
     await expect(page.getByText("Validated as version 1")).toBeVisible();
 
     const checkboxes = page.locator(".analysis-option input[type=checkbox]");
-    await expect(checkboxes).toHaveCount(catalog.length);
-    for (let index = 0; index < catalog.length; index += 1) {
+    const directCatalog = catalog.filter((item) => !["morris", "pce", "gpr"].includes(item.key));
+    await expect(checkboxes).toHaveCount(directCatalog.length);
+    for (let index = 0; index < directCatalog.length; index += 1) {
       await checkboxes.nth(index).check();
     }
-    await expect(page.getByText("12 analysis tasks")).toBeVisible();
+    await expect(page.getByText("9 analysis tasks")).toBeVisible();
     await page.getByLabel("Standard sample budget").fill("128");
     await page.getByLabel("Reliability method").selectOption("MONTE_CARLO");
     await page.getByLabel("Failure event").selectOption("<");
     await page.getByRole("spinbutton", { name: "Threshold" }).fill("-2.5");
-    await page.getByLabel("PCE total degree").fill("4");
-    await page.getByLabel("GPR covariance kernel").selectOption("SQUARED_EXPONENTIAL");
-    await page.getByLabel("GPR trend").selectOption("LINEAR");
     await page.getByRole("button", { name: "Run analyses" }).click();
 
     await expect(page).toHaveURL(/\/runs\/run-1$/);
@@ -141,20 +180,14 @@ test.describe("model studio", () => {
       config: Record<string, unknown>;
     }>;
     expect(analyses.map((item) => item.analysisKey).sort()).toEqual(
-      catalog.map((item) => item.key).sort(),
+      directCatalog.map((item) => item.key).sort(),
     );
     expect(analyses.find((item) => item.analysisKey === "reliability")?.config).toMatchObject({
       method: "MONTE_CARLO",
       operator: "<",
       threshold: -2.5,
     });
-    expect(analyses.find((item) => item.analysisKey === "pce")?.config.degree).toBe(4);
-    expect(analyses.find((item) => item.analysisKey === "gpr")?.config).toMatchObject({
-      training_size: 128,
-      validation_size: 128,
-      kernel: "SQUARED_EXPONENTIAL",
-      trend: "LINEAR",
-    });
+    expect(analyses.some((item) => ["morris", "pce", "gpr"].includes(item.analysisKey))).toBe(false);
   });
 
   test("surfaces model validation and catalog failures without enabling a run", async ({ page }) => {
@@ -166,26 +199,40 @@ test.describe("model studio", () => {
       route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ error: { code: "invalid_model", message: "Model must define model and distribution." } }) }),
     );
     await page.goto("/workspace");
-    await page.getByRole("button", { name: "Validate & save" }).click();
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
     await expect(page.getByText("Model must define model and distribution.")).toBeVisible();
     await expect(page.getByText("Catalog unavailable")).toBeVisible();
     await expect(page.getByRole("button", { name: "Run analyses" })).toBeDisabled();
   });
 
-  test("validates, promotes, and explicitly selects a surrogate for a downstream run", async ({ page }) => {
+  test("keeps surrogate construction in its studio and passes a promoted surrogate explicitly", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     let runBody: Record<string, unknown> | undefined;
     page.on("request", (request) => {
       if (request.url().endsWith("/api/v1/runs") && request.method() === "POST") runBody = request.postDataJSON() as Record<string, unknown>;
     });
-    await page.goto("/new-analysis");
-    await page.getByRole("button", { name: "Validate & save" }).click();
+    await page.goto("/surrogates");
     await page.getByRole("button", { name: "Build GPR candidate" }).click();
     await expect(page.getByText("Meets default")).toBeVisible();
-    await page.getByRole("button", { name: "Promote exact result" }).click();
-    await expect(page.getByLabel("Evidence source for downstream run")).toHaveValue("surrogate-1");
+    await page.getByRole("button", { name: "Promote validated surrogate" }).click();
+    await page.getByRole("link", { name: /Analyse this surrogate/ }).click();
+    await expect(page.getByText("Promoted surrogate selected in Surrogate Studio")).toBeVisible();
     await page.getByRole("button", { name: "Run analyses" }).click();
     await expect.poll(() => runBody?.surrogateModelId).toBe("surrogate-1");
+  });
+
+  test("runs dimensionality screening from the dedicated studio", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    let runBody: Record<string, unknown> | undefined;
+    page.on("request", (request) => {
+      if (request.url().endsWith("/api/v1/runs") && request.method() === "POST") runBody = request.postDataJSON() as Record<string, unknown>;
+    });
+    await page.goto("/dimension-reduction");
+    await page.getByRole("button", { name: "Run Morris screening" }).click();
+    await expect(page).toHaveURL(/\/runs\/run-1$/);
+    expect((runBody?.analyses as Array<{ analysisKey: string }>)[0]?.analysisKey).toBe("morris");
   });
 });
 
@@ -289,6 +336,7 @@ test.describe("distribution data lab", () => {
   test("uploads retained data, ranks marginals, and generates an explicit problem draft", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     await page.goto("/data-lab?projectId=project-1");
+    await expect(page.getByText("Or paste comma-separated data").locator("..").getByRole("textbox")).toHaveValue(/^E,F,L,I/);
     await expect(page.getByRole("button", { name: /Fixture observations\.csv/ })).toBeVisible();
     await expect(page.getByRole("table").first()).toContainText("temperature");
     await page.getByRole("button", { name: "Rank candidate fits" }).click();
@@ -326,13 +374,13 @@ test.describe("durable activity", () => {
   test("shows empty states and later links retained projects and runs", async ({ page }) => {
     await installMockApi(page, { authenticated: true });
     await page.goto("/activity");
-    await expect(page.getByText("No studies yet")).toBeVisible();
+    await expect(page.getByText("No projects yet")).toBeVisible();
 
     const secondPage = await page.context().newPage();
     await installMockApi(secondPage, { authenticated: true, projects: [project], runs: [makeRun()] });
     await secondPage.goto("/activity");
     await expect(secondPage.getByText(project.name)).toBeVisible();
-    await secondPage.locator(".study-row").click();
+    await secondPage.locator(".project-row").click();
     await expect(secondPage).toHaveURL(/\/studies\/project-1$/);
     await secondPage.close();
   });

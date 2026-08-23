@@ -50,54 +50,33 @@ export function Home() {
     queryFn: api.listProjects,
     enabled: session.data?.identity.authenticated === true,
   });
-  const runs = useQuery({
-    queryKey: ["runs"],
-    queryFn: api.listRuns,
-    enabled: session.data?.identity.authenticated === true,
-  });
   if (session.data?.identity.authenticated) {
-    const recentProjects = projects.data?.projects.slice(0, 3) ?? [];
-    const recentRuns = runs.data?.runs.slice(0, 4) ?? [];
-    const continueRun = recentRuns[0];
+    const retainedProjects = projects.data?.projects ?? [];
     return (
       <div className="page dashboard-page">
         <div className="page-heading split">
           <div>
             <span className="section-kicker">Dashboard</span>
-            <h1>Continue your uncertainty work.</h1>
-            <p>Recent studies and exact retained configurations are ready to reopen.</p>
+            <h1>Your projects.</h1>
+            <p>Open an existing engineering project or begin a new analysis.</p>
           </div>
           <Link className="button primary" to="/new-analysis">New analysis <ArrowRight /></Link>
         </div>
-        {continueRun && (
-          <Link
-            className="continue-card"
-            to={["queued", "running"].includes(continueRun.status) ? `/runs/${continueRun.id}` : `/reports/${continueRun.id}`}
-          >
-            <div><span className="section-kicker">Continue working</span><h2>{continueRun.projectName}</h2></div>
-            <p>{continueRun.modelDisplayName} · version {continueRun.modelVersion} · {continueRun.tasks.length} analyses</p>
-            <ArrowRight />
-          </Link>
-        )}
-        <section className="dashboard-grid">
-          <div>
-            <div className="section-copy"><span className="section-kicker">Recent studies</span><h2>Studies</h2></div>
-            {recentProjects.map((project) => (
-              <Link className="dashboard-row" to={`/studies/${project.id}`} key={project.id}>
-                <strong>{project.name}</strong><small>{new Date(project.updatedAt).toLocaleString()}</small><ArrowRight />
-              </Link>
-            ))}
-            {!recentProjects.length && <p className="muted-copy">No retained studies yet.</p>}
-          </div>
-          <div>
-            <div className="section-copy"><span className="section-kicker">Recent executions</span><h2>Runs</h2></div>
-            {recentRuns.map((run) => (
-              <Link className="dashboard-row" to={["queued", "running"].includes(run.status) ? `/runs/${run.id}` : `/reports/${run.id}`} key={run.id}>
-                <strong>{run.modelDisplayName}</strong><small>{run.status} · {new Date(run.createdAt).toLocaleString()}</small><ArrowRight />
-              </Link>
-            ))}
-            {!recentRuns.length && <p className="muted-copy">No numerical runs yet.</p>}
-          </div>
+        <section className="dashboard-projects" aria-label="Your projects">
+          {retainedProjects.map((project) => (
+            <Link className="project-tile" to={`/studies/${project.id}`} key={project.id}>
+              <div><span className="section-kicker">Project</span><h2>{project.name}</h2></div>
+              <p>{project.description || "Uncertainty analysis project"}</p>
+              <footer><time dateTime={project.updatedAt}>Updated {new Date(project.updatedAt).toLocaleString()}</time><ArrowRight /></footer>
+            </Link>
+          ))}
+          {!projects.isLoading && !retainedProjects.length && (
+            <Link className="project-tile project-tile-new" to="/new-analysis">
+              <div><span className="section-kicker">Get started</span><h2>Create your first project</h2></div>
+              <p>Define an OpenTURNS model and assess the appropriate uncertainty workflow.</p>
+              <footer><span>New analysis</span><ArrowRight /></footer>
+            </Link>
+          )}
         </section>
       </div>
     );
@@ -123,7 +102,7 @@ export function Home() {
             onClick={() =>
               authClient.signIn.social({
                 provider: "cloudflare",
-                callbackURL: `${window.location.origin}/new-analysis`,
+                callbackURL: `${window.location.origin}/`,
               })
             }
           >
