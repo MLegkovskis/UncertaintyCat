@@ -5,7 +5,6 @@
   "compatibility_date": "2026-08-19",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  "ai": { "binding": "AI", "remote": true },
   "vars": {
     "COMPUTE_SERVICE_URL": "http://127.0.0.1:8080",
     "BETTER_AUTH_URL": "http://127.0.0.1:8787",
