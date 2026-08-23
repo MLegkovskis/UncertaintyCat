@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   generationFailure,
   generationLeaseIsActive,
-  LOW_LATENCY_AI_SETTINGS,
   MODEL_UNDERSTANDING_LEASE_MS,
+  REPORT_CHAT_LOW_LATENCY_AI_SETTINGS,
+  runSequentialFallback,
 } from "./ai-config";
 
 describe("Workers AI runtime policy", () => {
-  it("disables unnecessary hidden reasoning for latency-sensitive explanations", () => {
-    expect(LOW_LATENCY_AI_SETTINGS).toEqual({
+  it("disables unnecessary hidden reasoning for grounded report chat", () => {
+    expect(REPORT_CHAT_LOW_LATENCY_AI_SETTINGS).toEqual({
       reasoning_effort: null,
       chat_template_kwargs: { enable_thinking: false },
     });
@@ -45,5 +46,31 @@ describe("Workers AI runtime policy", () => {
     });
     expect(failure.message).toContain("failed requests are not charged");
     expect(failure.diagnostic).toBe("request timeout at upstream");
+  });
+
+  it("uses the first successful fallback attempt", async () => {
+    const attempts: string[] = [];
+    const generation = await runSequentialFallback(
+      ["primary", "fallback"],
+      async (attempt) => {
+        attempts.push(attempt);
+        if (attempt === "primary") throw new Error("primary timeout");
+        return "grounded explanation";
+      },
+    );
+    expect(attempts).toEqual(["primary", "fallback"]);
+    expect(generation).toEqual({
+      result: "grounded explanation",
+      attempt: "fallback",
+      index: 1,
+    });
+  });
+
+  it("returns the final error when every configured model fails", async () => {
+    await expect(
+      runSequentialFallback(["primary", "fallback"], async (attempt) => {
+        throw new Error(`${attempt} failed`);
+      }),
+    ).rejects.toThrow("fallback failed");
   });
 });

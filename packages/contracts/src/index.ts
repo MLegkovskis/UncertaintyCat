@@ -1,7 +1,14 @@
 import { z } from "zod";
 
-export const AI_MODEL_ID = "@cf/zai-org/glm-4.7-flash";
-export const AI_MODEL_LABEL = "Cloudflare Workers AI · GLM‑4.7‑Flash";
+export const MODEL_UNDERSTANDING_AI_MODEL_ID =
+  "@cf/meta/llama-3.2-3b-instruct";
+export const MODEL_UNDERSTANDING_AI_MODEL_LABEL =
+  "Cloudflare Workers AI · Llama 3.2 3B Instruct";
+export const MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID =
+  "@cf/meta/llama-3.2-1b-instruct";
+export const REPORT_CHAT_AI_MODEL_ID = "@cf/zai-org/glm-4.7-flash";
+export const REPORT_CHAT_AI_MODEL_LABEL =
+  "Cloudflare Workers AI · GLM‑4.7‑Flash";
 
 export interface ExampleCatalogEntry {
   id: string;

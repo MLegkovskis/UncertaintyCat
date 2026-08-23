@@ -6,8 +6,10 @@ import {
   createRunSchema,
   createSurrogateSchema,
   distributionFitSchema,
-  AI_MODEL_ID,
   EXAMPLE_CATALOG,
+  MODEL_UNDERSTANDING_AI_MODEL_ID,
+  MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
+  REPORT_CHAT_AI_MODEL_ID,
   type AnalysisCatalogEntry,
   type Dataset,
   type DistributionFitInput,
@@ -33,11 +35,13 @@ import { createAuth, identityFor } from "./auth";
 import {
   generationFailure,
   generationLeaseIsActive,
-  LOW_LATENCY_AI_SETTINGS,
+  MODEL_UNDERSTANDING_FALLBACK_TIMEOUT_MS,
   MODEL_UNDERSTANDING_LEASE_MS,
+  MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS,
   MODEL_UNDERSTANDING_PROMPT_VERSION,
-  MODEL_UNDERSTANDING_TIMEOUT_MS,
+  REPORT_CHAT_LOW_LATENCY_AI_SETTINGS,
   REPORT_CHAT_TIMEOUT_MS,
+  runSequentialFallback,
 } from "./ai-config";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
 import { failRunTask, processRunTask, requeueRunTask } from "./compute";
@@ -1588,7 +1592,7 @@ app.post(
         definition.modelVersion.id,
         definition.modelVersion.sourceHash,
         MODEL_UNDERSTANDING_PROMPT_VERSION,
-        AI_MODEL_ID,
+        MODEL_UNDERSTANDING_AI_MODEL_ID,
         timestamp,
         timestamp,
         staleBefore,
@@ -1620,43 +1624,97 @@ app.post(
         event: "model_understanding_generation_started",
         requestId: c.get("requestId"),
         understandingId,
-        aiModelId: AI_MODEL_ID,
+        aiModelId: MODEL_UNDERSTANDING_AI_MODEL_ID,
+        fallbackAiModelId: MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
         regenerate: input.regenerate,
       }),
     );
     try {
-      const result = await generateText({
-        model: workersai(AI_MODEL_ID, {
-          ...LOW_LATENCY_AI_SETTINGS,
-          sessionAffinity: `understanding:${definition.modelVersion.sourceHash.slice(0, 48)}`,
-        }),
-        maxOutputTokens: 320,
-        maxRetries: 0,
-        timeout: MODEL_UNDERSTANDING_TIMEOUT_MS,
-        temperature: 0.2,
-        system: `Explain validated uncertainty metadata in at most 180 words of concise Markdown. Use exactly three sections: "Model in brief", "How uncertainty enters", and "Questions to confirm". Distinguish supplied facts from inference. Never invent an equation, units, physical meaning, industry, sensitivity rankings, or causal claims. State clearly when functional form or domain meaning is unavailable. Do not give deterministic workflow advice.`,
-        prompt: JSON.stringify({
-          facts: {
-            sourceKind: definition.modelVersion.sourceKind,
-            inputDimension: definition.modelVersion.metadata.input_dimension,
-            outputDimension: definition.modelVersion.metadata.output_dimension,
-            inputs: definition.modelVersion.metadata.inputs,
-            outputs: definition.modelVersion.metadata.outputs,
-            functionType: definition.modelVersion.metadata.function_type,
-            copula: definition.modelVersion.metadata.copula,
-            dependentInputs: definition.modelVersion.metadata.dependent_inputs,
-            pilotOutputs:
-              definition.modelVersion.assessment?.profile.pilot_outputs,
-          },
-        }),
-      });
-      const content = result.text.trim();
-      if (!content) throw new Error("Workers AI returned an empty explanation.");
+      const attempts = [
+        {
+          modelId: MODEL_UNDERSTANDING_AI_MODEL_ID,
+          timeoutMs: MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS,
+        },
+        {
+          modelId: MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
+          timeoutMs: MODEL_UNDERSTANDING_FALLBACK_TIMEOUT_MS,
+        },
+      ] as const;
+      const generation = await runSequentialFallback(
+        attempts,
+        async (attempt, index) => {
+          const attemptStartedAt = Date.now();
+          if (index > 0) {
+            console.warn(
+              JSON.stringify({
+                event: "model_understanding_fallback_started",
+                requestId: c.get("requestId"),
+                understandingId,
+                aiModelId: attempt.modelId,
+              }),
+            );
+          }
+          try {
+            const result = await generateText({
+              model: workersai(attempt.modelId, {
+                sessionAffinity: `understanding:${definition.modelVersion.sourceHash.slice(0, 48)}`,
+              }),
+              maxOutputTokens: 240,
+              maxRetries: 0,
+              timeout: attempt.timeoutMs,
+              temperature: 0.1,
+              system: `Explain validated uncertainty metadata in at most 150 words of concise Markdown. Use exactly three sections: "Model in brief", "How uncertainty enters", and "Questions to confirm". Treat only the supplied JSON as fact. Include the model shape and function type, marginal distribution families, stated dependence structure, and pilot output summary when supplied. Never invent an equation, units, domain meaning, rankings, or causal claims. Ask only about missing domain meaning, units, or modelling assumptions; do not ask what the supplied schema fields mean.`,
+              prompt: JSON.stringify({
+                facts: {
+                  sourceKind: definition.modelVersion.sourceKind,
+                  inputDimension:
+                    definition.modelVersion.metadata.input_dimension,
+                  outputDimension:
+                    definition.modelVersion.metadata.output_dimension,
+                  inputs: definition.modelVersion.metadata.inputs,
+                  outputs: definition.modelVersion.metadata.outputs,
+                  functionType:
+                    definition.modelVersion.metadata.function_type,
+                  copula: definition.modelVersion.metadata.copula,
+                  dependentInputs:
+                    definition.modelVersion.metadata.dependent_inputs,
+                  pilotOutputs:
+                    definition.modelVersion.assessment?.profile.pilot_outputs,
+                },
+              }),
+            });
+            const content = result.text.trim();
+            if (!content)
+              throw new Error("Workers AI returned an empty explanation.");
+            return {
+              content,
+              modelId: attempt.modelId,
+              attemptDurationMs: Date.now() - attemptStartedAt,
+            };
+          } catch (error) {
+            console.warn(
+              JSON.stringify({
+                event: "model_understanding_attempt_failed",
+                requestId: c.get("requestId"),
+                understandingId,
+                aiModelId: attempt.modelId,
+                durationMs: Date.now() - attemptStartedAt,
+                error: (error instanceof Error
+                  ? error.message
+                  : String(error)
+                ).slice(0, 2_000),
+              }),
+            );
+            throw error;
+          }
+        },
+      );
+      const { content, modelId, attemptDurationMs } = generation.result;
       const statements = [
         c.env.DB.prepare(
           `UPDATE model_understandings SET status = 'succeeded', content = ?,
-                  error = NULL, updated_at = ? WHERE id = ?`,
-        ).bind(content, now(), understandingId),
+                  ai_model_id = ?, error = NULL, updated_at = ? WHERE id = ?`,
+        ).bind(content, modelId, now(), understandingId),
       ];
       if (input.regenerate) {
         statements.push(
@@ -1679,7 +1737,9 @@ app.post(
           event: "model_understanding_generation_succeeded",
           requestId: c.get("requestId"),
           understandingId,
-          aiModelId: AI_MODEL_ID,
+          aiModelId: modelId,
+          fallbackUsed: generation.index > 0,
+          attemptDurationMs,
           durationMs,
           outputCharacters: content.length,
         }),
@@ -1702,7 +1762,8 @@ app.post(
           event: "model_understanding_generation_failed",
           requestId: c.get("requestId"),
           understandingId,
-          aiModelId: AI_MODEL_ID,
+          aiModelId: MODEL_UNDERSTANDING_AI_MODEL_ID,
+          fallbackAiModelId: MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
           durationMs: Date.now() - generationStartedAt,
           code: failure.code,
           error: failure.diagnostic,
@@ -2311,8 +2372,8 @@ app.post(
     const workersai = createWorkersAI({ binding: c.env.AI });
     const chatStartedAt = Date.now();
     const result = streamText({
-      model: workersai(AI_MODEL_ID, {
-        ...LOW_LATENCY_AI_SETTINGS,
+      model: workersai(REPORT_CHAT_AI_MODEL_ID, {
+        ...REPORT_CHAT_LOW_LATENCY_AI_SETTINGS,
         sessionAffinity: `report:${report.id}`,
       }),
       maxRetries: 0,
@@ -2493,7 +2554,7 @@ app.post(
               event: "report_chat_generation_succeeded",
               requestId: c.get("requestId"),
               reportId: report.id,
-              aiModelId: AI_MODEL_ID,
+              aiModelId: REPORT_CHAT_AI_MODEL_ID,
               durationMs: Date.now() - chatStartedAt,
               outputCharacters: text.length,
             }),
@@ -2506,7 +2567,7 @@ app.post(
             event: "report_chat_generation_failed",
             requestId: c.get("requestId"),
             reportId: report.id,
-            aiModelId: AI_MODEL_ID,
+            aiModelId: REPORT_CHAT_AI_MODEL_ID,
             durationMs: Date.now() - chatStartedAt,
             error: error instanceof Error ? error.message : String(error),
           }),

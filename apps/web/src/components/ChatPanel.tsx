@@ -2,7 +2,7 @@ import { Bot, Send, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api, readTextStream } from "../api";
-import { AI_MODEL_LABEL } from "@uncertaintycat/contracts";
+import { REPORT_CHAT_AI_MODEL_LABEL } from "@uncertaintycat/contracts";
 import { Markdown } from "./Markdown";
 
 interface Message {
@@ -97,7 +97,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
           <small>
             Answers use stored facts and cite their analysis source.
           </small>
-          <small>{AI_MODEL_LABEL}</small>
+          <small>{REPORT_CHAT_AI_MODEL_LABEL}</small>
         </div>
       </div>
       <div className="chat-messages" aria-live="polite" aria-busy={sending}>
@@ -146,7 +146,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
         </button>
       </div>
       <small className="ai-label">
-        {AI_MODEL_LABEL}. AI-generated explanation; verify decisions against the numerical tables.
+        {REPORT_CHAT_AI_MODEL_LABEL}. AI-generated explanation; verify decisions against the numerical tables.
       </small>
     </aside>
   );

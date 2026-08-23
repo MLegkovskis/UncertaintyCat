@@ -159,8 +159,8 @@ test.describe("model studio", () => {
               id: "understanding-1",
               modelVersionId: "model-1",
               modelHash: "abcdef",
-              promptVersion: "1.2.0",
-              aiModelId: "@cf/zai-org/glm-4.7-flash",
+              promptVersion: "1.3.0",
+              aiModelId: "@cf/meta/llama-3.2-3b-instruct",
               status: succeeded ? "succeeded" : "generating",
               content: succeeded
                 ? "## Model in brief\n\nThe existing generation completed once."
@@ -205,7 +205,7 @@ test.describe("model studio", () => {
           body: JSON.stringify({
             error: {
               message:
-                "Workers AI did not answer within 15 seconds. Please retry; failed requests are not charged.",
+                "Workers AI did not answer in time. Please retry; failed requests are not charged.",
             },
           }),
         });

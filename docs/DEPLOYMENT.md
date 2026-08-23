@@ -46,8 +46,9 @@ The deployment token should remain scoped to the UncertaintyCat Cloudflare accou
 
 Workers Logs are enabled at a 100% head sample rate. AI generation events contain request/record IDs, model ID,
 outcome, wall time, and output length only; they deliberately exclude prompts, model source, and persisted numerical
-evidence. Model Understanding requests should normally complete in a few seconds. A 15-second deadline becomes an
-explicit retryable 504 and is not charged to the successful-regeneration quota.
+evidence. Model Understanding requests should normally complete in a few seconds. Its primary and fallback models
+each have an eight-second deadline; exhausting both becomes an explicit retryable 504 and is not charged to the
+successful-regeneration quota.
 
 ## Automatic delivery
 

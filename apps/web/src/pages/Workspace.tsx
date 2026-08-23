@@ -7,7 +7,7 @@ import type {
   ModelUnderstanding,
   ModelVersion,
 } from "@uncertaintycat/contracts";
-import { AI_MODEL_LABEL } from "@uncertaintycat/contracts";
+import { MODEL_UNDERSTANDING_AI_MODEL_LABEL } from "@uncertaintycat/contracts";
 import {
   Beaker,
   ArrowRight,
@@ -483,7 +483,7 @@ function ModelUnderstandingPane({
           <span className="section-kicker">AI explanation</span>
           <h2>Model Understanding</h2>
         </div>
-        <small>{AI_MODEL_LABEL}</small>
+        <small>{MODEL_UNDERSTANDING_AI_MODEL_LABEL}</small>
       </header>
       <section className="validation-facts">
         <h3>Deterministic validation facts</h3>
