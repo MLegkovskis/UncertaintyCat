@@ -120,3 +120,21 @@ jobs:
           tags: uncertaintycat-sandbox:ci
           cache-from: type=gha,scope=cloudflare-sandbox
           cache-to: type=gha,mode=max,scope=cloudflare-sandbox
+
+  dispatch-bot-release:
+    needs: [python, typescript, browser, full-stack-browser, compute-image]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.actor == 'github-actions[bot]' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Deploy the exact bot-tested main revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TESTED_SHA: ${{ github.sha }}
+        run: gh workflow run deploy.yml --repo "$REPOSITORY" --ref main -f sha="$TESTED_SHA"
