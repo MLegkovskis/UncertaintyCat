@@ -540,7 +540,7 @@ code {
 .sample-budget {
   display: grid;
   gap: 8px;
-  color: #8fa2b9;
+  color: var(--muted);
   font-size: 11px;
 }
 .onboarding-card input,

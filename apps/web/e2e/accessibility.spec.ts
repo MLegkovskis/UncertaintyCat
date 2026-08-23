@@ -15,6 +15,28 @@ const routes = [
 ] as const;
 
 for (const theme of ["light", "dark"] as const) {
+  test(
+    `guest workspace has no automatically detectable serious accessibility violations in ${theme} theme`,
+    async ({ page }) => {
+      await installMockApi(page);
+      await page.addInitScript((selectedTheme) => {
+        window.localStorage.setItem("uncertaintycat-theme", selectedTheme);
+      }, theme);
+      await page.goto("/workspace");
+      await expect(
+        page.getByRole("heading", { name: "Start with a durable project." }),
+      ).toBeVisible();
+      const results = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      expect(
+        results.violations
+          .filter((item) => item.impact === "serious" || item.impact === "critical")
+          .map((item) => item.id),
+      ).toEqual([]);
+    },
+  );
+
   for (const [name, path] of routes) {
     test(`${name} has no automatically detectable serious accessibility violations in ${theme} theme`, async ({ page }) => {
       await installMockApi(page, {
