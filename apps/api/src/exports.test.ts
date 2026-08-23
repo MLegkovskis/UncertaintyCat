@@ -18,6 +18,8 @@ describe("createReportBundle", () => {
           {
             id: "task-1",
             analysisKey: "demo",
+            config: {},
+            outputTargets: [],
             status: "succeeded",
             result: {
               analysis_key: "demo",

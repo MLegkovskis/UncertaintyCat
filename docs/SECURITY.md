@@ -46,7 +46,7 @@ Wrangler file; production configuration must remove `DEV_AUTH_BYPASS` entirely a
 `BETTER_AUTH_SECRET`.
 
 Unauthenticated users receive an HTTP-only, SameSite guest identity. They can save only a source whose
-SHA-256 is present in `PUBLIC_EXAMPLE_SOURCE_HASHES`; changing `sourceKind` alone cannot bypass this rule.
+SHA-256 is present in the checked generated example catalog; changing `sourceKind` alone cannot bypass this rule.
 
 ## AI boundary
 

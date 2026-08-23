@@ -2,7 +2,14 @@ import { getSandbox } from "@cloudflare/sandbox";
 
 import type { Env } from "./env";
 
-type ComputeOperation = "catalog" | "validate" | "execute";
+type ComputeOperation =
+  | "catalog"
+  | "validate"
+  | "execute"
+  | "inspect-data"
+  | "fit-data"
+  | "serialize-surrogate"
+  | "execute-surrogate";
 
 interface SandboxEnvelope {
   status: number;
@@ -13,6 +20,10 @@ function operationFor(path: string): ComputeOperation {
   if (path.endsWith("/catalog")) return "catalog";
   if (path.endsWith("/validate")) return "validate";
   if (path.endsWith("/execute")) return "execute";
+  if (path.endsWith("/data/inspect")) return "inspect-data";
+  if (path.endsWith("/data/fit")) return "fit-data";
+  if (path.endsWith("/surrogates/serialize")) return "serialize-surrogate";
+  if (path.endsWith("/surrogates/execute")) return "execute-surrogate";
   throw new Error(`Unsupported compute path: ${path}`);
 }
 
@@ -37,7 +48,9 @@ async function sandboxFetch(
   if (!env.SANDBOX)
     throw new Error("Cloudflare Sandbox binding is unavailable.");
   const operation = operationFor(path);
-  const runId = operation === "execute" ? executionRunId(init) : null;
+  const runId = ["execute", "execute-surrogate"].includes(operation)
+    ? executionRunId(init)
+    : null;
   const sandbox = getSandbox(
     env.SANDBOX,
     runId ? `uq-run-${runId}` : `uq-${crypto.randomUUID()}`,

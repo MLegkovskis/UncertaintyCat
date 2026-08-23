@@ -68,12 +68,12 @@ records, so a failed section does not destroy successful evidence.
 
 ### `apps/web`
 
-React Router, TanStack Query, CodeMirror, and native SVG/CSS charts provide the product UI. The guided builder emits the
+React Router, TanStack Query, CodeMirror, and a lazy Apache ECharts adapter provide the product UI. The guided builder emits the
 same Python model contract as code mode. The run composer is catalog-driven, while analysis-specific
 default configurations remain a small explicit mapping until a full JSON-schema form renderer is added.
 
 Routes are split so the Python editor is loaded only in the model workspace. Reports are responsive HTML,
-avoid a heavyweight plotting runtime, and print cleanly to PDF; machine-readable evidence is a separate ZIP.
+lazy-load the plotting runtime, retain exact table/text fallbacks, and print cleanly to PDF; machine-readable evidence is a separate ZIP.
 
 ### `packages/contracts`
 
@@ -130,9 +130,8 @@ usage are persisted in D1, so an authenticated user can resume a report conversa
 
 ## Data ownership and retention
 
-- D1 holds identities, projects, version metadata, task state, report references, chat text, quotas, and
-  share-link hashes.
-- R2 holds immutable source and future large artifacts. Raw share tokens are never persisted.
+- D1 holds identities, projects, model assessment/lineage, dataset and surrogate indexes, task state, report references, chat/understanding text, quotas, and share-link hashes.
+- R2 holds immutable model source, private original datasets, and promoted OpenTURNS surrogate XML. Raw share tokens are never persisted.
 - A report bundle contains its manifest, complete JSON, and normalized CSV views so it remains useful
   outside UncertaintyCat.
 - Deletion and retention endpoints are not yet implemented; they are a production launch gate.

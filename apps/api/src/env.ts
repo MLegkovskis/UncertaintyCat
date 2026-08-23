@@ -4,12 +4,11 @@ export interface Env {
   DB: D1Database;
   ARTIFACTS: R2Bucket;
   RUN_QUEUE: Queue<RunTaskMessage>;
-  AI: Ai;
+  AI?: Ai;
   ASSETS?: Fetcher;
   SANDBOX?: DurableObjectNamespace<Sandbox>;
   COMPUTE_SERVICE_URL?: string;
   PUBLIC_WEB_ORIGIN?: string;
-  PUBLIC_EXAMPLE_SOURCE_HASHES?: string;
   UNCERTAINTYCAT_INTERNAL_TOKEN?: string;
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL: string;
@@ -28,5 +27,6 @@ export interface RunTaskMessage {
 export interface Identity {
   ownerId: string;
   authenticated: boolean;
+  name?: string;
   email?: string;
 }

@@ -35,6 +35,8 @@ export function createReportBundle(
     generatedAt,
     runId: run.id,
     modelVersionId: run.modelVersionId,
+    surrogateModelId: run.surrogateModelId ?? null,
+    evidenceSource: run.evidenceSource ?? "direct",
     modelHash: metadata?.source_hash ?? null,
     openturnsVersion: metadata?.openturns_version ?? null,
     seed: run.seed,

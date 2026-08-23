@@ -1,4 +1,8 @@
-import type { AnalysisResult } from "@uncertaintycat/contracts";
+import type {
+  AnalysisResult,
+  ModelAssessment,
+  ModelMetadata,
+} from "@uncertaintycat/contracts";
 
 import { computeFetch, destroyRunSandbox } from "./compute-client";
 import { now, parseJson } from "./db";
@@ -12,8 +16,25 @@ interface TaskRecord {
   config_json: string;
   output_targets_json: string;
   source_key: string;
+  metadata_json: string;
+  assessment_json: string | null;
+  surrogate_model_id: string | null;
+  surrogate_method: "pce" | "gpr" | null;
+  surrogate_object_key: string | null;
+  surrogate_status: string | null;
+  surrogate_validation_json: string | null;
   seed: number;
   run_status: string;
+}
+
+function encodeBase64(value: ArrayBuffer): string {
+  const bytes = new Uint8Array(value);
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000)
+    chunks.push(
+      String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)),
+    );
+  return btoa(chunks.join(""));
 }
 
 class ComputeRequestError extends Error {
@@ -114,10 +135,15 @@ export async function processRunTask(
 
   const task = await env.DB.prepare(
     `SELECT t.id, t.run_id, t.analysis_key, t.plugin_version, t.config_json,
-            t.output_targets_json, m.source_key, r.seed, r.status AS run_status
+            t.output_targets_json, m.source_key, m.metadata_json, m.assessment_json,
+            r.surrogate_model_id, s.method AS surrogate_method,
+            s.object_key AS surrogate_object_key, s.status AS surrogate_status,
+            s.validation_json AS surrogate_validation_json,
+            r.seed, r.status AS run_status
      FROM analysis_tasks t
      JOIN runs r ON r.id = t.run_id
      JOIN model_versions m ON m.id = r.model_version_id
+     LEFT JOIN surrogate_models s ON s.id = r.surrogate_model_id
      WHERE t.id = ?`,
   )
     .bind(message.taskId)
@@ -137,34 +163,93 @@ export async function processRunTask(
     return;
   }
 
-  const sourceObject = await env.ARTIFACTS.get(task.source_key);
-  if (!sourceObject) {
-    await failRunTask(env, task.id, {
-      code: "model_source_missing",
-      message: "The immutable model source artifact is missing.",
-    });
-    return;
-  }
-  const source = await sourceObject.text();
+  const analysis = {
+    analysis_key: task.analysis_key,
+    plugin_version: task.plugin_version,
+    config: parseJson<Record<string, unknown>>(task.config_json, {}),
+    output_targets: parseJson<number[]>(task.output_targets_json, []),
+  };
   let response: Response;
   try {
-    response = await computeFetch(env, "/v1/execute", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        source,
-        seed: task.seed,
-        run_id: task.run_id,
-        analysis: {
-          analysis_key: task.analysis_key,
-          plugin_version: task.plugin_version,
-          config: parseJson<Record<string, unknown>>(task.config_json, {}),
-          output_targets: parseJson<number[]>(task.output_targets_json, []),
-        },
-      }),
-    });
+    if (task.surrogate_model_id) {
+      if (
+        task.surrogate_status !== "promoted" ||
+        !task.surrogate_object_key ||
+        !task.surrogate_method ||
+        !task.surrogate_validation_json ||
+        !task.assessment_json
+      ) {
+        await failRunTask(env, task.id, {
+          code: "surrogate_unavailable",
+          message: "The explicitly selected promoted surrogate is unavailable.",
+        });
+        return;
+      }
+      const surrogateObject = await env.ARTIFACTS.get(
+        task.surrogate_object_key,
+      );
+      if (!surrogateObject) {
+        await failRunTask(env, task.id, {
+          code: "surrogate_artifact_missing",
+          message: "The promoted surrogate XML artifact is missing.",
+        });
+        return;
+      }
+      const validation = parseJson<{
+        outputTargets?: number[];
+      } | null>(task.surrogate_validation_json, null);
+      const surrogateOutputTarget = validation?.outputTargets?.[0];
+      if (surrogateOutputTarget === undefined) {
+        await failRunTask(env, task.id, {
+          code: "surrogate_provenance_incomplete",
+          message: "The promoted surrogate does not retain its source output target.",
+        });
+        return;
+      }
+      response = await computeFetch(env, "/v1/surrogates/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          xml_base64: encodeBase64(await surrogateObject.arrayBuffer()),
+          method: task.surrogate_method,
+          analysis: {
+            ...analysis,
+            output_targets: analysis.output_targets.length ? [0] : [],
+          },
+          metadata: parseJson<ModelMetadata>(
+            task.metadata_json,
+            {} as ModelMetadata,
+          ),
+          assessment: parseJson<ModelAssessment>(
+            task.assessment_json,
+            {} as ModelAssessment,
+          ),
+          surrogate_id: task.surrogate_model_id,
+          surrogate_output_target: surrogateOutputTarget,
+          seed: task.seed,
+          run_id: task.run_id,
+        }),
+      });
+    } else {
+      const sourceObject = await env.ARTIFACTS.get(task.source_key);
+      if (!sourceObject) {
+        await failRunTask(env, task.id, {
+          code: "model_source_missing",
+          message: "The immutable model source artifact is missing.",
+        });
+        return;
+      }
+      response = await computeFetch(env, "/v1/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: await sourceObject.text(),
+          seed: task.seed,
+          run_id: task.run_id,
+          analysis,
+        }),
+      });
+    }
   } catch (error) {
     await env.DB.prepare(
       "UPDATE analysis_tasks SET status = 'queued', started_at = NULL WHERE id = ?",

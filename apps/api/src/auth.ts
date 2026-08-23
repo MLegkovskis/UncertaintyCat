@@ -54,6 +54,7 @@ export async function identityFor(
     return {
       ownerId: "dev-user",
       authenticated: true,
+      name: "Local retained user",
       email: "developer@localhost",
     };
   }
@@ -65,6 +66,7 @@ export async function identityFor(
       return {
         ownerId: session.user.id,
         authenticated: true,
+        name: session.user.name,
         email: session.user.email,
       };
     }

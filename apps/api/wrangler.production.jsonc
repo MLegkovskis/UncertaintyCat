@@ -16,7 +16,6 @@
     "BETTER_AUTH_URL": "https://uncertaintycat.com",
     "PUBLIC_WEB_ORIGIN": "https://uncertaintycat.com",
     "CLOUDFLARE_ACCESS_ISSUER": "https://uncertaintycat.cloudflareaccess.com/cdn-cgi/access/sso/oidc/77b32fa216cbcfad9abe98328816b6a759aa15950a43f4b071e186ffdd1e595d",
-    "PUBLIC_EXAMPLE_SOURCE_HASHES": "62c1a7fd9ab5e02199cc02ab56bd51c30dd8740420cb704e0cd6dff2a4ce191a",
   },
   "assets": {
     "directory": "../web/dist",
