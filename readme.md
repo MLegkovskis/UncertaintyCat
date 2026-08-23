@@ -11,13 +11,16 @@ Worker-compatible control plane, and an isolated Python compute service.
 
 ## What is implemented
 
-- Immutable model versions with input/output metadata, source hashes, and OpenTURNS provenance.
+- Immutable model versions with deterministic assessment, lineage, exact source hashes, and OpenTURNS provenance.
+- A generated, hash-checked catalog for all 23 reference models plus a multi-output symbolic OpenTURNS builder.
 - Twelve schema-driven analysis plugins: Monte Carlo, EDA, correlation, Sobol, FAST, HSIC, Taylor,
   Morris, expectation convergence, reliability, polynomial chaos, and Gaussian-process regression.
 - Multi-output propagation and exploration; scalar-output methods require an explicit output target.
 - Durable projects, queued/idempotent runs, partial-failure reports, cancellation, quotas, and retries.
-- Interactive native SVG/CSS results, browser-print PDF reports, ZIP JSON/CSV evidence bundles, and expiring,
+- Lazy-loaded Apache ECharts results with exact table fallbacks, browser-print PDF reports, ZIP JSON/CSV evidence bundles, and expiring,
   revocable share links.
+- Study-scoped distribution fitting, explicit Morris-derived versions, promoted PCE/GPR surrogates, and a guided reliability workflow.
+- Cached, owner-only Model Understanding and report chat using safe Markdown/math rendering and the centrally configured GLM-4.7-Flash model.
 - Cloudflare-hosted Workers AI chat, built on the open-source Vercel AI SDK and Cloudflare provider,
   constrained to five read-only persisted-report tools; it does not execute numerical calculations.
 - Better Auth wiring for Cloudflare Access OIDC login, D1-backed cross-device history, persisted report
@@ -46,23 +49,13 @@ procedure is in the [OpenTURNS synchronization README](docs/openturns-sync/READM
 
 ## Local development
 
-Prerequisites: Python 3.12, [uv](https://docs.astral.sh/uv/), Node 22, npm, and optionally Docker.
+Prerequisites: Python 3.12, [uv](https://docs.astral.sh/uv/), npm, and optionally Docker. The launcher uses an isolated Node 22 runtime for Wrangler if the system Node is older.
 
 ```bash
-uv sync --frozen --extra dev
-npm ci
-cp apps/api/.dev.vars.example apps/api/.dev.vars
-npm run dev:compute
+./start_local.sh
 ```
 
-In separate terminals:
-
-```bash
-npm run dev:api
-npm run dev:web
-```
-
-Open `http://127.0.0.1:5173`. The local Wrangler configuration enables a development identity. To
+Open `http://127.0.0.1:5173`. The launcher synchronizes dependencies, applies migrations to persistent local-only D1 state, starts FastAPI, Wrangler, and Vite, and enables a clearly labelled retained development identity. D1, R2, and Queues stay local; only Workers AI is remote when Wrangler is authenticated. To
 exercise the hardened container boundary instead of the host compute process:
 
 ```bash
@@ -78,10 +71,12 @@ npm run build
 uv run ruff format --check uncertaintycat_core services tests test_all_examples.py
 uv run ruff check uncertaintycat_core services tests test_all_examples.py
 uv run pytest
+uv run python test_all_examples.py
 npm run test:e2e       # first run: npx playwright install chromium
+npm run test:e2e:full-stack
 ```
 
-The Python suite validates every model under `examples/`, contract strictness, multi-output behavior,
+The local gate validates every model under `examples/`, contract strictness, multi-output behavior,
 dependent-input rejection, the known Ishigami Sobol structure, Gaussian-process validation on smooth and
 dependent-input benchmarks, FORM on a standard-normal half-space, all catalog plugins, and the FastAPI
 boundary.
@@ -104,12 +99,12 @@ custom source without the isolation controls described in the security document.
 
 ## Deployment status
 
-The production Worker/static-assets configuration, D1 migration, R2/Queue bindings, Workers AI binding,
+The production Worker/static-assets configuration, D1 migrations, R2/Queue bindings, Workers AI binding,
 Sandbox image, custom-domain routes, and post-CI deployment workflow are implemented. The live Cloudflare
 account has D1, R2, Queues, Workers Paid, the Cloudflare Access OIDC application, and a fully configured
-GitHub production environment. Successful CI on `main` triggers the production deployment and live
-non-mutating browser verification. The domain is never deliberately advanced to a build that cannot validate
-or execute models.
+GitHub production environment. Automatic CI/deployment is controlled by the repository variable
+`AUTOMATION_ENABLED`; while paused, `scripts/automation.sh release` dispatches the complete authoritative
+CI suite for the exact clean `main` commit, whose success alone triggers deployment and production verification.
 
 ## Legacy application
 

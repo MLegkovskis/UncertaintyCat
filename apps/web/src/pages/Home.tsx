@@ -13,6 +13,64 @@ import { api } from "../api";
 
 export function Home() {
   const catalog = useQuery({ queryKey: ["catalog"], queryFn: api.catalog });
+  const session = useQuery({ queryKey: ["session-policy"], queryFn: api.session });
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: api.listProjects,
+    enabled: session.data?.identity.authenticated === true,
+  });
+  const runs = useQuery({
+    queryKey: ["runs"],
+    queryFn: api.listRuns,
+    enabled: session.data?.identity.authenticated === true,
+  });
+  if (session.data?.identity.authenticated) {
+    const recentProjects = projects.data?.projects.slice(0, 3) ?? [];
+    const recentRuns = runs.data?.runs.slice(0, 4) ?? [];
+    const continueRun = recentRuns[0];
+    return (
+      <div className="page dashboard-page">
+        <div className="page-heading split">
+          <div>
+            <span className="section-kicker">Dashboard</span>
+            <h1>Continue your uncertainty work.</h1>
+            <p>Recent studies and exact retained configurations are ready to reopen.</p>
+          </div>
+          <Link className="button primary" to="/new-analysis">New analysis <ArrowRight /></Link>
+        </div>
+        {continueRun && (
+          <Link
+            className="continue-card"
+            to={["queued", "running"].includes(continueRun.status) ? `/runs/${continueRun.id}` : `/reports/${continueRun.id}`}
+          >
+            <div><span className="section-kicker">Continue working</span><h2>{continueRun.projectName}</h2></div>
+            <p>{continueRun.modelDisplayName} · version {continueRun.modelVersion} · {continueRun.tasks.length} analyses</p>
+            <ArrowRight />
+          </Link>
+        )}
+        <section className="dashboard-grid">
+          <div>
+            <div className="section-copy"><span className="section-kicker">Recent studies</span><h2>Studies</h2></div>
+            {recentProjects.map((project) => (
+              <Link className="dashboard-row" to={`/studies/${project.id}`} key={project.id}>
+                <strong>{project.name}</strong><small>{new Date(project.updatedAt).toLocaleString()}</small><ArrowRight />
+              </Link>
+            ))}
+            {!recentProjects.length && <p className="muted-copy">No retained studies yet.</p>}
+          </div>
+          <div>
+            <div className="section-copy"><span className="section-kicker">Recent executions</span><h2>Runs</h2></div>
+            {recentRuns.map((run) => (
+              <Link className="dashboard-row" to={["queued", "running"].includes(run.status) ? `/runs/${run.id}` : `/reports/${run.id}`} key={run.id}>
+                <strong>{run.modelDisplayName}</strong><small>{run.status} · {new Date(run.createdAt).toLocaleString()}</small><ArrowRight />
+              </Link>
+            ))}
+            {!recentRuns.length && <p className="muted-copy">No numerical runs yet.</p>}
+          </div>
+        </section>
+      </div>
+    );
+  }
   return (
     <div className="page home-page">
       <section className="hero">
@@ -28,8 +86,8 @@ export function Home() {
           durable report.
         </p>
         <div className="hero-actions">
-          <Link className="button primary" to="/workspace">
-            Open the workspace <ArrowRight size={17} />
+          <Link className="button primary" to="/new-analysis">
+            Start a new analysis <ArrowRight size={17} />
           </Link>
           <a
             className="button secondary"

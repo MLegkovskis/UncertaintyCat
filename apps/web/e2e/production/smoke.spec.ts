@@ -23,6 +23,34 @@ test("production serves every public screen, the real catalog, and security head
     providers: ["cloudflare"],
   });
 
+  const examplesResponse = await request.get("/api/v1/examples");
+  expect(examplesResponse.ok()).toBe(true);
+  const examples = (await examplesResponse.json()).examples as Array<{
+    id: string;
+    source: string;
+    sha256: string;
+  }>;
+  expect(examples).toHaveLength(23);
+  expect(new Set(examples.map((example) => example.sha256)).size).toBe(23);
+
+  const deniedTamper = await request.post(
+    "/api/v1/projects/nonexistent/models",
+    {
+      data: {
+        source: `${examples[0]!.source}\n# tampered`,
+        sourceKind: "example",
+      },
+    },
+  );
+  expect(deniedTamper.status()).toBe(403);
+  const exactCatalogSource = await request.post(
+    "/api/v1/projects/nonexistent/models",
+    {
+      data: { source: examples[0]!.source, sourceKind: "example" },
+    },
+  );
+  expect(exactCatalogSource.status()).toBe(404);
+
   let liveCatalog: Array<{
     key: string;
     config_schema: { properties?: Record<string, { maximum?: number }> };
@@ -50,7 +78,7 @@ test("production serves every public screen, the real catalog, and security head
   for (const [path, heading] of [
     ["/", /Turn uncertain inputs/],
     ["/workspace", "Start with a durable project."],
-    ["/activity", "Your uncertainty studies"],
+    ["/activity", "One home for durable evidence."],
   ] as const) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -66,7 +94,7 @@ test("production serves every public screen, the real catalog, and security head
 test("production Cloudflare identity initiation uses the configured OIDC application", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Guest workspace/ }).click();
-  await expect(page.getByRole("button", { name: "Continue with Cloudflare" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Continue with Cloudflare" })).toBeVisible();
   const result = await page.evaluate(async () => {
     const response = await fetch("/api/auth/sign-in/social", {
       method: "POST",
@@ -124,6 +152,8 @@ test("optional live mutation exercises guest D1/R2/Queue/Sandbox/report/share an
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^uncertaintycat-.+\.zip$/);
   await page.getByRole("button", { name: "Share" }).click();
+  await expect(page.getByRole("checkbox", { name: "Include model definition" })).not.toBeChecked();
+  await page.getByRole("button", { name: "Create share link" }).click();
   await expect(page.locator(".share-confirmation a")).toBeVisible();
   await expect(page.getByText("Ask this report")).toHaveCount(0);
   const reportId = page.url().split("/").at(-1)!;

@@ -69,6 +69,8 @@ test("retained-user journey persists a project, executes every plugin, and produ
   expect(bytes).toBeGreaterThan(100);
 
   await page.getByRole("button", { name: "Share" }).click();
+  await expect(page.getByRole("checkbox", { name: "Include model definition" })).not.toBeChecked();
+  await page.getByRole("button", { name: "Create share link" }).click();
   const sharedUrl = await page.locator(".share-confirmation a").getAttribute("href");
   expect(sharedUrl).toMatch(/\/shared\//);
   await page.goto(new URL(sharedUrl!).pathname);
@@ -78,7 +80,7 @@ test("retained-user journey persists a project, executes every plugin, and produ
 
   await page.goto("/activity");
   await expect(page.getByText(studyName)).toBeVisible();
-  await expect(page.locator(".activity-run")).toHaveCount(1);
+  await expect(page.locator(".study-row")).toHaveCount(1);
   await page.reload();
   await expect(page.getByText(studyName)).toBeVisible();
 

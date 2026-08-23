@@ -19,23 +19,14 @@ Keeping web and API on one origin simplifies cookies and CORS. If separate origi
 ## Local release rehearsal
 
 ```bash
-uv sync --frozen --extra dev
-npm ci
+./start_local.sh
 uv run pytest
 npm run typecheck
 npm run test:ts
 npm run build
+npm run test:e2e
+npm run test:e2e:full-stack
 docker build -f services/compute/Dockerfile -t uncertaintycat-compute:local .
-```
-
-Initialize a local D1 database and start services:
-
-```bash
-cp apps/api/.dev.vars.example apps/api/.dev.vars
-npx wrangler d1 migrations apply uncertaintycat-local --local --config apps/api/wrangler.jsonc
-docker compose up --build compute
-npm run dev:api
-npm run dev:web
 ```
 
 ## Cloudflare resource state and bootstrap
@@ -75,7 +66,7 @@ Non-secret environment-specific values:
 - `CLOUDFLARE_ACCOUNT_ID=062711e4730b4f1bfc21801a71cfe589`;
 - `CLOUDFLARE_D1_DATABASE_ID=ececff7c-67ee-4f74-bd96-3a8f10784fbc`;
 - `CLOUDFLARE_ACCESS_ISSUER` is fixed to the OIDC application issuer in the production config;
-- exact `PUBLIC_EXAMPLE_SOURCE_HASHES` allowlist.
+- exact SHA-256 allowlist generated from the canonical `examples/*.py` catalog.
 
 Workers AI uses the `AI` binding; there is no model API key in the Worker. The local legacy Streamlit
 utility can use the Workers AI REST API, but it is not part of production.
@@ -102,8 +93,7 @@ than committing `.dev.vars` or editing `wrangler.jsonc` with real values.
 
 ## GitHub delivery
 
-CI tests Python, TypeScript, browser navigation, and the container image. `.github/workflows/deploy.yml`
-runs only after a successful `CI` workflow on `main` (or explicit manual dispatch), then:
+CI tests Python, TypeScript, browser navigation, the real local stack, and both container images. Every automatic job is gated by the repository variable `AUTOMATION_ENABLED`. A manual CI dispatch always runs the full suite, and `.github/workflows/deploy.yml` runs after successful eligible CI on `main`, then:
 
 1. builds the React assets;
 2. generates the production Wrangler file from the D1 repository variable;
@@ -111,6 +101,8 @@ runs only after a successful `CI` workflow on `main` (or explicit manual dispatc
 4. applies forward-only D1 migrations;
 5. deploys the Worker, assets, bindings, queue consumer, and Sandbox image;
 6. smoke-tests `https://uncertaintycat.com/health`.
+
+Use `scripts/automation.sh pause|resume|status`. For a release while automatic automation is paused, commit and push a clean `main` that exactly equals `origin/main`, then run `scripts/automation.sh release`; it dispatches full CI for that commit and prints the authoritative workflow URL.
 
 The deployment token is scoped to this account and zone with Account permissions for Workers Scripts,
 Containers, D1, R2, Queues, and Workers AI plus Zone Workers Routes. The account-wide global API key is not

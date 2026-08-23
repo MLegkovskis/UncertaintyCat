@@ -1,33 +1,123 @@
 import {
-  Activity,
   BookOpen,
   Cat,
   Cloud,
+  Database,
   FolderKanban,
   Github,
   LogOut,
   Menu,
+  Moon,
+  PlusCircle,
+  Sun,
+  User,
   X,
 } from "lucide-react";
-import { useEffect, useState, type PropsWithChildren } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PropsWithChildren,
+} from "react";
 import { NavLink } from "react-router-dom";
 
 import { authClient } from "../auth-client";
+import { useTheme } from "./Theme";
+
+interface IdentityClaims {
+  authenticated: boolean;
+  name?: string | null;
+  email?: string | null;
+}
+
+export function formatIdentity(claims?: IdentityClaims | null) {
+  if (!claims?.authenticated) {
+    return { initials: "UC", label: "Guest workspace", fallbackIcon: false };
+  }
+  const name = claims.name?.trim() ?? "";
+  const email = claims.email?.trim() ?? "";
+  if (name) {
+    const words = name.split(/\s+/).filter(Boolean);
+    const first = words[0] ?? "";
+    const initials =
+      words.length === 1
+        ? first.slice(0, 2)
+        : `${first[0] ?? ""}${words.at(-1)?.[0] ?? ""}`;
+    return { initials: initials.toUpperCase(), label: name, fallbackIcon: false };
+  }
+  if (email) {
+    const local = (email.split("@", 1)[0] ?? "").replace(/[^a-z0-9]/gi, "");
+    if (local) {
+      return {
+        initials: local.slice(0, 2).toUpperCase(),
+        label: email,
+        fallbackIcon: false,
+      };
+    }
+  }
+  return { initials: "", label: "Account", fallbackIcon: true };
+}
 
 export function Shell({ children }: PropsWithChildren) {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [providers, setProviders] = useState<Array<"cloudflare">>([]);
+  const [identity, setIdentity] = useState<IdentityClaims | null>(null);
+  const [policyLoading, setPolicyLoading] = useState(true);
+  const accountMenu = useRef<HTMLDivElement>(null);
+  const accountButton = useRef<HTMLButtonElement>(null);
   const session = authClient.useSession();
+  const { theme, setTheme } = useTheme();
   useEffect(() => {
     void fetch("/api/v1/session", { credentials: "include" })
       .then(
         (response) =>
-          response.json() as Promise<{ providers?: Array<"cloudflare"> }>,
+          response.json() as Promise<{
+            identity?: IdentityClaims;
+            providers?: Array<"cloudflare">;
+          }>,
       )
-      .then((body) => setProviders(body.providers ?? []))
-      .catch(() => undefined);
+      .then((body) => {
+        setProviders(body.providers ?? []);
+        setIdentity(body.identity ?? null);
+      })
+      .catch(() => undefined)
+      .finally(() => setPolicyLoading(false));
   }, []);
+  useEffect(() => {
+    if (!accountOpen) return;
+    const dismiss = (event: KeyboardEvent | PointerEvent) => {
+      if (event instanceof KeyboardEvent && event.key === "Escape") {
+        setAccountOpen(false);
+        accountButton.current?.focus();
+        return;
+      }
+      if (
+        event instanceof PointerEvent &&
+        !accountMenu.current?.contains(event.target as Node)
+      ) {
+        setAccountOpen(false);
+      }
+    };
+    document.addEventListener("keydown", dismiss);
+    document.addEventListener("pointerdown", dismiss);
+    return () => {
+      document.removeEventListener("keydown", dismiss);
+      document.removeEventListener("pointerdown", dismiss);
+    };
+  }, [accountOpen]);
+
+  const sessionUser = session.data?.user;
+  const claims: IdentityClaims = sessionUser
+    ? {
+        authenticated: true,
+        name: sessionUser.name,
+        email: sessionUser.email,
+      }
+    : (identity ?? { authenticated: false });
+  const formatted = formatIdentity(claims);
+  const signedIn = claims.authenticated;
+  const sessionLoading = session.isPending || policyLoading;
   return (
     <div className="app-shell">
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
@@ -46,13 +136,16 @@ export function Shell({ children }: PropsWithChildren) {
         </div>
         <nav aria-label="Primary navigation">
           <NavLink to="/" end>
-            <BookOpen size={18} /> Overview
+            <BookOpen size={18} /> Dashboard
           </NavLink>
-          <NavLink to="/workspace">
-            <FolderKanban size={18} /> Workspace
+          <NavLink to="/new-analysis">
+            <PlusCircle size={18} /> New analysis
           </NavLink>
-          <NavLink to="/activity">
-            <Activity size={18} /> Activity
+          <NavLink to="/studies">
+            <FolderKanban size={18} /> Studies
+          </NavLink>
+          <NavLink to="/data-lab">
+            <Database size={18} /> Data Lab
           </NavLink>
         </nav>
         <div className="sidebar-footer">
@@ -85,23 +178,46 @@ export function Shell({ children }: PropsWithChildren) {
             <strong>Scientific workspace</strong>
             <span>Reproducible · inspectable · exportable</span>
           </div>
-          <div className="account-menu">
+          <button
+            className="icon-button theme-toggle"
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            aria-label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+            title={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+          >
+            {theme === "light" ? <Moon /> : <Sun />}
+          </button>
+          <div className="account-menu" ref={accountMenu}>
             <button
+              ref={accountButton}
               className="account-chip"
               onClick={() => setAccountOpen((value) => !value)}
+              aria-expanded={accountOpen}
+              aria-controls="account-popover"
+              aria-haspopup="menu"
+              aria-busy={sessionLoading}
+              aria-label={
+                sessionLoading
+                  ? "Checking session"
+                  : `${signedIn ? "Signed in" : "Not signed in"} ${formatted.label}`
+              }
             >
-              {session.data?.user.name ?? "Guest workspace"}{" "}
+              <span className="account-copy">
+                <small>{sessionLoading ? "Checking session" : signedIn ? "Signed in" : "Not signed in"}</small>
+                <strong>{sessionLoading ? "Loading…" : formatted.label}</strong>
+              </span>
               <span className="avatar">
-                {session.data?.user.name?.slice(0, 2).toUpperCase() ?? "UC"}
+                {formatted.fallbackIcon ? <User aria-hidden="true" /> : formatted.initials}
               </span>
             </button>
             {accountOpen && (
-              <div className="account-popover">
-                {session.data?.user ? (
+              <div className="account-popover" id="account-popover" role="menu">
+                {signedIn ? (
                   <>
-                    <strong>{session.data.user.name}</strong>
-                    <small>{session.data.user.email}</small>
-                    <button onClick={() => authClient.signOut()}>
+                    <strong>{formatted.label}</strong>
+                    {claims.name?.trim() && claims.email?.trim() && (
+                      <small>{claims.email.trim()}</small>
+                    )}
+                    <button role="menuitem" onClick={() => authClient.signOut()}>
                       <LogOut /> Sign out
                     </button>
                   </>
@@ -114,6 +230,7 @@ export function Shell({ children }: PropsWithChildren) {
                     </small>
                     {providers.includes("cloudflare") && (
                       <button
+                        role="menuitem"
                         onClick={() =>
                           authClient.signIn.social({
                             provider: "cloudflare",

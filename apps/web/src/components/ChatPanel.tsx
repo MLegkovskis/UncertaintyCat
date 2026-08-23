@@ -2,6 +2,8 @@ import { Bot, Send, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api, readTextStream } from "../api";
+import { AI_MODEL_LABEL } from "@uncertaintycat/contracts";
+import { Markdown } from "./Markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -80,9 +82,10 @@ export function ChatPanel({ reportId }: { reportId: string }) {
           <small>
             Answers use stored facts and cite their analysis source.
           </small>
+          <small>{AI_MODEL_LABEL}</small>
         </div>
       </div>
-      <div className="chat-messages">
+      <div className="chat-messages" aria-live="polite" aria-busy={sending}>
         {messages.length === 0 && (
           <div className="chat-suggestions">
             <p>Try asking:</p>
@@ -100,7 +103,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
         {messages.map((message, index) => (
           <div className={`chat-message ${message.role}`} key={index}>
             {message.role === "user" ? <User /> : <Bot />}
-            <p>{message.content || "Thinking…"}</p>
+            {message.content ? <Markdown>{message.content}</Markdown> : <div className="assistant-placeholder"><span /><span /><span /> Analysing persisted evidence…</div>}
           </div>
         ))}
       </div>
@@ -128,7 +131,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
         </button>
       </div>
       <small className="ai-label">
-        AI-generated explanation. Verify decisions against the numerical tables.
+        {AI_MODEL_LABEL}. AI-generated explanation; verify decisions against the numerical tables.
       </small>
     </aside>
   );

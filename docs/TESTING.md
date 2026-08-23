@@ -17,11 +17,12 @@ on every pull request and every push to `main`, and covers:
 
 - desktop and mobile navigation;
 - guest, Cloudflare sign-in initiation, retained-user account, and sign-out;
-- project onboarding, Python authoring, and guided-builder authoring;
+- discovery and retained selection of all 23 examples, Python authoring, and multi-output symbolic builder authoring;
 - validation success and failure;
 - selection and method-specific configuration of all 12 plugins;
 - run progress, task persistence, terminal state, and cancellation;
-- activity empty/history states;
+- unified study empty/history/detail states and exact reruns;
+- deterministic model assessment, streamed Model Understanding states, surrogate promotion, Morris reduction, and Distribution Data Lab composition;
 - report metrics, tables, truncated-data notices, series, heatmaps, facts,
   assumptions, partial failures, contents links, sharing, export wiring, and
   print-to-PDF wiring;
@@ -29,8 +30,8 @@ on every pull request and every push to `main`, and covers:
   streamed answers, citations, quota errors, and guest denial at both UI and
   API boundaries;
 - read-only shared reports; and
-- automated WCAG A/AA scans for every routed screen, expanded builder/account
-  states, and the mobile drawer.
+- automated WCAG A/AA scans for every routed screen in light and dark themes,
+  expanded builder/account states, and the mobile drawer.
 
 ## 2. Real local Cloudflare-stack suite
 
@@ -44,7 +45,7 @@ Playwright starts a fresh isolated local D1/R2/Queues state, the Hono Worker,
 the FastAPI/OpenTURNS compute service, and Vite. The browser creates a retained
 project, validates the curated Ishigami model, selects all 12 analysis plugins,
 and requires all 12 tasks and report sections to succeed. It then downloads the
-real ZIP, creates and opens a share link, reloads activity history, and verifies
+real ZIP, creates and opens a default-source-private share link, reloads study history, and verifies
 the persisted D1 records through the API. Successful task execution also proves
 the immutable source was written to and reread from R2.
 
@@ -60,8 +61,8 @@ Run the read-only checks with:
 npm run test:e2e:production
 ```
 
-These checks run automatically after deployment. They verify production health
-and security headers, the live 12-plugin Sandbox catalog, guest session policy,
+These checks run after the gated deployment. They verify production health
+and security headers, the live 12-plugin Sandbox catalog, all 23 exact-hash examples, guest tamper rejection, guest session policy,
 all public screens, deployed WCAG results, and the real Cloudflare Access OIDC
 authorization request including PKCE and the exact callback URI.
 

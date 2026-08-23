@@ -1,10 +1,16 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { Shell } from "./components/Shell";
 
-const Activity = lazy(() =>
-  import("./pages/Activity").then((module) => ({ default: module.Activity })),
+const Studies = lazy(() =>
+  import("./pages/Studies").then((module) => ({ default: module.Studies })),
+);
+const StudyDetail = lazy(() =>
+  import("./pages/StudyDetail").then((module) => ({ default: module.StudyDetail })),
+);
+const DataLab = lazy(() =>
+  import("./pages/DataLab").then((module) => ({ default: module.DataLab })),
 );
 const Home = lazy(() =>
   import("./pages/Home").then((module) => ({ default: module.Home })),
@@ -29,8 +35,13 @@ export function App() {
       >
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/workspace" element={<Workspace />} />
-          <Route path="/activity" element={<Activity />} />
+          <Route path="/new-analysis" element={<Workspace />} />
+          <Route path="/workspace" element={<Navigate to="/new-analysis" replace />} />
+          <Route path="/studies" element={<Studies />} />
+          <Route path="/studies/:projectId" element={<StudyDetail />} />
+          <Route path="/studies/:projectId/workspace" element={<Workspace />} />
+          <Route path="/activity" element={<Navigate to="/studies" replace />} />
+          <Route path="/data-lab" element={<DataLab />} />
           <Route path="/runs/:runId" element={<RunPage />} />
           <Route path="/reports/:reportId" element={<ReportPage />} />
           <Route path="/shared/:token" element={<ReportPage shared />} />

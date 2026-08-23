@@ -30,7 +30,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `${wrangler} d1 migrations apply uncertaintycat-local --local --persist-to ${stateDirectory} --config apps/api/wrangler.jsonc && ${wrangler} dev --local --port 8787 --persist-to ${stateDirectory} --config apps/api/wrangler.jsonc`,
+      command: `${wrangler} d1 migrations apply uncertaintycat-local --local --persist-to ${stateDirectory} --config apps/api/wrangler.no-ai.jsonc && ${wrangler} dev --local --port 8787 --persist-to ${stateDirectory} --config apps/api/wrangler.no-ai.jsonc`,
       cwd: "../..",
       url: "http://127.0.0.1:8787/health",
       reuseExistingServer: false,

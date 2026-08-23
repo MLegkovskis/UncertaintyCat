@@ -4,37 +4,48 @@ import { expect, test } from "@playwright/test";
 import { installMockApi, makeReport, makeRun, project } from "./fixtures";
 
 const routes = [
-  ["overview", "/"],
-  ["workspace", "/workspace"],
-  ["activity", "/activity"],
+  ["dashboard", "/"],
+  ["new analysis", "/new-analysis"],
+  ["studies", "/studies"],
+  ["study detail", "/studies/project-1"],
+  ["data lab", "/data-lab"],
   ["run", "/runs/run-1"],
   ["report", "/reports/report-1"],
   ["shared report", "/shared/share-token"],
 ] as const;
 
-for (const [name, path] of routes) {
-  test(`${name} has no automatically detectable serious accessibility violations`, async ({ page }) => {
-    await installMockApi(page, {
-      authenticated: true,
-      projects: [project],
-      runs: [makeRun()],
-      report: makeReport(),
+for (const theme of ["light", "dark"] as const) {
+  for (const [name, path] of routes) {
+    test(`${name} has no automatically detectable serious accessibility violations in ${theme} theme`, async ({ page }) => {
+      await installMockApi(page, {
+        authenticated: true,
+        projects: [project],
+        runs: [makeRun()],
+        report: makeReport(),
+      });
+      await page.addInitScript((selectedTheme) => {
+        window.localStorage.setItem("uncertaintycat-theme", selectedTheme);
+      }, theme);
+      await page.goto(path);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(page.locator("main")).toBeVisible();
+      const results = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      const serious = results.violations.filter((item) =>
+        item.impact === "serious" || item.impact === "critical",
+      );
+      expect(
+        serious.map((violation) => ({
+          id: violation.id,
+          nodes: violation.nodes.map((node) => ({
+            target: node.target.join(" "),
+            failure: node.failureSummary,
+          })),
+        })),
+      ).toEqual([]);
     });
-    await page.goto(path);
-    await expect(page.locator("main")).toBeVisible();
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-      .analyze();
-    const serious = results.violations.filter((item) =>
-      item.impact === "serious" || item.impact === "critical",
-    );
-    expect(
-      serious.map((violation) => ({
-        id: violation.id,
-        targets: violation.nodes.map((node) => node.target.join(" ")),
-      })),
-    ).toEqual([]);
-  });
+  }
 }
 
 test("guided builder and expanded account controls remain accessible", async ({ page }) => {

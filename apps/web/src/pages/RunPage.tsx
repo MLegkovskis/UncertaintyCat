@@ -4,9 +4,10 @@ import {
   CircleCheck,
   Cpu,
   TimerReset,
+  RotateCcw,
   XCircle,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
 import { StatusBadge } from "../components/Status";
@@ -20,6 +21,7 @@ const TERMINAL = new Set([
 
 export function RunPage() {
   const { runId = "" } = useParams();
+  const navigate = useNavigate();
   const client = useQueryClient();
   const query = useQuery({
     queryKey: ["run", runId],
@@ -33,20 +35,32 @@ export function RunPage() {
     mutationFn: () => api.cancelRun(runId),
     onSuccess: () => client.invalidateQueries({ queryKey: ["run", runId] }),
   });
+  const rerun = useMutation({
+    mutationFn: () => api.rerun(runId),
+    onSuccess: ({ run: rerunResult }) => navigate(`/runs/${rerunResult.id}`),
+  });
   const run = query.data?.run;
   const completed =
     run?.tasks.filter((task) => TERMINAL.has(task.status)).length ?? 0;
   const progress = run?.tasks.length ? completed / run.tasks.length : 0;
   return (
     <div className="page narrow-page">
+      {run && (
+        <nav className="breadcrumbs" aria-label="Breadcrumb">
+          <Link to="/studies">Studies</Link><span>/</span>
+          <Link to={`/studies/${run.projectId}`}>{run.projectName ?? "Study"}</Link><span>/</span>
+          <span>{run.modelDisplayName ?? "Model"} v{run.modelVersion}</span>
+        </nav>
+      )}
       <div className="page-heading split">
         <div>
           <span className="section-kicker">Live run</span>
-          <h1>Analysis in progress</h1>
+          <h1>{run && TERMINAL.has(run.status) ? "Analysis record" : "Analysis in progress"}</h1>
           <p>
             Each task is independently persisted. Successful evidence survives a
             partial failure.
           </p>
+          {run && <p className="evidence-source">Evidence source: <strong>{run.evidenceSource === "surrogate" ? `promoted surrogate ${run.surrogateModelId?.slice(0, 8)}` : "direct model"}</strong></p>}
         </div>
         <div className="run-actions">
           {run && ["queued", "running"].includes(run.status) && (
@@ -59,8 +73,25 @@ export function RunPage() {
             </button>
           )}
           {run && <StatusBadge status={run.status} />}
+          {run && TERMINAL.has(run.status) && (
+            <button
+              className="button secondary small"
+              onClick={() => rerun.mutate()}
+              disabled={rerun.isPending}
+            >
+              <RotateCcw /> Rerun exact
+            </button>
+          )}
         </div>
       </div>
+      {run && (
+        <div className="study-meta-strip run-meta-strip" aria-label="Run provenance">
+          <span>Created <strong>{new Date(run.createdAt).toLocaleString()}</strong></span>
+          <span>Source <strong>{run.sourceKind ?? "unknown"}</strong></span>
+          <span>Seed <strong>{run.seed}</strong></span>
+          <span>{run.tasks.length} analyses · <strong>{run.accuracyProfile}</strong></span>
+        </div>
+      )}
       <section className="run-card">
         <div className="run-summary">
           <div
