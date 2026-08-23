@@ -1,5 +1,24 @@
 import { z } from "zod";
 
+export const AI_MODEL_ID = "@cf/zai-org/glm-4.7-flash";
+export const AI_MODEL_LABEL = "Cloudflare Workers AI · GLM‑4.7‑Flash";
+
+export interface ExampleCatalogEntry {
+  id: string;
+  title: string;
+  filename: string;
+  domain: string;
+  inputDimension: number;
+  outputDimension: number;
+  summary: string;
+  difficulty: "introductory" | "intermediate" | "advanced";
+  suggestedAnalyses: readonly string[];
+  source: string;
+  sha256: string;
+}
+
+export { EXAMPLE_CATALOG } from "./example-catalog.generated";
+
 export const analysisRequestSchema = z.object({
   analysisKey: z.string().min(1),
   pluginVersion: z.string().optional(),
@@ -9,6 +28,7 @@ export const analysisRequestSchema = z.object({
 
 export const createRunSchema = z.object({
   modelVersionId: z.string().min(1),
+  surrogateModelId: z.string().min(1).optional(),
   analyses: z.array(analysisRequestSchema).min(1),
   seed: z.number().int().nonnegative().max(2_147_483_647).default(42),
   accuracyProfile: z.enum(["preview", "standard", "high"]).default("standard"),
@@ -23,19 +43,85 @@ export const createProjectSchema = z.object({
 export const createModelVersionSchema = z.object({
   source: z.string().min(1).max(262_144),
   sourceKind: z.enum(["python", "builder", "example"]).default("python"),
+  displayName: z.string().trim().min(1).max(120).optional(),
   builderSpec: z.record(z.string(), z.unknown()).optional(),
+  parentVersionId: z.string().min(1).optional(),
+  derivation: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const uploadDatasetSchema = z.object({
+  projectId: z.string().min(1),
+  name: z.string().trim().min(1).max(160),
+  sourceKind: z.enum(["csv", "xlsx", "paste"]),
+  contentBase64: z.string().min(1).max(20_000_000),
+});
+
+export const distributionFitSchema = z.object({
+  selectedColumns: z.array(z.string().min(1)).min(1).max(10),
+  candidates: z
+    .array(
+      z.enum([
+        "Normal",
+        "Uniform",
+        "LogNormal",
+        "Exponential",
+        "Gamma",
+        "Beta",
+        "Triangular",
+        "KernelSmoothing",
+      ]),
+    )
+    .min(1)
+    .max(8),
+  selectedMarginals: z.record(z.string(), z.string()).default({}),
+  copula: z.enum(["independent", "normal", "bernstein"]).default("independent"),
+  significanceLevel: z.number().gt(0).lt(1).default(0.05),
+});
+
+export const createReducedModelSchema = z.object({
+  morrisRunId: z.string().min(1),
+  displayName: z.string().trim().min(1).max(120),
+  fixedVariables: z
+    .array(
+      z.object({
+        index: z.number().int().nonnegative(),
+        value: z.number().finite(),
+      }),
+    )
+    .min(1),
+  confirmed: z.literal(true),
+});
+
+export const createSurrogateSchema = z.object({
+  method: z.enum(["pce", "gpr"]),
+  config: z.record(z.string(), z.unknown()).default({}),
+  outputTarget: z.number().int().nonnegative().default(0),
+  seed: z.number().int().nonnegative().max(2_147_483_647).default(42),
+});
+
+export const promoteSurrogateSchema = z.object({
+  acknowledgeOverride: z.boolean().default(false),
+  reason: z.string().trim().max(1_000).default(""),
 });
 
 export type AnalysisRequest = z.infer<typeof analysisRequestSchema>;
 export type CreateRun = z.infer<typeof createRunSchema>;
 export type CreateProject = z.infer<typeof createProjectSchema>;
 export type CreateModelVersion = z.infer<typeof createModelVersionSchema>;
+export type UploadDataset = z.infer<typeof uploadDatasetSchema>;
+export type DistributionFitInput = z.infer<typeof distributionFitSchema>;
+export type CreateReducedModel = z.infer<typeof createReducedModelSchema>;
+export type CreateSurrogate = z.infer<typeof createSurrogateSchema>;
+export type PromoteSurrogate = z.infer<typeof promoteSurrogateSchema>;
 
 export interface VariableMetadata {
   index: number;
   name: string;
   distribution?: string | null;
   parameters: number[];
+  kind?: "continuous" | "discrete" | "mixed" | "unknown";
+  mean?: number | null;
+  standard_deviation?: number | null;
 }
 
 export interface ModelMetadata {
@@ -48,6 +134,53 @@ export interface ModelMetadata {
   batch_evaluation_supported: boolean;
   validation_runtime_ms: number;
   warnings: string[];
+  validation_sample_size?: number;
+  function_type?: string;
+  exact_gradient_available?: boolean;
+  exact_hessian_available?: boolean;
+  copula?: string;
+  dependent_inputs?: boolean;
+}
+
+export interface PilotOutputSummary {
+  output_index: number;
+  output_name: string;
+  minimum: number;
+  maximum: number;
+  mean: number;
+  standard_deviation: number;
+  quantile_05: number;
+  quantile_95: number;
+  variable: boolean;
+}
+
+export interface AnalysisRecommendation {
+  capability: string;
+  status: "recommended" | "available" | "incompatible";
+  priority: number;
+  rationale_codes: string[];
+  projected_evaluations?: number | null;
+  projected_runtime_ms?: number | null;
+  compatibility_warnings: string[];
+}
+
+export interface ModelAssessment {
+  version: string;
+  profile: {
+    input_dimension: number;
+    output_dimension: number;
+    continuous_marginals: number;
+    discrete_marginals: number;
+    copula: string;
+    dependent_inputs: boolean;
+    function_type: string;
+    batch_support: boolean;
+    validation_evaluation_runtime_ms: number;
+    projected_1000_evaluation_runtime_ms: number;
+    pilot_sample_size: number;
+    pilot_outputs: PilotOutputSummary[];
+  };
+  recommendations: AnalysisRecommendation[];
 }
 
 export interface TableData {
@@ -119,6 +252,7 @@ export interface SessionPolicy {
   identity: {
     ownerId: string;
     authenticated: boolean;
+    name?: string;
     email?: string;
   };
   providers: Array<"cloudflare">;
@@ -129,14 +263,154 @@ export interface ModelVersion {
   projectId: string;
   version: number;
   sourceKind: "python" | "builder" | "example";
+  displayName: string;
   sourceHash: string;
   metadata: ModelMetadata;
+  assessment?: ModelAssessment | null;
+  parentVersionId?: string | null;
+  derivation?: Record<string, unknown> | null;
   createdAt: string;
+}
+
+export interface ModelDefinition {
+  modelVersion: ModelVersion;
+  project: Project;
+  source: string;
+  builderSpec?: Record<string, unknown> | null;
+  visibility: "owner" | "shared";
+}
+
+export interface ModelUnderstanding {
+  id: string;
+  modelVersionId: string;
+  modelHash: string;
+  promptVersion: string;
+  aiModelId: string;
+  status: "pending" | "generating" | "succeeded" | "failed";
+  content?: string | null;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DatasetColumn {
+  name: string;
+  type: "numeric" | "text";
+  missingCount: number;
+  invalidNumericCount: number;
+  nonFiniteCount: number;
+  finiteCount: number;
+  uniqueCount: number;
+  minimum?: number;
+  maximum?: number;
+  mean?: number;
+}
+
+export interface Dataset {
+  id: string;
+  projectId: string;
+  name: string;
+  sourceKind: "csv" | "xlsx" | "paste";
+  sha256: string;
+  rowCount: number;
+  columns: DatasetColumn[];
+  preview: Array<Record<string, string | number | boolean | null>>;
+  warnings: string[];
+  createdAt: string;
+}
+
+export interface DistributionFitRanking {
+  candidate: string;
+  distribution: string;
+  parameters: number[];
+  parameterDescription: string[];
+  bic: number | null;
+  aic: number | null;
+  aicc: number | null;
+  test: {
+    name: string;
+    statistic: number;
+    pValue: number;
+    significanceLevel: number;
+    rejected: boolean;
+  };
+}
+
+export interface FittedColumnResult {
+  column: string;
+  sampleSize: number;
+  warnings: string[];
+  rankings: DistributionFitRanking[];
+  rejectedCandidates: Array<{ candidate: string; reason: string }>;
+  selectedMarginal?: string | null;
+  plot: {
+    sample: number[];
+    pdf: { x: number[]; y: number[] };
+    cdf: { empiricalX: number[]; empiricalY: number[]; fittedX: number[]; fittedY: number[] };
+    qq: { theoretical: number[]; observed: number[] };
+  };
+}
+
+export interface DistributionFitResult {
+  openturnsVersion: string;
+  columns: FittedColumnResult[];
+  copula?: {
+    kind: "independent" | "normal" | "bernstein";
+    className: string;
+    correlation?: number[][];
+  } | null;
+  generatedSource?: string | null;
+  builderSpec?: Record<string, unknown> | null;
+  assumptions: string[];
+}
+
+export interface DistributionFitRun {
+  id: string;
+  datasetId: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  config: DistributionFitInput;
+  result?: DistributionFitResult | null;
+  generatedSource?: string | null;
+  error?: { code: string; message: string } | null;
+  openturnsVersion?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface SurrogateModel {
+  id: string;
+  projectId: string;
+  sourceModelVersionId: string;
+  sourceModelHash: string;
+  method: "pce" | "gpr";
+  pluginVersion: string;
+  openturnsVersion: string;
+  status: "draft" | "validated" | "promoted" | "rejected";
+  validation: {
+    config: Record<string, unknown>;
+    outputTargets: number[];
+    seed: number;
+    result: AnalysisResult;
+    guidance: {
+      score: number;
+      normalizedRmse: number;
+      scoreThreshold: number;
+      normalizedRmseThreshold: number;
+      meetsDefault: boolean;
+    };
+  };
+  acknowledgement?: { acknowledgeOverride: boolean; reason: string } | null;
+  artifact?: { sha256: string; sizeBytes: number; resultType: string } | null;
+  createdAt: string;
+  promotedAt?: string | null;
 }
 
 export interface AnalysisTask {
   id: string;
   analysisKey: string;
+  pluginVersion?: string | null;
+  config: Record<string, unknown>;
+  outputTargets: number[];
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   result?: AnalysisResult;
   error?: { code: string; message: string };
@@ -153,6 +427,12 @@ export interface Run {
   id: string;
   projectId: string;
   modelVersionId: string;
+  surrogateModelId?: string | null;
+  evidenceSource?: "direct" | "surrogate";
+  projectName?: string;
+  modelDisplayName?: string;
+  modelVersion?: number;
+  sourceKind?: ModelVersion["sourceKind"];
   status: "queued" | "running" | "succeeded" | "partially_succeeded" | "failed" | "cancelled";
   seed: number;
   accuracyProfile: "preview" | "standard" | "high";
@@ -194,6 +474,8 @@ export class ApiClient {
   }
 
   catalog = () => this.request<{ analyses: AnalysisCatalogEntry[] }>("/analyses/catalog");
+  examples = () => this.request<{ examples: readonly ExampleCatalogEntry[] }>("/examples");
+  example = (id: string) => this.request<{ example: ExampleCatalogEntry }>(`/examples/${id}`);
   session = () => this.request<SessionPolicy>("/session");
   listProjects = () => this.request<{ projects: Project[] }>("/projects");
   createProject = (input: CreateProject) =>
@@ -209,15 +491,61 @@ export class ApiClient {
     this.request<{ run: Run }>("/runs", { method: "POST", body: JSON.stringify(input) });
   listRuns = () => this.request<{ runs: Run[] }>("/runs");
   getRun = (id: string) => this.request<{ run: Run }>(`/runs/${id}`);
+  rerun = (id: string) =>
+    this.request<{ run: Run }>(`/runs/${id}/rerun`, { method: "POST" });
   cancelRun = (id: string) =>
     this.request<{ status: "cancelled" }>(`/runs/${id}/cancel`, { method: "POST" });
   getReport = (id: string) => this.request<{ report: Report }>(`/reports/${id}`);
   getSharedReport = (token: string) => this.request<{ report: Report }>(`/shared-reports/${token}`);
-  createShareLink = (id: string, expiresInDays: number | null = 30) =>
+  createShareLink = (
+    id: string,
+    expiresInDays: number | null = 30,
+    includeModelDefinition = false,
+  ) =>
     this.request<{ shareLink: { id: string; url: string; expiresAt: string | null; createdAt: string } }>(
       `/reports/${id}/share-links`,
-      { method: "POST", body: JSON.stringify({ expiresInDays }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ expiresInDays, includeModelDefinition }),
+      },
     );
+  getModelDefinition = (id: string) =>
+    this.request<{ definition: ModelDefinition }>(`/model-versions/${id}/definition`);
+  getModelUnderstanding = (id: string) =>
+    this.request<{ understanding: ModelUnderstanding | null }>(
+      `/model-versions/${id}/understanding`,
+    );
+  listDatasets = (projectId: string) =>
+    this.request<{ datasets: Dataset[] }>(`/projects/${projectId}/datasets`);
+  uploadDataset = (input: UploadDataset) =>
+    this.request<{ dataset: Dataset }>("/datasets", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  fitDataset = (datasetId: string, input: DistributionFitInput) =>
+    this.request<{ fitRun: DistributionFitRun }>(`/datasets/${datasetId}/fits`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  listDistributionFits = (datasetId: string) =>
+    this.request<{ fitRuns: DistributionFitRun[] }>(`/datasets/${datasetId}/fits`);
+  createReducedModel = (modelVersionId: string, input: CreateReducedModel) =>
+    this.request<{ modelVersion: ModelVersion }>(
+      `/model-versions/${modelVersionId}/derived-reduction`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  listSurrogates = (projectId: string) =>
+    this.request<{ surrogates: SurrogateModel[] }>(`/projects/${projectId}/surrogates`);
+  createSurrogate = (modelVersionId: string, input: CreateSurrogate) =>
+    this.request<{ surrogate: SurrogateModel }>(`/model-versions/${modelVersionId}/surrogates`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  promoteSurrogate = (surrogateId: string, input: PromoteSurrogate) =>
+    this.request<{ surrogate: SurrogateModel }>(`/surrogates/${surrogateId}/promote`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   getChatMessages = (id: string) =>
     this.request<{ messages: ChatMessage[] }>(`/reports/${id}/chat`);
 }
@@ -228,7 +556,26 @@ export interface Report {
   title: string;
   status: string;
   generatedAt: string;
+  project: { id: string; name: string };
+  modelVersion: {
+    id: string;
+    version: number;
+    displayName: string;
+    sourceKind: ModelVersion["sourceKind"];
+    createdAt: string;
+    parentVersionId?: string | null;
+  };
+  seed: number;
+  accuracyProfile: Run["accuracyProfile"];
+  evidenceSource: "direct" | "surrogate";
+  surrogate?: {
+    id: string;
+    method: "pce" | "gpr";
+    pluginVersion: string;
+    openturnsVersion: string;
+  } | null;
   model: ModelMetadata;
+  modelDefinition?: ModelDefinition;
   sections: Array<{
     key: string;
     status: string;

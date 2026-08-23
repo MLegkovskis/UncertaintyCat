@@ -20,7 +20,9 @@
     "test": "npm run test:ts && npm run test:py",
     "lint:py": "uv run ruff check uncertaintycat_core services tests",
     "typecheck:py": "uv run mypy uncertaintycat_core services",
-    "format:py": "uv run ruff format uncertaintycat_core services tests"
+    "format:py": "uv run ruff format uncertaintycat_core services tests",
+    "generate:examples": "uv run python scripts/generate_example_catalog.py",
+    "check:examples": "uv run python scripts/generate_example_catalog.py --check"
   },
   "engines": {
     "node": ">=22.0"

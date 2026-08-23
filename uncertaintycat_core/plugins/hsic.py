@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import numpy as np
+import openturns as ot
 from pydantic import Field
 
 from uncertaintycat_core.contracts import AnalysisPayload, StrictModel, TableData
@@ -20,7 +20,7 @@ class HsicConfig(StrictModel):
 
 class HsicPlugin(AnalysisPlugin[HsicConfig]):
     key = "hsic"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "HSIC Dependence Analysis"
     category = "Sensitivity"
     description = (
@@ -36,25 +36,32 @@ class HsicPlugin(AnalysisPlugin[HsicConfig]):
         if target >= runtime.metadata.output_dimension:
             raise IncompatibleAnalysisError("The requested output target does not exist.")
         inputs, outputs = runtime.sample_and_evaluate(config.sample_size, config.seed)
-        y_kernel = _centered_kernel(outputs[:, target])
-        rng = np.random.default_rng(config.seed)
+        input_sample = ot.Sample(inputs.tolist())
+        output_sample = ot.Sample([[float(value)] for value in outputs[:, target]])
+        kernels: list[ot.CovarianceModel] = []
+        for index in range(runtime.metadata.input_dimension):
+            marginal_sample = input_sample.getMarginal(index)
+            kernel = ot.SquaredExponential(1)
+            kernel.setScale(marginal_sample.computeStandardDeviation())
+            kernels.append(kernel)
+        output_kernel = ot.SquaredExponential(1)
+        output_kernel.setScale(output_sample.computeStandardDeviation())
+        kernels.append(output_kernel)
+        estimator = ot.HSICEstimatorGlobalSensitivity(
+            kernels, input_sample, output_sample, ot.HSICUStat()
+        )
+        estimator.setPermutationSize(config.permutations)
+        scores = [float(value) for value in estimator.getR2HSICIndices()]
+        p_values = (
+            [float(value) for value in estimator.getPValuesPermutation()]
+            if config.permutations
+            else [None] * runtime.metadata.input_dimension
+        )
         names = [item.name for item in runtime.metadata.inputs]
-        rows: list[list[str | float | None]] = []
-        scores: list[float] = []
-        for index, name in enumerate(names):
-            x_kernel = _centered_kernel(inputs[:, index])
-            score = _normalized_hsic(x_kernel, y_kernel)
-            p_value: float | None = None
-            if config.permutations:
-                exceedances = 0
-                for _ in range(config.permutations):
-                    order = rng.permutation(config.sample_size)
-                    if _normalized_hsic(x_kernel, y_kernel[order][:, order]) >= score:
-                        exceedances += 1
-                p_value = (exceedances + 1) / (config.permutations + 1)
-            scores.append(score)
-            rows.append([name, score, p_value])
-        top = int(np.argmax(scores))
+        rows: list[list[str | float | None]] = [
+            [name, scores[index], p_values[index]] for index, name in enumerate(names)
+        ]
+        top = max(range(len(scores)), key=scores.__getitem__)
         return AnalysisPayload(
             metrics={"sample_size": config.sample_size, "permutations": config.permutations},
             tables={
@@ -70,21 +77,6 @@ class HsicPlugin(AnalysisPlugin[HsicConfig]):
                 "largest_normalized_hsic": scores[top],
             },
         ), config.sample_size
-
-
-def _centered_kernel(values: np.ndarray) -> np.ndarray:
-    vector = np.asarray(values, dtype=float).reshape(-1)
-    squared_distance = (vector[:, None] - vector[None, :]) ** 2
-    positive = squared_distance[squared_distance > 0]
-    bandwidth_squared = float(np.median(positive)) if positive.size else 1.0
-    kernel = np.exp(-squared_distance / max(2.0 * bandwidth_squared, np.finfo(float).eps))
-    return kernel - kernel.mean(axis=0)[None, :] - kernel.mean(axis=1)[:, None] + kernel.mean()
-
-
-def _normalized_hsic(x_kernel: np.ndarray, y_kernel: np.ndarray) -> float:
-    numerator = float(np.sum(x_kernel * y_kernel))
-    denominator = float(np.sqrt(np.sum(x_kernel * x_kernel) * np.sum(y_kernel * y_kernel)))
-    return max(0.0, numerator / denominator) if denominator > np.finfo(float).eps else 0.0
 
 
 plugin = HsicPlugin()

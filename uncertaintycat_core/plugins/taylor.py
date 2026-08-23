@@ -1,8 +1,7 @@
-"""Local derivative-based Taylor sensitivity analysis."""
+"""OpenTURNS Taylor-expansion moments and local importance factors."""
 
 from __future__ import annotations
 
-import numpy as np
 import openturns as ot
 from pydantic import Field
 
@@ -13,6 +12,7 @@ from uncertaintycat_core.plugins.base import AnalysisPlugin
 
 
 class TaylorConfig(StrictModel):
+    # Retained for old saved configurations; OpenTURNS controls differentiation.
     relative_step: float = Field(default=1e-5, gt=0, le=0.1)
     validation_size: int = Field(default=500, ge=20, le=20_000)
     seed: int = Field(default=42, ge=0)
@@ -21,15 +21,13 @@ class TaylorConfig(StrictModel):
 
 class TaylorPlugin(AnalysisPlugin[TaylorConfig]):
     key = "taylor"
-    version = "1.0.0"
-    name = "Taylor Sensitivity Analysis"
+    version = "2.0.0"
+    name = "Taylor Expansion Moments"
     category = "Sensitivity"
-    description = (
-        "Rank local variance contributions and validate the first-order surrogate globally."
-    )
+    description = "Approximate moments and local importance with TaylorExpansionMoments."
     assumptions = (
         "The response is differentiable near the input mean.",
-        "Local importance may not represent a strongly nonlinear global response.",
+        "Taylor importance is local and may not represent a strongly nonlinear global response.",
     )
     supports_multi_output = False
     config_model = TaylorConfig
@@ -38,61 +36,48 @@ class TaylorPlugin(AnalysisPlugin[TaylorConfig]):
         target = config.output_targets[0] if config.output_targets else 0
         if target >= runtime.metadata.output_dimension:
             raise IncompatibleAnalysisError("The requested output target does not exist.")
-        mean = np.asarray(runtime.problem.getMean(), dtype=float)
-        standard_deviation = np.asarray(runtime.problem.getStandardDeviation(), dtype=float)
-        nominal = float(runtime.model(ot.Point(mean))[target])
-        gradients = np.zeros(runtime.metadata.input_dimension)
-        for index, scale in enumerate(standard_deviation):
-            step = config.relative_step * max(abs(float(scale)), 1.0)
-            lower, upper = mean.copy(), mean.copy()
-            lower[index] -= step
-            upper[index] += step
-            gradients[index] = (
-                float(runtime.model(ot.Point(upper))[target])
-                - float(runtime.model(ot.Point(lower))[target])
-            ) / (2 * step)
-        contributions = gradients**2 * standard_deviation**2
-        total = float(contributions.sum())
-        indices = (
-            contributions / total if total > np.finfo(float).eps else np.zeros_like(contributions)
-        )
-        x_validation, y_validation = runtime.sample_and_evaluate(
-            config.validation_size, config.seed
-        )
-        predicted = nominal + (x_validation - mean) @ gradients
-        observed = y_validation[:, target]
-        residual = observed - predicted
-        variance = float(np.sum((observed - observed.mean()) ** 2))
-        q2 = 1.0 - float(np.sum(residual**2)) / variance if variance > np.finfo(float).eps else 0.0
-        rmse = float(np.sqrt(np.mean(residual**2)))
+        selected_model = runtime.model.getMarginal(target)
+        output_vector = ot.CompositeRandomVector(selected_model, ot.RandomVector(runtime.problem))
+        calls_before = runtime.model.getEvaluationCallsNumber()
+        try:
+            expansion = ot.TaylorExpansionMoments(output_vector)
+            mean_first = float(expansion.getMeanFirstOrder()[0])
+            mean_second = float(expansion.getMeanSecondOrder()[0])
+            variance = float(expansion.getCovariance()[0, 0])
+            gradient = expansion.getGradientAtMean()
+            importance = expansion.getImportanceFactors()
+        except Exception as exc:
+            raise IncompatibleAnalysisError(
+                f"OpenTURNS Taylor expansion could not evaluate this model: {exc}"
+            ) from exc
+        covariance = runtime.problem.getCovariance()
         names = [item.name for item in runtime.metadata.inputs]
         rows = [
             [
                 name,
-                float(mean[i]),
-                float(gradients[i]),
-                float(standard_deviation[i] ** 2),
-                float(indices[i]),
+                float(runtime.problem.getMean()[index]),
+                float(gradient[index, 0]),
+                float(covariance[index, index]),
+                float(importance[index]),
             ]
-            for i, name in enumerate(names)
+            for index, name in enumerate(names)
         ]
-        top = int(np.argmax(indices))
-        evaluations = 1 + 2 * runtime.metadata.input_dimension + config.validation_size
+        top = max(range(len(importance)), key=lambda index: abs(float(importance[index])))
+        evaluations = max(0, runtime.model.getEvaluationCallsNumber() - calls_before)
         return AnalysisPayload(
             metrics={
-                "nominal_output": nominal,
-                "linear_surrogate_q2": q2,
-                "linear_surrogate_rmse": rmse,
-                "validation_size": config.validation_size,
+                "first_order_mean": mean_first,
+                "second_order_mean": mean_second,
+                "first_order_variance": variance,
             },
             tables={
                 "indices": TableData(
                     columns=[
                         "Variable",
-                        "Nominal Input",
-                        "Gradient",
+                        "Input Mean",
+                        "Gradient at Mean",
                         "Input Variance",
-                        "Taylor Index",
+                        "Taylor Importance Factor",
                     ],
                     rows=rows,
                     row_count=len(rows),
@@ -101,7 +86,8 @@ class TaylorPlugin(AnalysisPlugin[TaylorConfig]):
             facts={
                 "output": runtime.metadata.outputs[target].name,
                 "most_influential_input": names[top],
-                "largest_taylor_index": float(indices[top]),
+                "largest_taylor_importance": float(importance[top]),
+                "authority": "OpenTURNS TaylorExpansionMoments",
             },
         ), evaluations
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 import sys
@@ -62,6 +63,64 @@ def test_public_error_is_structured() -> None:
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "unsafe_model"
+
+
+def test_data_lab_and_promoted_surrogate_http_contracts() -> None:
+    csv = "x,y\n1,10\n2,13\n3,11\n4,20\n5,16\n6,31\n7,25\n8,38\n"
+    content = base64.b64encode(csv.encode()).decode()
+    inspected = client.post(
+        "/v1/data/inspect",
+        json={"content_base64": content, "source_kind": "paste"},
+    )
+    assert inspected.status_code == 200
+    assert inspected.json()["dataset"]["rowCount"] == 8
+    fitted = client.post(
+        "/v1/data/fit",
+        json={
+            "content_base64": content,
+            "source_kind": "paste",
+            "selected_columns": ["x", "y"],
+            "candidates": ["Normal", "Uniform"],
+            "selected_marginals": {"x": "Normal", "y": "Normal"},
+            "copula": "normal",
+        },
+    )
+    assert fitted.status_code == 200
+    assert fitted.json()["fit"]["copula"]["className"] == "NormalCopula"
+
+    source = Path("examples/Ishigami.py").read_text()
+    validation = client.post("/v1/validate", json={"source": source}).json()
+    serialized = client.post(
+        "/v1/surrogates/serialize",
+        json={
+            "source": source,
+            "method": "pce",
+            "config": {"degree": 2, "training_size": 48, "validation_size": 20},
+            "output_targets": [0],
+            "seed": 17,
+        },
+    )
+    assert serialized.status_code == 200
+    artifact = serialized.json()["surrogate"]
+    executed = client.post(
+        "/v1/surrogates/execute",
+        json={
+            "xml_base64": artifact["xmlBase64"],
+            "method": "pce",
+            "analysis": {
+                "analysis_key": "monte_carlo",
+                "config": {"sample_size": 20},
+            },
+            "metadata": validation["metadata"],
+            "assessment": validation["assessment"],
+            "surrogate_id": "integration-surrogate",
+            "seed": 18,
+        },
+    )
+    assert executed.status_code == 200
+    assert executed.json()["result"]["payload"]["facts"]["evidence_source"] == (
+        "promoted_surrogate"
+    )
 
 
 def test_one_shot_sandbox_protocol() -> None:

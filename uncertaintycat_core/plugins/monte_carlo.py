@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import numpy as np
+import openturns as ot
 from pydantic import Field
 
 from uncertaintycat_core.contracts import AnalysisPayload, SeriesData, StrictModel, TableData
@@ -20,7 +20,7 @@ class MonteCarloConfig(StrictModel):
 
 class MonteCarloPlugin(AnalysisPlugin[MonteCarloConfig]):
     key = "monte_carlo"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "Monte Carlo"
     category = "Propagation"
     description = "Propagate the input distribution through the model and summarize outputs."
@@ -38,23 +38,25 @@ class MonteCarloPlugin(AnalysisPlugin[MonteCarloConfig]):
         facts: dict[str, float | int | str | bool | None] = {}
         for name, target in zip(names, targets, strict=True):
             values = outputs[:, target]
-            mean = float(np.mean(values))
-            std = float(np.std(values))
+            sample = ot.Sample([[float(value)] for value in values])
+            mean = float(sample.computeMean()[0])
+            std = float(sample.computeStandardDeviation()[0])
             q025, q25, q50, q75, q975 = [
-                float(v) for v in np.quantile(values, [0.025, 0.25, 0.5, 0.75, 0.975])
+                float(sample.computeQuantilePerComponent(probability)[0])
+                for probability in (0.025, 0.25, 0.5, 0.75, 0.975)
             ]
             rows.append(
                 [
                     name,
                     mean,
                     std,
-                    float(np.min(values)),
+                    float(sample.getMin()[0]),
                     q025,
                     q25,
                     q50,
                     q75,
                     q975,
-                    float(np.max(values)),
+                    float(sample.getMax()[0]),
                 ]
             )
             metrics[f"{name}.mean"] = mean
@@ -72,7 +74,11 @@ class MonteCarloPlugin(AnalysisPlugin[MonteCarloConfig]):
 
         inline_rows = min(config.sample_size, config.inline_sample_limit)
         sample_columns = [item.name for item in runtime.metadata.inputs] + names
-        sample_rows = np.column_stack([inputs[:inline_rows], outputs[:inline_rows, targets]])
+        sample_rows = [
+            [float(value) for value in inputs[row]]
+            + [float(outputs[row, target]) for target in targets]
+            for row in range(inline_rows)
+        ]
         tables = {
             "summary": TableData(
                 columns=[
@@ -92,7 +98,7 @@ class MonteCarloPlugin(AnalysisPlugin[MonteCarloConfig]):
             ),
             "samples": TableData(
                 columns=sample_columns,
-                rows=[[float(value) for value in row] for row in sample_rows],
+                rows=sample_rows,
                 row_count=config.sample_size,
                 truncated=inline_rows < config.sample_size,
             ),

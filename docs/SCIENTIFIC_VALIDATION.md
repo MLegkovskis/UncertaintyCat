@@ -22,12 +22,13 @@ The test suite covers:
 - Ishigami Sobol first-order structure (`S1` near 0.314, `S2` near 0.442, `S3` near zero) with tolerances
   appropriate to a finite Saltelli design;
 - dependent-copula rejection for classical Sobol;
-- execution and strict serialization for correlation, FAST, HSIC, Taylor, Morris, convergence,
+- OpenTURNS-authoritative execution and strict serialization for correlation, FAST, HSIC, Taylor, OTMorris, convergence,
   reliability, PCE, and Gaussian-process regression;
+- CSV/XLSX inspection, OpenTURNS marginal ranking/copula composition, and promoted PCE/GPR `ot.Study` XML round trips;
 - fixed-seed Gaussian-process regression accuracy on a smooth nonlinear response, plus a correlated-input
   linear-trend benchmark and discrete/constant-output rejection;
-- FORM probability near 0.5 for a standard normal response with threshold zero;
-- FastAPI health, catalog, validation, and execution contracts;
+- FORM probability near 0.5 for a standard normal response with threshold zero, plus stable Monte Carlo, SORM, directional, and subset method contracts;
+- FastAPI health, catalog, validation, execution, Data Lab, and promoted-surrogate contracts;
 - worker ZIP export structure and CSV quoting;
 - frontend symbolic-model generation and a Chromium navigation smoke test.
 
@@ -43,7 +44,7 @@ npm run test:e2e
 ## Method-specific interpretation controls
 
 - Sobol and FAST: independent inputs and non-zero selected-output variance.
-- Morris: independent marginals; trajectories operate in probability space so unbounded marginals remain
+- Morris: the pinned official `otmorris==0.20.post1` module is authoritative; independent marginals and trajectories operate in probability space so unbounded marginals remain
   finite without inventing physical bounds.
 - HSIC: normalized empirical Gaussian-kernel dependence; permutation p-values are finite-sample evidence,
   not a causal claim.

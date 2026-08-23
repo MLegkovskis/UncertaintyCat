@@ -216,3 +216,44 @@ problem.setDescription(["X"])
         ),
     )
     assert result.payload.metrics["event_probability"] == pytest.approx(0.5, abs=1e-3)
+
+
+@pytest.mark.scientific
+@pytest.mark.parametrize(
+    ("method", "tolerance"),
+    [
+        ("SORM", 1e-3),
+        ("MONTE_CARLO", 0.12),
+        ("DIRECTIONAL_SAMPLING", 0.03),
+        ("SUBSET_SAMPLING", 0.03),
+    ],
+)
+def test_stable_reliability_methods_on_standard_normal_half_space(
+    method: str, tolerance: float
+) -> None:
+    runtime = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["X"], ["X"])
+problem = ot.Normal(0.0, 1.0)
+problem.setDescription(["X"])
+"""
+    )
+    result = run_analysis(
+        runtime,
+        AnalysisRequest(
+            analysis_key="reliability",
+            config={
+                "method": method,
+                "threshold": 0.0,
+                "operator": ">",
+                "maximum_evaluations": 1_000,
+                "target_coefficient_of_variation": 0.1,
+                "block_size": 10,
+            },
+            output_targets=[0],
+        ),
+        seed=31,
+    )
+    assert result.payload.metrics["event_probability"] == pytest.approx(0.5, abs=tolerance)
+    assert 0 < result.runtime.model_evaluations <= 1_000

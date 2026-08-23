@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
-import numpy as np
 import openturns as ot
 from pydantic import Field
 
@@ -32,7 +32,7 @@ class GprConfig(StrictModel):
 
 class GprPlugin(AnalysisPlugin[GprConfig]):
     key = "gpr"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "Gaussian Process Surrogate"
     category = "Surrogate"
     description = (
@@ -78,80 +78,68 @@ class GprPlugin(AnalysisPlugin[GprConfig]):
             raise IncompatibleAnalysisError("The requested output target does not exist.")
 
         dimension = runtime.metadata.input_dimension
-        ot.RandomGenerator.SetSeed(config.seed)
-        training_x = runtime.problem.getSample(config.training_size)
-        training_y = runtime.model(training_x).getMarginal(target)
-        training_values = np.asarray(training_y, dtype=float).reshape(-1)
-        if not np.all(np.isfinite(training_values)):
-            raise IncompatibleAnalysisError(
-                "The selected output produced non-finite GPR training values."
-            )
-        variance_scale = max(1.0, float(np.mean(training_values)) ** 2)
-        if float(np.var(training_values)) <= np.finfo(float).eps * variance_scale:
-            raise IncompatibleAnalysisError(
-                "Gaussian process fitting is undefined for a constant selected output."
-            )
-        input_spread = np.std(np.asarray(training_x, dtype=float), axis=0, ddof=1)
-        if not np.all(np.isfinite(input_spread)) or np.any(input_spread <= 0.0):
-            raise IncompatibleAnalysisError(
-                "The GPR training design has an input with no observed variation."
-            )
-
-        covariance = _build_covariance(config.kernel, dimension)
-        basis = _build_basis(config.trend, dimension)
-        try:
-            fitter = ot.GaussianProcessFitter(training_x, training_y, covariance, basis)
-            fitter.run()
-            regression = ot.GaussianProcessRegression(fitter.getResult())
-            regression.run()
-            result = regression.getResult()
-        except Exception as exc:
-            raise IncompatibleAnalysisError(
-                f"Gaussian process construction failed for this model and configuration: {exc}"
-            ) from exc
+        result, training_x, training_y = fit_gpr(runtime, config)
+        input_spread = [float(value) for value in training_x.computeStandardDeviation()]
 
         metamodel = result.getMetaModel()
-        training_predictions = np.asarray(metamodel(training_x), dtype=float).reshape(-1)
-        training_residuals = training_values - training_predictions
+        training_predictions = metamodel(training_x)
+        training_validation = ot.MetaModelValidation(training_y, training_predictions)
 
         ot.RandomGenerator.SetSeed(config.seed + 1)
         validation_x = runtime.problem.getSample(config.validation_size)
         validation_y = runtime.model(validation_x).getMarginal(target)
         predictions_sample = metamodel(validation_x)
-        observed = np.asarray(validation_y, dtype=float).reshape(-1)
-        predicted = np.asarray(predictions_sample, dtype=float).reshape(-1)
-        if not np.all(np.isfinite(observed)) or not np.all(np.isfinite(predicted)):
+        observed = [float(row[0]) for row in validation_y]
+        predicted = [float(row[0]) for row in predictions_sample]
+        if not all(math.isfinite(value) for value in [*observed, *predicted]):
             raise IncompatibleAnalysisError(
                 "The selected output or GPR metamodel produced non-finite validation values."
             )
-        if float(np.var(observed)) <= np.finfo(float).eps * max(1.0, float(np.mean(observed)) ** 2):
+        observed_mean = float(validation_y.computeMean()[0])
+        if float(validation_y.computeVariance()[0]) <= ot.SpecFunc.ScalarEpsilon * max(
+            1.0, observed_mean**2
+        ):
             raise IncompatibleAnalysisError(
                 "GPR hold-out R2 is undefined because the validation output is constant."
             )
         validation = ot.MetaModelValidation(validation_y, predictions_sample)
-        residuals = np.asarray(validation.getResidualSample(), dtype=float).reshape(-1)
+        residual_sample = validation.getResidualSample()
+        residuals = [float(row[0]) for row in residual_sample]
         r2 = float(validation.computeR2Score()[0])
         mse = float(validation.computeMeanSquaredError()[0])
+        rmse = mse**0.5
+        normalized_rmse = rmse / float(validation_y.computeStandardDeviation()[0])
+        absolute_residuals = ot.SymbolicFunction(["r"], ["abs(r)"])(residual_sample)
+        validation_mae = float(absolute_residuals.computeMean()[0])
 
         conditional = ot.GaussianProcessConditionalCovariance(result)
-        conditional_variances = np.asarray(
-            conditional.getConditionalMarginalVariance(validation_x), dtype=float
-        ).reshape(-1)
-        conditional_std = np.sqrt(np.maximum(conditional_variances, 0.0))
+        conditional_variances = [
+            float(row[0]) for row in conditional.getConditionalMarginalVariance(validation_x)
+        ]
+        conditional_std = [math.sqrt(max(value, 0.0)) for value in conditional_variances]
         normal_975 = float(ot.Normal().computeQuantile(0.975)[0])
-        lower = predicted - normal_975 * conditional_std
-        upper = predicted + normal_975 * conditional_std
-        covered = (observed >= lower) & (observed <= upper)
+        lower = [
+            value - normal_975 * spread
+            for value, spread in zip(predicted, conditional_std, strict=True)
+        ]
+        upper = [
+            value + normal_975 * spread
+            for value, spread in zip(predicted, conditional_std, strict=True)
+        ]
+        covered = [
+            low <= value <= high for value, low, high in zip(observed, lower, upper, strict=True)
+        ]
+        coverage_sample = ot.Sample([[1.0 if value else 0.0] for value in covered])
 
         covariance_result = result.getCovarianceModel()
-        scales = np.asarray(covariance_result.getScale(), dtype=float).reshape(-1)
-        normalized_scales = scales / input_spread
+        scales = [float(value) for value in covariance_result.getScale()]
+        normalized_scales = [scales[index] / input_spread[index] for index in range(dimension)]
         input_names = [item.name for item in runtime.metadata.inputs]
         hyperparameter_rows = [
-            [name, float(scales[index]), float(normalized_scales[index])]
+            [name, scales[index], normalized_scales[index]]
             for index, name in enumerate(input_names)
         ]
-        trend_coefficients = np.asarray(result.getTrendCoefficients(), dtype=float).reshape(-1)
+        trend_coefficients = [float(value) for value in result.getTrendCoefficients()]
         trend_names = ["Intercept"] if config.trend == "CONSTANT" else ["Intercept", *input_names]
         trend_rows = [
             [name, float(coefficient)]
@@ -178,10 +166,14 @@ class GprPlugin(AnalysisPlugin[GprConfig]):
                     "training_size": config.training_size,
                     "validation_size": config.validation_size,
                     "validation_r2": r2,
-                    "validation_rmse": float(np.sqrt(mse)),
-                    "validation_mae": float(np.mean(np.abs(residuals))),
-                    "training_interpolation_rmse": float(np.sqrt(np.mean(training_residuals**2))),
-                    "nominal_95_interval_coverage": float(np.mean(covered)),
+                    "validation_rmse": rmse,
+                    "validation_normalized_rmse": normalized_rmse,
+                    "validation_mae": validation_mae,
+                    "training_interpolation_rmse": float(
+                        training_validation.computeMeanSquaredError()[0]
+                    )
+                    ** 0.5,
+                    "nominal_95_interval_coverage": float(coverage_sample.computeMean()[0]),
                     "optimized_log_likelihood": float(result.getOptimalLogLikelihood()),
                     "optimized_amplitude": float(covariance_result.getAmplitude()[0]),
                     "nugget_factor": float(covariance_result.getNuggetFactor()),
@@ -231,6 +223,48 @@ class GprPlugin(AnalysisPlugin[GprConfig]):
             ),
             config.training_size + config.validation_size,
         )
+
+
+def fit_gpr(
+    runtime: ModelRuntime, config: GprConfig
+) -> tuple[ot.GaussianProcessRegressionResult, ot.Sample, ot.Sample]:
+    """Fit the exact GPR persisted by Surrogate Studio."""
+    plugin.applicability_warnings(runtime, config)
+    target = config.output_targets[0] if config.output_targets else 0
+    if target >= runtime.metadata.output_dimension:
+        raise IncompatibleAnalysisError("The requested output target does not exist.")
+    dimension = runtime.metadata.input_dimension
+    ot.RandomGenerator.SetSeed(config.seed)
+    training_x = runtime.problem.getSample(config.training_size)
+    training_y = runtime.model(training_x).getMarginal(target)
+    training_values = [float(row[0]) for row in training_y]
+    if not all(math.isfinite(value) for value in training_values):
+        raise IncompatibleAnalysisError(
+            "The selected output produced non-finite GPR training values."
+        )
+    training_mean = float(training_y.computeMean()[0])
+    variance_scale = max(1.0, training_mean**2)
+    if float(training_y.computeVariance()[0]) <= ot.SpecFunc.ScalarEpsilon * variance_scale:
+        raise IncompatibleAnalysisError(
+            "Gaussian process fitting is undefined for a constant selected output."
+        )
+    input_spread = [float(value) for value in training_x.computeStandardDeviation()]
+    if not all(math.isfinite(value) and value > 0.0 for value in input_spread):
+        raise IncompatibleAnalysisError(
+            "The GPR training design has an input with no observed variation."
+        )
+    covariance = _build_covariance(config.kernel, dimension)
+    basis = _build_basis(config.trend, dimension)
+    try:
+        fitter = ot.GaussianProcessFitter(training_x, training_y, covariance, basis)
+        fitter.run()
+        regression = ot.GaussianProcessRegression(fitter.getResult())
+        regression.run()
+        return regression.getResult(), training_x, training_y
+    except Exception as exc:
+        raise IncompatibleAnalysisError(
+            f"Gaussian process construction failed for this model and configuration: {exc}"
+        ) from exc
 
 
 def _build_covariance(kernel: Kernel, dimension: int) -> ot.CovarianceModel:

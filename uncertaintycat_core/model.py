@@ -11,7 +11,15 @@ from typing import Any
 import numpy as np
 import openturns as ot
 
-from uncertaintycat_core.contracts import ModelMetadata, OutputMetadata, VariableMetadata
+from uncertaintycat_core.contracts import (
+    AnalysisRecommendation,
+    ModelAssessment,
+    ModelMetadata,
+    ModelProfile,
+    OutputMetadata,
+    PilotOutputSummary,
+    VariableMetadata,
+)
 from uncertaintycat_core.errors import InvalidModelError, UnsafeModelError
 
 MAX_SOURCE_BYTES = 256 * 1024
@@ -97,6 +105,7 @@ class ModelRuntime:
     model: ot.Function
     problem: ot.Distribution
     metadata: ModelMetadata
+    assessment: ModelAssessment
     _sample_cache: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = field(
         default_factory=dict
     )
@@ -143,6 +152,7 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
 
     ot.RandomGenerator.SetSeed(seed)
     sample = problem.getSample(validation_sample_size)
+    evaluation_started = time.perf_counter()
     batch_supported = True
     try:
         output = _as_2d_output(model(sample), validation_sample_size)
@@ -152,6 +162,7 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
             output = np.asarray([_as_2d_output(model(point), 1)[0] for point in sample])
         except Exception as exc:
             raise InvalidModelError(f"Model failed its validation evaluations: {exc}") from exc
+    evaluation_runtime_ms = (time.perf_counter() - evaluation_started) * 1000
 
     output_dimension = model.getOutputDimension()
     if output.shape[1] != output_dimension:
@@ -177,8 +188,25 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
                 .getClassName()
                 .replace("Implementation", ""),
                 parameters=parameters,
+                mean=float(marginal.getMean()[0]),
+                standard_deviation=float(marginal.getStandardDeviation()[0]),
+                kind=(
+                    "continuous"
+                    if marginal.isContinuous()
+                    else "discrete"
+                    if marginal.isDiscrete()
+                    else "mixed"
+                ),
             )
         )
+    function_type = type(model).__name__
+    if function_type == "Function":
+        function_type = "PythonFunction"
+    symbolic = function_type == "SymbolicFunction"
+    copula = problem.getCopula().getImplementation().getClassName()
+    dependent_inputs = not problem.hasIndependentCopula()
+    output_sample = ot.Sample(output.tolist())
+    standard_deviations = output_sample.computeStandardDeviation()
     metadata = ModelMetadata(
         source_hash=_source_hash(source),
         input_dimension=input_dimension,
@@ -190,10 +218,152 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
         validation_sample_size=validation_sample_size,
         validation_runtime_ms=(time.perf_counter() - started) * 1000,
         warnings=["Model output is constant in the validation sample."]
-        if np.all(np.std(output, axis=0) <= np.finfo(float).eps)
+        if all(value <= np.finfo(float).eps for value in standard_deviations)
         else [],
+        function_type=function_type,
+        exact_gradient_available=symbolic,
+        exact_hessian_available=symbolic,
+        copula=copula,
+        dependent_inputs=dependent_inputs,
     )
-    return ModelRuntime(source=source, model=model, problem=problem, metadata=metadata)
+    means = output_sample.computeMean()
+    minima = output_sample.getMin()
+    maxima = output_sample.getMax()
+    quantile_05 = output_sample.computeQuantilePerComponent(0.05)
+    quantile_95 = output_sample.computeQuantilePerComponent(0.95)
+    projected_runtime_ms = evaluation_runtime_ms * 1000 / validation_sample_size
+    continuous = sum(item.kind == "continuous" for item in inputs)
+    discrete = sum(item.kind == "discrete" for item in inputs)
+    smooth_candidate = symbolic and continuous == input_dimension and not dependent_inputs
+    expensive = projected_runtime_ms > 5_000
+    recommendations = [
+        AnalysisRecommendation(
+            capability="monte_carlo",
+            status="recommended",
+            priority=1,
+            rationale_codes=["BASELINE_PROPAGATION"],
+            projected_evaluations=1000,
+            projected_runtime_ms=projected_runtime_ms,
+        ),
+        AnalysisRecommendation(
+            capability="eda",
+            status="recommended",
+            priority=1,
+            rationale_codes=["BASELINE_OUTPUT_CHARACTERISATION"],
+            projected_evaluations=1000,
+            projected_runtime_ms=projected_runtime_ms,
+        ),
+        AnalysisRecommendation(
+            capability="convergence",
+            status="recommended",
+            priority=1,
+            rationale_codes=["BASELINE_CONVERGENCE_EVIDENCE"],
+            projected_evaluations=1000,
+            projected_runtime_ms=projected_runtime_ms,
+        ),
+        AnalysisRecommendation(
+            capability="morris",
+            status="recommended" if input_dimension >= 8 else "available",
+            priority=2 if input_dimension >= 15 else 3,
+            rationale_codes=(
+                ["HIGH_DIMENSION_SCREENING"]
+                if input_dimension >= 15
+                else ["DIMENSION_SCREENING_THRESHOLD"]
+                if input_dimension >= 8
+                else ["LOW_DIMENSION_SCREENING_OPTIONAL"]
+            ),
+            projected_evaluations=10 * (input_dimension + 1),
+            projected_runtime_ms=evaluation_runtime_ms
+            * 10
+            * (input_dimension + 1)
+            / validation_sample_size,
+        ),
+        AnalysisRecommendation(
+            capability="gpr",
+            status="recommended"
+            if expensive and continuous == input_dimension and input_dimension <= 10
+            else "available"
+            if continuous == input_dimension and input_dimension <= 10
+            else "incompatible",
+            priority=3,
+            rationale_codes=["DIRECT_MODEL_RUNTIME_EXCEEDS_FIVE_SECONDS"]
+            if expensive
+            else ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"],
+            compatibility_warnings=[]
+            if continuous == input_dimension and input_dimension <= 10
+            else ["GPR baseline eligibility requires at most ten continuous inputs."],
+        ),
+        AnalysisRecommendation(
+            capability="pce",
+            status="recommended"
+            if expensive and smooth_candidate
+            else "available"
+            if smooth_candidate
+            else "incompatible",
+            priority=3,
+            rationale_codes=["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"]
+            if smooth_candidate
+            else ["PCE_SMOOTH_CONTINUOUS_ELIGIBILITY_NOT_ESTABLISHED"],
+            compatibility_warnings=[]
+            if smooth_candidate
+            else ["PCE requires independent validation for suitable continuous, smooth models."],
+        ),
+        AnalysisRecommendation(
+            capability="reliability",
+            status="available",
+            priority=4,
+            rationale_codes=["USER_DEFINED_FAILURE_EVENT_REQUIRED"],
+            compatibility_warnings=[
+                "Reliability is never selected without an explicit failure event."
+            ],
+        ),
+        AnalysisRecommendation(
+            capability="distribution_fitting",
+            status="incompatible",
+            priority=4,
+            rationale_codes=["NO_EMPIRICAL_DATA_ATTACHED"],
+            compatibility_warnings=[
+                "Attach empirical data in Data Lab before fitting distributions."
+            ],
+        ),
+    ]
+    assessment = ModelAssessment(
+        profile=ModelProfile(
+            input_dimension=input_dimension,
+            output_dimension=output_dimension,
+            continuous_marginals=continuous,
+            discrete_marginals=discrete,
+            copula=copula,
+            dependent_inputs=dependent_inputs,
+            function_type=function_type,
+            batch_support=batch_supported,
+            validation_evaluation_runtime_ms=evaluation_runtime_ms,
+            projected_1000_evaluation_runtime_ms=projected_runtime_ms,
+            pilot_sample_size=validation_sample_size,
+            pilot_outputs=[
+                PilotOutputSummary(
+                    output_index=index,
+                    output_name=output_names[index],
+                    minimum=float(minima[index]),
+                    maximum=float(maxima[index]),
+                    mean=float(means[index]),
+                    standard_deviation=float(standard_deviations[index]),
+                    quantile_05=float(quantile_05[index]),
+                    quantile_95=float(quantile_95[index]),
+                    variable=float(standard_deviations[index]) > np.finfo(float).eps,
+                )
+                for index in range(output_dimension)
+            ],
+        ),
+        recommendations=recommendations,
+    )
+    return ModelRuntime(
+        source=source,
+        model=model,
+        problem=problem,
+        metadata=metadata,
+        assessment=assessment,
+    )
 
 
 def validate_model_source(

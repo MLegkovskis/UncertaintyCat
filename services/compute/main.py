@@ -13,7 +13,19 @@ from pydantic import Field
 
 from uncertaintycat_core import analysis_catalog, compile_model, run_analysis
 from uncertaintycat_core.contracts import AnalysisRequest, StrictModel
+from uncertaintycat_core.data_lab import (
+    DatasetContent,
+    DistributionFitRequest,
+    fit_distributions,
+    inspect_dataset,
+)
 from uncertaintycat_core.errors import UncertaintyCatError
+from uncertaintycat_core.surrogate import (
+    PromotedSurrogateExecutionRequest,
+    SurrogateSerializationRequest,
+    execute_promoted_surrogate,
+    serialize_surrogate,
+)
 
 
 class ValidationRequest(StrictModel):
@@ -73,7 +85,10 @@ def validate_model(request: ValidationRequest) -> dict[str, Any]:
         validation_sample_size=request.validation_sample_size,
         seed=request.seed,
     )
-    return {"metadata": runtime.metadata.model_dump(mode="json")}
+    return {
+        "metadata": runtime.metadata.model_dump(mode="json"),
+        "assessment": runtime.assessment.model_dump(mode="json"),
+    }
 
 
 @app.post("/v1/execute", dependencies=[Depends(require_internal_token)])
@@ -86,3 +101,23 @@ def execute(request: ExecuteRequest) -> dict[str, Any]:
         run_id=request.run_id,
     )
     return {"result": result.model_dump(mode="json")}
+
+
+@app.post("/v1/data/inspect", dependencies=[Depends(require_internal_token)])
+def inspect_data(request: DatasetContent) -> dict[str, Any]:
+    return {"dataset": inspect_dataset(request)}
+
+
+@app.post("/v1/data/fit", dependencies=[Depends(require_internal_token)])
+def fit_data(request: DistributionFitRequest) -> dict[str, Any]:
+    return {"fit": fit_distributions(request)}
+
+
+@app.post("/v1/surrogates/serialize", dependencies=[Depends(require_internal_token)])
+def serialize_surrogate_result(request: SurrogateSerializationRequest) -> dict[str, Any]:
+    return {"surrogate": serialize_surrogate(request)}
+
+
+@app.post("/v1/surrogates/execute", dependencies=[Depends(require_internal_token)])
+def execute_surrogate_result(request: PromotedSurrogateExecutionRequest) -> dict[str, Any]:
+    return execute_promoted_surrogate(request)

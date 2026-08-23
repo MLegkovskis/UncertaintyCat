@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import numpy as np
+import math
+
+import openturns as ot
 from pydantic import Field
-from scipy import stats
 
 from uncertaintycat_core.contracts import AnalysisPayload, MatrixData, StrictModel, TableData
 from uncertaintycat_core.errors import IncompatibleAnalysisError
@@ -20,7 +21,7 @@ class EdaConfig(StrictModel):
 
 class EdaPlugin(AnalysisPlugin[EdaConfig]):
     key = "eda"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "Exploratory Data Analysis"
     category = "Exploration"
     description = "Describe outputs and quantify linear and rank relationships with inputs."
@@ -31,6 +32,7 @@ class EdaPlugin(AnalysisPlugin[EdaConfig]):
         if any(target >= runtime.metadata.output_dimension for target in targets):
             raise IncompatibleAnalysisError("A requested output target does not exist.")
         inputs, outputs = runtime.sample_and_evaluate(config.sample_size, config.seed)
+        input_sample = ot.Sample(inputs.tolist())
         input_names = [item.name for item in runtime.metadata.inputs]
         summary_rows: list[list[float | str]] = []
         pearson_values: list[list[float | None]] = []
@@ -38,28 +40,24 @@ class EdaPlugin(AnalysisPlugin[EdaConfig]):
         facts: dict[str, float | str | int | bool | None] = {}
         for target in targets:
             name = runtime.metadata.outputs[target].name
-            values = outputs[:, target]
+            output_sample = ot.Sample([[float(value)] for value in outputs[:, target]])
+            mean = output_sample.computeMean()[0]
+            standard_deviation = output_sample.computeStandardDeviation()[0]
             summary_rows.append(
                 [
                     name,
-                    float(np.mean(values)),
-                    float(np.std(values, ddof=1)),
-                    float(stats.skew(values, bias=False)),
-                    float(stats.kurtosis(values, fisher=True, bias=False)),
-                    float(np.quantile(values, 0.25)),
-                    float(np.quantile(values, 0.5)),
-                    float(np.quantile(values, 0.75)),
+                    float(mean),
+                    float(standard_deviation),
+                    float(output_sample.computeSkewness()[0]),
+                    float(output_sample.computeKurtosis()[0] - 3.0),
+                    float(output_sample.computeQuantilePerComponent(0.25)[0]),
+                    float(output_sample.computeQuantilePerComponent(0.5)[0]),
+                    float(output_sample.computeQuantilePerComponent(0.75)[0]),
                 ]
             )
-            pearson_row: list[float | None] = []
-            spearman_row: list[float | None] = []
-            for column in range(inputs.shape[1]):
-                if np.std(inputs[:, column]) == 0 or np.std(values) == 0:
-                    pearson_row.append(None)
-                    spearman_row.append(None)
-                else:
-                    pearson_row.append(float(stats.pearsonr(inputs[:, column], values).statistic))
-                    spearman_row.append(float(stats.spearmanr(inputs[:, column], values).statistic))
+            analysis = ot.CorrelationAnalysis(input_sample, output_sample)
+            pearson_row = [_safe(value) for value in analysis.computeLinearCorrelation()]
+            spearman_row = [_safe(value) for value in analysis.computeSpearmanCorrelation()]
             pearson_values.append(pearson_row)
             spearman_values.append(spearman_row)
             ranked = sorted(
@@ -106,3 +104,7 @@ class EdaPlugin(AnalysisPlugin[EdaConfig]):
 
 
 plugin = EdaPlugin()
+
+
+def _safe(value: float) -> float | None:
+    return float(value) if math.isfinite(value) else None

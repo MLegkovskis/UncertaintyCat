@@ -10,6 +10,10 @@ from uncertaintycat_core.model import compile_model
 EXAMPLES = sorted(Path("examples").glob("*.py"))
 
 
+def test_public_example_inventory_contains_all_approved_models() -> None:
+    assert len(EXAMPLES) == 23
+
+
 @pytest.mark.scientific
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda path: path.stem)
 def test_all_bundled_examples_validate(example: Path) -> None:

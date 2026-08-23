@@ -1,125 +1,246 @@
-"""Threshold-event reliability analysis with FORM and direct simulation."""
+"""Guided threshold-event reliability with stable OpenTURNS algorithms."""
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
-import numpy as np
 import openturns as ot
 from pydantic import Field
-from scipy import stats
 
-from uncertaintycat_core.contracts import AnalysisPayload, StrictModel, TableData
+from uncertaintycat_core.contracts import (
+    AnalysisPayload,
+    SeriesData,
+    StrictModel,
+    TableData,
+)
 from uncertaintycat_core.errors import IncompatibleAnalysisError
 from uncertaintycat_core.model import ModelRuntime
 from uncertaintycat_core.plugins.base import AnalysisPlugin
 
-OPERATORS = {">": ot.Greater(), ">=": ot.GreaterOrEqual(), "<": ot.Less(), "<=": ot.LessOrEqual()}
+OPERATORS = {
+    ">": ot.Greater(),
+    ">=": ot.GreaterOrEqual(),
+    "<": ot.Less(),
+    "<=": ot.LessOrEqual(),
+}
 
 
 class ReliabilityConfig(StrictModel):
-    method: Literal["FORM", "MONTE_CARLO"] = "FORM"
+    method: Literal["FORM", "SORM", "MONTE_CARLO", "DIRECTIONAL_SAMPLING", "SUBSET_SAMPLING"] = (
+        "FORM"
+    )
     threshold: float
     operator: Literal[">", ">=", "<", "<="] = ">"
-    sample_size: int = Field(default=20_000, ge=100, le=2_000_000)
+    maximum_evaluations: int = Field(default=20_000, ge=100, le=2_000_000)
+    sample_size: int | None = Field(default=None, ge=100, le=2_000_000)
+    target_coefficient_of_variation: float = Field(default=0.05, gt=0, le=1)
+    block_size: int = Field(default=1, ge=1, le=10_000)
     seed: int = Field(default=42, ge=0)
     output_targets: list[int] = Field(default_factory=list, max_length=1)
 
 
 class ReliabilityPlugin(AnalysisPlugin[ReliabilityConfig]):
     key = "reliability"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "Reliability Analysis"
     category = "Reliability"
-    description = "Estimate a threshold-event probability with FORM or reproducible Monte Carlo."
+    description = "Evaluate an explicit failure event with stable OpenTURNS reliability methods."
     assumptions = (
-        "FORM is a local approximation around the most probable failure point.",
+        "FORM and SORM are local design-point approximations.",
+        "Simulation methods are sampling estimates with convergence uncertainty.",
         "Threshold direction defines the failure event.",
     )
     supports_multi_output = False
     resource_class = "heavy"
     config_model = ReliabilityConfig
 
+    def applicability_warnings(self, runtime: ModelRuntime, config: ReliabilityConfig) -> list[str]:
+        if config.method != "MONTE_CARLO" and not runtime.problem.isContinuous():
+            raise IncompatibleAnalysisError(
+                f"{config.method.replace('_', ' ').title()} requires continuous inputs "
+                "for the OpenTURNS standard-space transformation."
+            )
+        return []
+
     def run(self, runtime: ModelRuntime, config: ReliabilityConfig) -> tuple[AnalysisPayload, int]:
+        self.applicability_warnings(runtime, config)
         target = config.output_targets[0] if config.output_targets else 0
         if target >= runtime.metadata.output_dimension:
             raise IncompatibleAnalysisError("The requested output target does not exist.")
-        if config.method == "MONTE_CARLO":
-            return self._monte_carlo(runtime, config, target)
         selected_model = runtime.model.getMarginal(target)
         event = ot.ThresholdEvent(
             ot.CompositeRandomVector(selected_model, ot.RandomVector(runtime.problem)),
             OPERATORS[config.operator],
             config.threshold,
         )
+        if config.method in {"FORM", "SORM"}:
+            return self._analytical(runtime, config, target, event)
+        return self._simulation(runtime, config, target, event)
+
+    def _analytical(
+        self,
+        runtime: ModelRuntime,
+        config: ReliabilityConfig,
+        target: int,
+        event: ot.RandomVector,
+    ) -> tuple[AnalysisPayload, int]:
         optimizer = ot.Cobyla()
-        optimizer.setMaximumCallsNumber(10_000)
+        optimizer.setMaximumCallsNumber(config.maximum_evaluations)
         optimizer.setStartingPoint(runtime.problem.getMean())
         try:
-            algorithm = ot.FORM(optimizer, event)
+            algorithm = (
+                ot.FORM(optimizer, event) if config.method == "FORM" else ot.SORM(optimizer, event)
+            )
             algorithm.run()
             result = algorithm.getResult()
         except Exception as exc:
-            raise IncompatibleAnalysisError(f"FORM could not locate a design point: {exc}") from exc
-        probability = float(result.getEventProbability())
+            raise IncompatibleAnalysisError(
+                f"{config.method} could not locate a design point: {exc}"
+            ) from exc
+        if config.method == "FORM":
+            probability = float(result.getEventProbability())
+            probability_metrics: dict[str, float] = {"event_probability": probability}
+        else:
+            probability = float(result.getEventProbabilityBreitung())
+            probability_metrics = {
+                "event_probability": probability,
+                "event_probability_breitung": probability,
+                "event_probability_hohenbichler": float(result.getEventProbabilityHohenbichler()),
+                "event_probability_tvedt": float(result.getEventProbabilityTvedt()),
+            }
         beta = float(result.getHasoferReliabilityIndex())
-        design = list(result.getPhysicalSpaceDesignPoint())
-        importance = list(result.getImportanceFactors())
+        physical = result.getPhysicalSpaceDesignPoint()
+        standard = result.getStandardSpaceDesignPoint()
+        importance = result.getImportanceFactors()
         names = [item.name for item in runtime.metadata.inputs]
-        rows = [[name, float(design[i]), float(importance[i])] for i, name in enumerate(names)]
+        rows = [
+            [name, float(physical[index]), float(standard[index]), float(importance[index])]
+            for index, name in enumerate(names)
+        ]
+        calls = int(result.getOptimizationResult().getCallsNumber())
         return AnalysisPayload(
             metrics={
-                "event_probability": probability,
+                **probability_metrics,
                 "reliability_index": beta,
                 "threshold": config.threshold,
+                "model_evaluations": calls,
             },
             tables={
                 "design_point": TableData(
-                    columns=["Variable", "Physical Design Point", "Importance Factor"],
+                    columns=[
+                        "Variable",
+                        "Physical Design Point",
+                        "Standard Design Point",
+                        "Importance Factor",
+                    ],
                     rows=rows,
                     row_count=len(rows),
                 )
             },
             facts={
-                "method": "FORM",
+                "method": config.method,
                 "operator": config.operator,
                 "output": runtime.metadata.outputs[target].name,
+                "stopping_reason": "design point optimization completed",
+                "local_approximation": True,
             },
-        ), int(result.getOptimizationResult().getCallsNumber())
+        ), calls
 
-    def _monte_carlo(
-        self, runtime: ModelRuntime, config: ReliabilityConfig, target: int
+    def _simulation(
+        self,
+        runtime: ModelRuntime,
+        config: ReliabilityConfig,
+        target: int,
+        event: ot.RandomVector,
     ) -> tuple[AnalysisPayload, int]:
-        _, outputs = runtime.sample_and_evaluate(config.sample_size, config.seed)
-        values = outputs[:, target]
-        failures = {
-            ">": values > config.threshold,
-            ">=": values >= config.threshold,
-            "<": values < config.threshold,
-            "<=": values <= config.threshold,
-        }[config.operator]
-        count = int(np.sum(failures))
-        probability = count / config.sample_size
-        interval = stats.binomtest(count, config.sample_size).proportion_ci(
-            confidence_level=0.95, method="wilson"
+        budget = config.sample_size or config.maximum_evaluations
+        block_size = min(config.block_size, budget)
+        if config.method == "MONTE_CARLO":
+            algorithm: ot.SimulationAlgorithm = ot.ProbabilitySimulationAlgorithm(
+                event, ot.MonteCarloExperiment()
+            )
+        elif config.method == "DIRECTIONAL_SAMPLING":
+            algorithm = ot.DirectionalSampling(event)
+        else:
+            algorithm = ot.SubsetSampling(event)
+        algorithm.setBlockSize(block_size)
+        algorithm.setMaximumOuterSampling(math.ceil(budget / block_size))
+        algorithm.setMaximumCoefficientOfVariation(config.target_coefficient_of_variation)
+        algorithm.setMaximumStandardDeviation(-1.0)
+        algorithm.setConvergenceStrategy(ot.Compact(250))
+        calls_before = runtime.model.getEvaluationCallsNumber()
+        ot.RandomGenerator.SetSeed(config.seed)
+        try:
+            algorithm.run()
+            result = algorithm.getResult()
+        except Exception as exc:
+            raise IncompatibleAnalysisError(
+                f"{config.method.replace('_', ' ').title()} could not estimate the event: {exc}"
+            ) from exc
+        calls = max(0, runtime.model.getEvaluationCallsNumber() - calls_before)
+        probability = float(result.getProbabilityEstimate())
+        standard_error = float(result.getStandardDeviation())
+        coefficient = float(result.getCoefficientOfVariation())
+        lower = max(0.0, probability - 1.96 * standard_error)
+        upper = min(1.0, probability + 1.96 * standard_error)
+        history = algorithm.getConvergenceStrategy().getSample()
+        x = [int(round(row[2] * block_size)) for row in history]
+        estimates = [float(row[0]) for row in history]
+        history_variances = [max(0.0, float(row[1])) for row in history]
+        stopping_reason = (
+            "target coefficient of variation reached"
+            if math.isfinite(coefficient) and coefficient <= config.target_coefficient_of_variation
+            else "maximum evaluations reached"
         )
-        beta = float(stats.norm.isf(probability)) if 0 < probability < 1 else None
         return AnalysisPayload(
             metrics={
                 "event_probability": probability,
-                "reliability_index": beta,
+                "reliability_index": (
+                    float(ot.Normal().computeQuantile(1.0 - probability)[0])
+                    if 0.0 < probability < 1.0
+                    else None
+                ),
                 "threshold": config.threshold,
-                "failures": count,
-                "sample_size": config.sample_size,
-                "confidence_lower": float(interval.low),
-                "confidence_upper": float(interval.high),
+                "standard_error": standard_error,
+                "coefficient_of_variation": coefficient,
+                "confidence_lower": lower,
+                "confidence_upper": upper,
+                "model_evaluations": calls,
+            },
+            series={
+                "probability_history": SeriesData(
+                    name="Failure probability estimate",
+                    x=x,
+                    y=estimates,
+                    x_label="Simulation blocks",
+                    y_label="Probability of failure",
+                ),
+                "confidence_lower_history": SeriesData(
+                    name="95% confidence lower",
+                    x=x,
+                    y=[
+                        max(0.0, estimate - 1.96 * math.sqrt(variance))
+                        for estimate, variance in zip(estimates, history_variances, strict=True)
+                    ],
+                ),
+                "confidence_upper_history": SeriesData(
+                    name="95% confidence upper",
+                    x=x,
+                    y=[
+                        min(1.0, estimate + 1.96 * math.sqrt(variance))
+                        for estimate, variance in zip(estimates, history_variances, strict=True)
+                    ],
+                ),
             },
             facts={
-                "method": "MONTE_CARLO",
+                "method": config.method,
                 "operator": config.operator,
                 "output": runtime.metadata.outputs[target].name,
+                "stopping_reason": stopping_reason,
+                "sampling_estimate": True,
             },
-        ), config.sample_size
+        ), calls
 
 
 plugin = ReliabilityPlugin()

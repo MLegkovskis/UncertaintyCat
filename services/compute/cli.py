@@ -11,7 +11,19 @@ from pydantic import ValidationError
 
 from services.compute.main import ExecuteRequest, ValidationRequest
 from uncertaintycat_core import analysis_catalog, compile_model, run_analysis
+from uncertaintycat_core.data_lab import (
+    DatasetContent,
+    DistributionFitRequest,
+    fit_distributions,
+    inspect_dataset,
+)
 from uncertaintycat_core.errors import UncertaintyCatError
+from uncertaintycat_core.surrogate import (
+    PromotedSurrogateExecutionRequest,
+    SurrogateSerializationRequest,
+    execute_promoted_surrogate,
+    serialize_surrogate,
+)
 
 
 def _response(status: int, body: dict[str, Any] | list[dict[str, Any]]) -> None:
@@ -38,7 +50,13 @@ def main() -> int:
                 validation_sample_size=validation_request.validation_sample_size,
                 seed=validation_request.seed,
             )
-            _response(200, {"metadata": runtime.metadata.model_dump(mode="json")})
+            _response(
+                200,
+                {
+                    "metadata": runtime.metadata.model_dump(mode="json"),
+                    "assessment": runtime.assessment.model_dump(mode="json"),
+                },
+            )
             return 0
         if operation == "execute":
             execute_request = ExecuteRequest.model_validate(_payload(path))
@@ -50,6 +68,22 @@ def main() -> int:
                 run_id=execute_request.run_id,
             )
             _response(200, {"result": result.model_dump(mode="json")})
+            return 0
+        if operation == "inspect-data":
+            request = DatasetContent.model_validate(_payload(path))
+            _response(200, {"dataset": inspect_dataset(request)})
+            return 0
+        if operation == "fit-data":
+            request = DistributionFitRequest.model_validate(_payload(path))
+            _response(200, {"fit": fit_distributions(request)})
+            return 0
+        if operation == "serialize-surrogate":
+            surrogate_request = SurrogateSerializationRequest.model_validate(_payload(path))
+            _response(200, {"surrogate": serialize_surrogate(surrogate_request)})
+            return 0
+        if operation == "execute-surrogate":
+            execution_request = PromotedSurrogateExecutionRequest.model_validate(_payload(path))
+            _response(200, execute_promoted_surrogate(execution_request))
             return 0
         _response(
             400, {"error": {"code": "invalid_operation", "message": "Unknown compute operation."}}

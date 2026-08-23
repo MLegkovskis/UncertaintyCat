@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import openturns as ot
 from pydantic import Field
 
@@ -21,7 +20,7 @@ class SobolConfig(StrictModel):
 
 class SobolPlugin(AnalysisPlugin[SobolConfig]):
     key = "sobol"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "Sobol Sensitivity Analysis"
     category = "Sensitivity"
     description = "Estimate first-, total-, and optional second-order variance contributions."
@@ -68,8 +67,7 @@ class SobolPlugin(AnalysisPlugin[SobolConfig]):
         input_design = experiment.generate()
         complete_output = runtime.model(input_design)
         output_design = complete_output.getMarginal(target)
-        values = np.asarray(output_design, dtype=float).reshape(-1)
-        if float(np.var(values)) <= np.finfo(float).eps:
+        if float(output_design.computeVariance()[0]) <= ot.SpecFunc.ScalarEpsilon:
             raise IncompatibleAnalysisError("Sobol analysis is undefined for a constant output.")
         algorithm = ot.SaltelliSensitivityAlgorithm(
             input_design, output_design, config.base_sample_size
@@ -103,7 +101,7 @@ class SobolPlugin(AnalysisPlugin[SobolConfig]):
             matrices["second_order"] = MatrixData(
                 row_labels=names, column_labels=names, values=matrix
             )
-        top_index = int(np.argmax(np.asarray(total)))
+        top_index = max(range(dimension), key=lambda index: float(total[index]))
         evaluations = input_design.getSize()
         return (
             AnalysisPayload(

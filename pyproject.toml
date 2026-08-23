@@ -10,7 +10,9 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "pandas",
+    "openpyxl>=3.1.5,<4",
     "openturns==1.27.post1",
+    "otmorris==0.20.post1",
     "scipy",
     "pydantic>=2.9,<3",
     "fastapi>=0.115,<1",
@@ -33,7 +35,6 @@ legacy = [
     "IPython",
     "squarify",
     "requests>=2.32",
-    "otmorris==0.18",
     "chaospy",
 ]
 dev = [
@@ -85,5 +86,5 @@ disallow_untyped_defs = true
 exclude = ["^(app|modules|pages|utils)/"]
 
 [[tool.mypy.overrides]]
-module = ["openturns", "scipy", "scipy.*"]
+module = ["openturns", "otmorris", "scipy", "scipy.*", "pandas", "openpyxl", "openpyxl.*"]
 ignore_missing_imports = true

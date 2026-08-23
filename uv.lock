@@ -821,6 +821,15 @@ wheels = [
 ]
 
 [[package]]
+name = "et-xmlfile"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/38/af70d7ab1ae9d4da450eeec1fa3918940a5fafb9055e934af8d6eb0c2313/et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54", size = 17234, upload-time = "2024-10-25T17:25:40.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa", size = 18059, upload-time = "2024-10-25T17:25:39.051Z" },
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2197,6 +2206,18 @@ wheels = [
 ]
 
 [[package]]
+name = "openpyxl"
+version = "3.1.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "et-xmlfile" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/f9/88d94a75de065ea32619465d2f77b29a0469500e99012523b91cc4141cd1/openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050", size = 186464, upload-time = "2024-06-28T14:03:44.161Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2", size = 250910, upload-time = "2024-06-28T14:03:41.161Z" },
+]
+
+[[package]]
 name = "openturns"
 version = "1.27.post1"
 source = { registry = "https://pypi.org/simple" }
@@ -2213,15 +2234,16 @@ wheels = [
 
 [[package]]
 name = "otmorris"
-version = "0.18"
+version = "0.20.post1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openturns" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/46/334c02a4c81106c6674e10fa08e1d42df9bd333613480808f2b508fbf64a/otmorris-0.18-cp39-abi3-manylinux2014_aarch64.whl", hash = "sha256:6cd7409d9a3db69a91866e35f52efbb11b376eafb42124431a17b8064cf52938", size = 301913, upload-time = "2025-06-12T17:55:25.386Z" },
-    { url = "https://files.pythonhosted.org/packages/2b/f1/6eb38ef3e288acde88136b6660f260434aedd086c077297b62fa53c3ca19/otmorris-0.18-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:9f52db4156b0f24828a00b14cbce777802833c505ddeee2329de987a6fd09bc5", size = 306810, upload-time = "2025-06-12T17:58:43.406Z" },
-    { url = "https://files.pythonhosted.org/packages/61/22/b449ea1adba9e3f1efe030ad7ad2c9ade95689f49a130699da124dbe5605/otmorris-0.18-cp39-abi3-win_amd64.whl", hash = "sha256:c1edd9a72dbb1fe88f3fbddb091438af5394c85ae4acb9a1de1cddfa4cb30062", size = 169312, upload-time = "2025-06-12T18:03:37.866Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/ad/95da926bace8d52ca2cee589a2b7aefa28f3f95016702c17d096d42a6dfc/otmorris-0.20.post1-cp39-abi3-macosx_14_0_arm64.whl", hash = "sha256:f004539df253fc33056e0dc20db5031ba96e626e613f8a77b52e6ec262ab7896", size = 188927, upload-time = "2026-06-19T07:39:18.752Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/d3/ecd218384d1f4f10c78a38ba93f738ee9a993c92c23956f3024b129ee1df/otmorris-0.20.post1-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:5cfdb44d87e1d721854961f66e72852d6902883d153c9216a3fb3c459e1fd697", size = 262541, upload-time = "2026-06-19T07:41:46.047Z" },
+    { url = "https://files.pythonhosted.org/packages/63/9d/7d7dd6d3bd4cb37013d7c2bac106ad1254b5441ac03e2dd6c5e64b2bf7ff/otmorris-0.20.post1-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:af048ad8d2174aae2d5d63eaf03ac1525d9f53cb72581753fc67616bf8248d23", size = 266757, upload-time = "2026-06-19T07:40:57.936Z" },
+    { url = "https://files.pythonhosted.org/packages/98/14/43f8c97cfffc1451d64e1e27cde3f72de3017eee39b81df3f331a4dba676/otmorris-0.20.post1-cp39-abi3-win_amd64.whl", hash = "sha256:c3e042f4fb9b2c6d725f02d843977d41514ae8b98f7e7c602e204bdf7ee4f60e", size = 170944, upload-time = "2026-06-18T06:45:31.694Z" },
 ]
 
 [[package]]
@@ -3753,7 +3775,9 @@ dependencies = [
     { name = "fastapi" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "openpyxl" },
     { name = "openturns" },
+    { name = "otmorris" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -3779,7 +3803,6 @@ legacy = [
     { name = "llvmlite" },
     { name = "matplotlib" },
     { name = "openai" },
-    { name = "otmorris" },
     { name = "plotly" },
     { name = "requests" },
     { name = "salib" },
@@ -3806,8 +3829,9 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "numpy" },
     { name = "openai", marker = "extra == 'legacy'", specifier = "==0.28" },
+    { name = "openpyxl", specifier = ">=3.1.5,<4" },
     { name = "openturns", specifier = "==1.27.post1" },
-    { name = "otmorris", marker = "extra == 'legacy'", specifier = "==0.18" },
+    { name = "otmorris", specifier = "==0.20.post1" },
     { name = "pandas" },
     { name = "plotly", marker = "extra == 'legacy'" },
     { name = "pydantic", specifier = ">=2.9,<3" },

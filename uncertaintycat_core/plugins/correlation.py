@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import numpy as np
+import math
+
+import openturns as ot
 from pydantic import Field
-from scipy import stats
 
 from uncertaintycat_core.contracts import AnalysisPayload, MatrixData, StrictModel, TableData
 from uncertaintycat_core.errors import IncompatibleAnalysisError
@@ -20,7 +21,7 @@ class CorrelationConfig(StrictModel):
 
 class CorrelationPlugin(AnalysisPlugin[CorrelationConfig]):
     key = "correlation"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "Correlation Analysis"
     category = "Sensitivity"
     description = "Compare Pearson, Spearman, partial, and standardized regression effects."
@@ -35,6 +36,7 @@ class CorrelationPlugin(AnalysisPlugin[CorrelationConfig]):
         if any(target >= runtime.metadata.output_dimension for target in targets):
             raise IncompatibleAnalysisError("A requested output target does not exist.")
         inputs, outputs = runtime.sample_and_evaluate(config.sample_size, config.seed)
+        input_sample = ot.Sample(inputs.tolist())
         names = [item.name for item in runtime.metadata.inputs]
         output_names = [runtime.metadata.outputs[target].name for target in targets]
         matrices: dict[str, MatrixData] = {}
@@ -46,39 +48,23 @@ class CorrelationPlugin(AnalysisPlugin[CorrelationConfig]):
             "srrc": [],
         }
         rows: list[list[str | float | None]] = []
-        standardized_x = stats.zscore(inputs, axis=0)
-        ranked_x = np.column_stack([stats.rankdata(inputs[:, i]) for i in range(inputs.shape[1])])
-        ranked_x = stats.zscore(ranked_x, axis=0)
-        for target, output_name in zip(targets, output_names, strict=True):
-            y = outputs[:, target]
-            standardized_y = stats.zscore(y)
-            ranked_y = stats.zscore(stats.rankdata(y))
-            src = np.linalg.lstsq(standardized_x, standardized_y, rcond=None)[0]
-            srrc = np.linalg.lstsq(ranked_x, ranked_y, rcond=None)[0]
-            combined = np.column_stack([inputs, y])
-            correlation = np.corrcoef(combined, rowvar=False)
-            try:
-                precision = np.linalg.pinv(correlation)
-                partial = -precision[:-1, -1] / np.sqrt(
-                    np.maximum(
-                        precision[:-1, :-1].diagonal() * precision[-1, -1], np.finfo(float).eps
-                    )
-                )
-            except np.linalg.LinAlgError:
-                partial = np.full(inputs.shape[1], np.nan)
+        for output_index, (target, output_name) in enumerate(
+            zip(targets, output_names, strict=True)
+        ):
+            output_sample = ot.Sample([[float(value)] for value in outputs[:, target]])
+            analysis = ot.CorrelationAnalysis(input_sample, output_sample)
+            coefficients = {
+                "pearson": analysis.computeLinearCorrelation(),
+                "spearman": analysis.computeSpearmanCorrelation(),
+                "partial": analysis.computePCC(),
+                "src": analysis.computeSRC(),
+                "srrc": analysis.computeSRRC(),
+            }
             for index, input_name in enumerate(names):
-                pearson = _safe_stat(stats.pearsonr(inputs[:, index], y).statistic)
-                spearman = _safe_stat(stats.spearmanr(inputs[:, index], y).statistic)
-                coefficient_values = [
-                    pearson,
-                    spearman,
-                    _safe_stat(partial[index]),
-                    _safe_stat(src[index]),
-                    _safe_stat(srrc[index]),
-                ]
+                coefficient_values = [_safe_stat(coefficients[key][index]) for key in measures]
                 rows.append([output_name, input_name, *coefficient_values])
                 for key, value in zip(measures, coefficient_values, strict=True):
-                    if len(measures[key]) <= output_names.index(output_name):
+                    if len(measures[key]) <= output_index:
                         measures[key].append([])
                     measures[key][-1].append(value)
         for key, matrix_values in measures.items():
@@ -99,7 +85,7 @@ class CorrelationPlugin(AnalysisPlugin[CorrelationConfig]):
 
 
 def _safe_stat(value: float) -> float | None:
-    return None if not np.isfinite(value) else float(value)
+    return float(value) if math.isfinite(value) else None
 
 
 plugin = CorrelationPlugin()

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import openturns as ot
 from pydantic import Field
 
@@ -21,7 +20,7 @@ class FastConfig(StrictModel):
 
 class FastPlugin(AnalysisPlugin[FastConfig]):
     key = "fast"
-    version = "1.0.0"
+    version = "2.0.0"
     name = "FAST Sensitivity Analysis"
     category = "Sensitivity"
     description = "Estimate first- and total-order variance effects using Fourier amplitudes."
@@ -47,14 +46,14 @@ class FastPlugin(AnalysisPlugin[FastConfig]):
         ot.RandomGenerator.SetSeed(config.seed)
         selected_model = runtime.model.getMarginal(target)
         algorithm = ot.FAST(selected_model, runtime.problem, config.sample_size)
-        first = np.asarray(algorithm.getFirstOrderIndices(), dtype=float)
-        total = np.asarray(algorithm.getTotalOrderIndices(), dtype=float)
+        first = algorithm.getFirstOrderIndices()
+        total = algorithm.getTotalOrderIndices()
         names = [item.name for item in runtime.metadata.inputs]
         rows = [
             [name, float(first[i]), float(total[i]), float(total[i] - first[i])]
             for i, name in enumerate(names)
         ]
-        top = int(np.argmax(total))
+        top = max(range(len(names)), key=lambda index: float(total[index]))
         evaluations = config.sample_size * runtime.metadata.input_dimension
         return AnalysisPayload(
             metrics={"sample_size": config.sample_size, "model_evaluations_estimate": evaluations},

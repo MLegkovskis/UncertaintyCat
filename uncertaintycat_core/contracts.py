@@ -39,6 +39,9 @@ class VariableMetadata(StrictModel):
     name: str
     distribution: str | None = None
     parameters: list[float] = Field(default_factory=list)
+    kind: Literal["continuous", "discrete", "mixed", "unknown"] = "unknown"
+    mean: float | None = None
+    standard_deviation: float | None = Field(default=None, ge=0)
 
 
 class OutputMetadata(StrictModel):
@@ -57,6 +60,54 @@ class ModelMetadata(StrictModel):
     validation_sample_size: int = Field(ge=1)
     validation_runtime_ms: float = Field(ge=0)
     warnings: list[str] = Field(default_factory=list)
+    function_type: str = "OpenTURNS Function"
+    exact_gradient_available: bool = False
+    exact_hessian_available: bool = False
+    copula: str = "Unknown"
+    dependent_inputs: bool = False
+
+
+class PilotOutputSummary(StrictModel):
+    output_index: int = Field(ge=0)
+    output_name: str
+    minimum: float
+    maximum: float
+    mean: float
+    standard_deviation: float = Field(ge=0)
+    quantile_05: float
+    quantile_95: float
+    variable: bool
+
+
+class ModelProfile(StrictModel):
+    input_dimension: int = Field(gt=0)
+    output_dimension: int = Field(gt=0)
+    continuous_marginals: int = Field(ge=0)
+    discrete_marginals: int = Field(ge=0)
+    copula: str
+    dependent_inputs: bool
+    function_type: str
+    batch_support: bool
+    validation_evaluation_runtime_ms: float = Field(ge=0)
+    projected_1000_evaluation_runtime_ms: float = Field(ge=0)
+    pilot_sample_size: int = Field(gt=0)
+    pilot_outputs: list[PilotOutputSummary]
+
+
+class AnalysisRecommendation(StrictModel):
+    capability: str
+    status: Literal["recommended", "available", "incompatible"]
+    priority: int = Field(ge=1)
+    rationale_codes: list[str]
+    projected_evaluations: int | None = Field(default=None, ge=0)
+    projected_runtime_ms: float | None = Field(default=None, ge=0)
+    compatibility_warnings: list[str] = Field(default_factory=list)
+
+
+class ModelAssessment(StrictModel):
+    version: str = "1.0.0"
+    profile: ModelProfile
+    recommendations: list[AnalysisRecommendation]
 
 
 class TableData(StrictModel):
