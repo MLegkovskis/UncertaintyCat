@@ -19,8 +19,8 @@
     "@uncertaintycat/contracts": "0.2.0",
     "better-auth": "^1.7.1",
     "echarts": "^6.1.0",
-    "katex": "^0.16.47",
-    "lucide-react": "^0.540.0",
+    "katex": "^0.18.4",
+    "lucide-react": "^1.33.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
@@ -34,9 +34,9 @@
     "@playwright/test": "^1.55.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "^5.8.0",
-    "vite": "^7.1.0",
-    "vitest": "^3.2.0"
+    "@vitejs/plugin-react": "^6.1.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }

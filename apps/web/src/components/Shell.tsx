@@ -4,7 +4,7 @@ import {
   Cloud,
   Database,
   FolderKanban,
-  Github,
+  GitBranch,
   LogOut,
   Menu,
   Moon,
@@ -169,7 +169,7 @@ export function Shell({ children }: PropsWithChildren) {
             target="_blank"
             rel="noreferrer"
           >
-            <Github size={16} /> Source
+            <GitBranch size={16} /> Source
           </a>
           <small>
             Numerical results are computed deterministically. AI narrative is
