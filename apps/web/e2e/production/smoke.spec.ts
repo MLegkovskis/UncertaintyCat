@@ -34,9 +34,13 @@ test("production serves the static overview and rejects every private API surfac
   }
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Turn uncertain inputs/ })).toBeVisible();
-  await expect(page.getByText("Ishigami", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "New analysis" })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Understand what uncertainty does to your model." }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Example uncertainty result")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sensitivity analysis" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in with Cloudflare" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Projects" })).toHaveCount(0);
   let violations = (await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze()).violations.filter(
