@@ -283,7 +283,12 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   await page.route("**/api/v1/projects", async (route) => {
     if (route.request().method() === "POST") {
       const input = route.request().postDataJSON() as { name: string; description: string };
-      const created = { ...project, name: input.name, description: input.description };
+      const created = {
+        ...project,
+        id: `project-created-${projects.length + 1}`,
+        name: input.name,
+        description: input.description,
+      };
       projects = [created, ...projects];
       await json(route, { project: created }, 201);
       return;
