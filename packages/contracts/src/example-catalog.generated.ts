@@ -4,7 +4,7 @@ import type { ExampleCatalogEntry } from "./index";
 export const EXAMPLE_CATALOG = [
   {
     "id": "beam",
-    "title": "Simply supported beam",
+    "title": "Beam deflection",
     "filename": "Beam.py",
     "domain": "Structural mechanics",
     "inputDimension": 4,
@@ -17,7 +17,13 @@ export const EXAMPLE_CATALOG = [
       "sobol"
     ],
     "source": "import openturns as ot\nimport numpy as np\n\ndef function_of_interest(X):\n    E, F, L, I = X\n    Y = F * L**3 / (3 * E * I)\n    return [Y]\n\nmodel = ot.PythonFunction(4, 1, function_of_interest)\n\n# Define distributions with corrected descriptions\nE = ot.Beta(0.9, 3.1, 2.8e7, 4.8e7)\nE.setDescription([\"E\"])\n\nF = ot.LogNormal()\nF.setParameter(ot.LogNormalMuSigma()([3.0e4, 9.0e3, 15.0e3]))\nF.setDescription([\"F\"])\n\nL = ot.Uniform(250.0, 260.0)\nL.setDescription([\"L\"])\n\nI = ot.Beta(2.5, 4.0, 310.0, 450.0)\nI.setDescription([\"I\"])\n\n# Define correlation matrix for dependent variables\nR = ot.CorrelationMatrix(4)\nR[2, 3] = -0.2  # Assuming L and I are correlated with a Spearman correlation of -0.2\n\n# Define copula based on correlation matrix\ncopula = ot.NormalCopula(R)\n\n# Define joint distribution with copula\nproblem = ot.JointDistribution([E, F, L, I], copula)\n",
-    "sha256": "52ee1acefacee4a4e4ba8387c774356a84ee3246090e97de56273e9b05d31aff"
+    "sha256": "52ee1acefacee4a4e4ba8387c774356a84ee3246090e97de56273e9b05d31aff",
+    "equations": [
+      {
+        "outputName": "Y",
+        "latex": "Y = \\frac{F L^{3}}{3 E I}"
+      }
+    ]
   },
   {
     "id": "bike_speed",

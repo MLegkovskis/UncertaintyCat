@@ -448,7 +448,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     }
     await route.fulfill({
       contentType: "text/markdown; charset=utf-8",
-      body: "## Source facts\n\nThe validated fixture has **three inputs**.\n\n## Unknown context and owner questions\n\n- Which units apply?",
+      body: "### Model equation\n\n$$y = x_1 + x_2^2$$\n\n### Model overview\n\nThe validated fixture has **three inputs**.\n\n### Questions to confirm\n\n- Which units apply?",
     });
   });
   await page.route(/\/api\/v1\/model-versions\/[^/]+\/surrogates$/, async (route) => {

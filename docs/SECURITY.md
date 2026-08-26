@@ -62,6 +62,11 @@ inventing or recalculating numbers, and numerical claims must cite an analysis k
 The model cannot run Python or mutate a report. This reduces, but does not eliminate, prompt-injection and
 misinterpretation risk; AI prose must remain visibly separate from numerical output.
 
+Model equations are not inferred by an AI from private code. The Model Understanding response prepends only
+curated bundled-reference equations or formulas from an authenticated user's validated guided-builder
+definition, without sending those private formulas to the selected AI provider. Report chat must resolve a
+stored field to its actual value before answering; citation tokens support that value rather than replacing it.
+
 The orchestration is provided by the MIT-licensed Vercel AI SDK with Zod schemas. Groq is the default through
 the official `@ai-sdk/groq` provider and `https://api.groq.com/openai/v1`; Cloudflare remains selectable through
 the pinned `workers-ai-provider` and an account binding. `AI_PROVIDER` is validated at deployment, only the

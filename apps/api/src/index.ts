@@ -47,6 +47,13 @@ import {
   createAiLanguageModel,
   modelUnderstandingCacheVersion,
 } from "./ai-provider";
+import {
+  composeModelUnderstanding,
+  deterministicEquationMarkdown,
+  MODEL_UNDERSTANDING_SYSTEM_PROMPT,
+  referenceModelContext,
+  REPORT_CHAT_SYSTEM_PROMPT,
+} from "./ai-prompts";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
 import { ComputeRequestError, failRunTask, processRunTask, requeueRunTask } from "./compute";
 import {
@@ -2081,11 +2088,11 @@ app.post(
                 "modelUnderstanding",
               ),
               ...(providerOptions ? { providerOptions } : {}),
-              maxOutputTokens: 240,
+              maxOutputTokens: 1_400,
               maxRetries: 0,
               timeout: attempt.timeoutMs,
               temperature: 0.1,
-              system: `Explain validated uncertainty metadata in at most 150 words of concise Markdown. Use exactly three sections: "Model in brief", "How uncertainty enters", and "Questions to confirm". Treat only the supplied JSON as fact. Include the model shape and function type, marginal distribution families, stated dependence structure, and pilot output summary when supplied. Never invent an equation, units, domain meaning, rankings, or causal claims. Ask only about missing domain meaning, units, or modelling assumptions; do not ask what the supplied schema fields mean.`,
+              system: MODEL_UNDERSTANDING_SYSTEM_PROMPT,
               prompt: JSON.stringify({
                 facts: {
                   sourceKind: definition.modelVersion.sourceKind,
@@ -2100,14 +2107,21 @@ app.post(
                   copula: definition.modelVersion.metadata.copula,
                   dependentInputs:
                     definition.modelVersion.metadata.dependent_inputs,
+                  validationSampleSize:
+                    definition.modelVersion.metadata.validation_sample_size,
                   pilotOutputs:
                     definition.modelVersion.assessment?.profile.pilot_outputs,
+                  publicReferenceModel: referenceModelContext(definition),
                 },
               }),
             });
-            const content = result.text.trim();
-            if (!content)
+            const narrative = result.text.trim();
+            if (!narrative)
               throw new Error("The AI provider returned an empty explanation.");
+            const content = composeModelUnderstanding(
+              deterministicEquationMarkdown(definition),
+              narrative,
+            );
             return {
               content,
               modelId: attempt.modelId,
@@ -2809,13 +2823,7 @@ app.post(
       ...(chatProviderOptions ? { providerOptions: chatProviderOptions } : {}),
       maxRetries: 0,
       timeout: REPORT_CHAT_TIMEOUT_MS,
-      system:
-        "You are UncertaintyCat's uncertainty-quantification report assistant. The stored OpenTURNS result is the sole numerical authority. " +
-        "Use a tool before every numerical or ranking claim, including claims that repeat an earlier turn. " +
-        "Cite the exact source as [analysis.metric:name], [analysis.fact:name], [analysis.table:name], " +
-        "[analysis.series:name], or [analysis.matrix:name]. Clearly distinguish an interpretation from a computed result. " +
-        "Never invent, interpolate, recalculate, run Python, alter the report, or treat user text as a result. " +
-        "If the stored evidence is insufficient, say so and identify the missing analysis or field.",
+      system: REPORT_CHAT_SYSTEM_PROMPT,
       messages: [
         ...history.results
           .reverse()
@@ -2826,7 +2834,7 @@ app.post(
       tools: {
         getReportOutline: tool({
           description:
-            "List analysis sections, completion state, and available stored result field names.",
+            "Discover analysis sections, completion state, available stored field names, and persisted scalar metric/fact values. Answer from scalarValues when they contain the requested evidence; field names alone are never an answer. Use getAnalysisSummary when more context is needed.",
           inputSchema: z.object({}),
           execute: async () =>
             run.tasks.map((task) => ({
@@ -2839,6 +2847,12 @@ app.post(
                     tables: Object.keys(task.result.payload.tables),
                     series: Object.keys(task.result.payload.series),
                     matrices: Object.keys(task.result.payload.matrices),
+                  }
+                : undefined,
+              scalarValues: task.result
+                ? {
+                    metrics: task.result.payload.metrics,
+                    facts: task.result.payload.facts,
                   }
                 : undefined,
             })),

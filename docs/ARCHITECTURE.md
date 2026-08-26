@@ -103,7 +103,10 @@ AI brief, and recommended route are rendered together so an assessment does not 
 authoring page. The deterministic rule prioritizes Morris at
 15 or more inputs, recommends an eligible surrogate above a measured five-second projection per 1,000
 evaluations, and otherwise recommends direct analysis. The selected AI provider explains validated metadata separately;
-it does not choose the route and does not receive Python source.
+it does not choose the route and does not receive Python source. Curated equations for bundled reference
+models and validated formulas from the guided OpenTURNS SymbolicFunction builder are rendered
+deterministically ahead of that explanation; the language model is never asked to reverse-engineer an
+equation from private Python.
 
 Routes are split so the Python editor is loaded only in the model workspace. Reports are responsive HTML,
 lazy-load the plotting runtime, retain exact table/text fallbacks, and lazy-load `html2canvas`/`jsPDF` only
@@ -160,8 +163,10 @@ The model receives conversation history and can read only these projections of p
 - a bounded page from a named series;
 - a bounded row/column window from a named matrix.
 
-It cannot read model source, call compute, run code, write D1, or mutate a report. Model Understanding is
-also source-isolated: it receives compact validated metadata, has a 150-word response contract and a bounded
+It cannot read model source, call compute, run code, write D1, or mutate a report. The chat contract requires
+the actual stored value to lead an answer and treats internal field names as discovery metadata, not answers.
+It also prevents an EDA correlation screen from being presented as a global sensitivity ranking.
+Model Understanding is also source-isolated: it receives compact validated metadata, has a 220-to-320-word response contract and a bounded
 output budget, and D1 caches it by model hash, prompt version, provider, and model ID. Groq defaults to
 `openai/gpt-oss-20b` for the short brief, with one bounded `openai/gpt-oss-120b` fallback, and uses
 `openai/gpt-oss-120b` for report chat. Low reasoning effort avoids unnecessary latency and parallel tool calls

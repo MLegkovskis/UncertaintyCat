@@ -145,6 +145,8 @@ test.describe("model studio", () => {
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
     await expect(page.getByRole("heading", { name: "Model Understanding" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Model equation" })).toBeVisible();
+    await expect(page.locator(".understanding-pane .katex")).toBeVisible();
     await page.locator(".validated-studio").evaluate((element) => {
       window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 86, behavior: "auto" });
     });

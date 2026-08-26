@@ -10,6 +10,10 @@ export interface ExampleCatalogEntry {
   summary: string;
   difficulty: "introductory" | "intermediate" | "advanced";
   suggestedAnalyses: readonly string[];
+  equations?: readonly {
+    outputName: string;
+    latex: string;
+  }[];
   source: string;
   sha256: string;
 }
