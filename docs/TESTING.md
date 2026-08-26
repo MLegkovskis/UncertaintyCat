@@ -19,7 +19,8 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
 - queued/running/terminal run states, cancellation, exact reruns, and project-oriented history;
 - metrics, tables, truncation notices, series, heatmaps, facts, equations, assumptions, provenance, partial failures, sharing, bundle export, and direct PDF-download wiring;
-- stored report chat, streaming Markdown, suggestions, citations, and quota failures;
+- stored report chat, streaming Markdown, human-readable evidence badges, section-aware sensitivity discovery, suggestions, and quota failures;
+- equal-height scroll-bounded Model Understanding, unclipped exact-data disclosure controls, and syntax-highlighted immutable Python source;
 - authenticated read-only shared reports; and
 - automated WCAG A/AA scans in light/dark themes, private and public states, expanded controls, and mobile navigation.
 

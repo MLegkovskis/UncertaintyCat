@@ -2055,6 +2055,27 @@ tbody tr:hover td {
   background: var(--panel);
   white-space: pre-wrap;
 }
+.python-source-view {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+}
+.python-source-view .cm-editor {
+  min-height: 120px;
+  color: var(--text);
+  background: var(--panel);
+  font: 11px/1.6 var(--font-mono);
+}
+.python-source-view .cm-scroller {
+  overflow: auto;
+}
+.python-source-view .cm-gutters {
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+  background: var(--panel-2);
+}
 .model-source-actions {
   display: flex;
   gap: 8px;
@@ -2266,6 +2287,7 @@ tbody tr:hover td {
 .validated-studio {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+  align-items: stretch;
   overflow: visible;
 }
 .studio-authoring {
@@ -2274,9 +2296,12 @@ tbody tr:hover td {
   border-right: 1px solid var(--line);
 }
 .understanding-pane {
+  height: 0;
+  min-height: 100%;
   min-width: 0;
-  max-height: 900px;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: var(--panel-2);
 }
 .understanding-pane > header {
@@ -2415,6 +2440,19 @@ tbody tr:hover td {
 .markdown a {
   color: var(--cyan);
   text-decoration: underline;
+}
+.evidence-citation {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin: 0 2px;
+  padding: 2px 6px;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-2) 88%, var(--cyan));
+  font: 9px/1.35 var(--font-mono);
+  vertical-align: baseline;
 }
 .chat-message .markdown {
   padding: 10px 12px;
@@ -2781,7 +2819,10 @@ tbody tr:hover td {
     border-bottom: 1px solid var(--line);
   }
   .understanding-pane {
+    height: auto;
+    min-height: 0;
     max-height: none;
+    overflow: visible;
   }
   .understanding-pane > header {
     top: 62px;
@@ -3209,6 +3250,38 @@ tbody tr:hover td {
   margin-top: 10px;
   color: var(--muted);
   font-size: 11px;
+}
+.chart-data-fallback > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.chart-data-fallback > summary::-webkit-details-marker {
+  display: none;
+}
+.chart-data-fallback > summary::before {
+  content: "›";
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  place-items: center;
+  color: var(--muted);
+  transform: rotate(0deg);
+  transform-origin: center;
+  transition: transform 0.15s ease;
+}
+.chart-data-fallback[open] > summary::before {
+  transform: rotate(90deg);
+}
+.chart-data-fallback > :not(summary) {
+  margin-inline: 12px;
 }
 .chart-data-fallback pre {
   max-height: 260px;

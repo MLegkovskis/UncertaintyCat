@@ -15,6 +15,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { ChatPanel } from "../components/ChatPanel";
 import { Markdown } from "../components/Markdown";
+import { PythonSource } from "../components/PythonSource";
 import { ResultView } from "../components/ResultView";
 import { StatusBadge } from "../components/Status";
 import type { AnalysisResult, ModelMetadata } from "@uncertaintycat/contracts";
@@ -163,7 +164,12 @@ function MorrisReduction({
           <div className="reduced-model-actions">
             <button className="button secondary" type="button" disabled={!createdDefinition.data?.definition.source} onClick={() => void navigator.clipboard.writeText(createdDefinition.data?.definition.source ?? "")}>Copy Python model</button>
           </div>
-          {createdDefinition.data?.definition.source && <pre><code>{createdDefinition.data.definition.source}</code></pre>}
+          {createdDefinition.data?.definition.source && (
+            <PythonSource
+              source={createdDefinition.data.definition.source}
+              label="Reduced Python model source"
+            />
+          )}
         </div>
       )}
       {error && <div className="inline-error" role="alert">{error}</div>}
@@ -356,7 +362,10 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
             <SymbolicDefinitionSummary
               spec={(definitionQuery.data?.definition ?? report.modelDefinition)?.builderSpec}
             />
-            <pre><code>{(definitionQuery.data?.definition ?? report.modelDefinition)?.source}</code></pre>
+            <PythonSource
+              source={(definitionQuery.data?.definition ?? report.modelDefinition)?.source ?? ""}
+              label="Exact immutable Python model source"
+            />
             {!shared && (
               <div className="model-source-actions">
                 <a className="button secondary small" href={`/api/v1/model-versions/${report.modelVersion.id}/source`} download><Download /> Source</a>

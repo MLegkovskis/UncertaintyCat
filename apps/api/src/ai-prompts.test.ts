@@ -9,18 +9,20 @@ import {
   deterministicEquationMarkdown,
   MODEL_UNDERSTANDING_SYSTEM_PROMPT,
   referenceModelContext,
+  reportChatSystemPrompt,
   REPORT_CHAT_SYSTEM_PROMPT,
 } from "./ai-prompts";
 
 function definition(
   sourceKind: "python" | "builder" | "example",
   builderSpec?: Record<string, unknown>,
+  sourceHash = "beam-hash",
 ) {
   return {
     builderSpec,
     modelVersion: {
       sourceKind,
-      sourceHash: "beam-hash",
+      sourceHash,
     },
   } as Pick<ModelDefinition, "builderSpec" | "modelVersion">;
 }
@@ -41,6 +43,29 @@ const catalog: readonly ExampleCatalogEntry[] = [
     ],
     source: "source",
     sha256: "beam-hash",
+  },
+  {
+    id: "tube_deflection",
+    title: "Tube deflection",
+    filename: "Tube_Deflection.py",
+    domain: "Structural mechanics",
+    inputDimension: 6,
+    outputDimension: 1,
+    summary: "Tube deflection under uncertain loading and geometry.",
+    difficulty: "intermediate",
+    suggestedAnalyses: ["monte_carlo"],
+    equations: [
+      {
+        outputName: "Second moment of area",
+        latex: "I = \\frac{\\pi}{32}\\left(D_e^4-d_i^4\\right)",
+      },
+      {
+        outputName: "Deflection",
+        latex: "y = -\\frac{F a^2 \\left(L-a\\right)^2}{3 E L I}",
+      },
+    ],
+    source: "source",
+    sha256: "tube-hash",
   },
 ];
 
@@ -77,6 +102,15 @@ describe("AI response contracts", () => {
     expect(deterministicEquationMarkdown(unsafe, [])).toBe("");
   });
 
+  it("renders both governing equations for the bundled tube-deflection model", () => {
+    const target = definition("example", undefined, "tube-hash");
+    const markdown = deterministicEquationMarkdown(target, catalog);
+    expect(markdown).toContain("I = \\frac{\\pi}{32}");
+    expect(markdown).toContain(
+      "y = -\\frac{F a^2 \\left(L-a\\right)^2}{3 E L I}",
+    );
+  });
+
   it("places deterministic evidence before generated interpretation", () => {
     expect(
       composeModelUnderstanding("### Model equation", "### Model overview"),
@@ -96,5 +130,14 @@ describe("AI response contracts", () => {
     expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(
       "[analysis.fact:eda.y0.strongest_linear_input]",
     );
+    expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(
+      "Never claim an analysis or sensitivity result is absent",
+    );
+    const prompt = reportChatSystemPrompt([
+      { analysis: "sobol", status: "succeeded" },
+      { analysis: "taylor", status: "succeeded" },
+    ]);
+    expect(prompt).toContain('"analysis":"sobol","status":"succeeded"');
+    expect(prompt).toContain('"analysis":"taylor","status":"succeeded"');
   });
 });

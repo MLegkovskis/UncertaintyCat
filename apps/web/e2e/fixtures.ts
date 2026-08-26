@@ -508,7 +508,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       await route.fulfill({
         status: 200,
         contentType: "text/plain; charset=utf-8",
-        body: "x1 is greatest [monte_carlo.fact:strongest_input]",
+        body: "x1 is greatest [analysis.fact:monte_carlo.strongest_input]",
       });
       return;
     }

@@ -66,6 +66,8 @@ Model equations are not inferred by an AI from private code. The Model Understan
 curated bundled-reference equations or formulas from an authenticated user's validated guided-builder
 definition, without sending those private formulas to the selected AI provider. Report chat must resolve a
 stored field to its actual value before answering; citation tokens support that value rather than replacing it.
+The non-numerical report-section inventory is supplied to chat so it cannot overlook a completed analysis,
+but all numerical and ranking claims still require a bounded read-only tool result.
 
 The orchestration is provided by the MIT-licensed Vercel AI SDK with Zod schemas. Groq is the default through
 the official `@ai-sdk/groq` provider and `https://api.groq.com/openai/v1`; Cloudflare remains selectable through

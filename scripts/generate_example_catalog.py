@@ -207,6 +207,16 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "latex": r"Y = \frac{F L^{3}}{3 E I}",
         }
     ],
+    "Tube_Deflection": [
+        {
+            "outputName": "Second moment of area",
+            "latex": r"I = \frac{\pi}{32}\left(D_e^4-d_i^4\right)",
+        },
+        {
+            "outputName": "Deflection",
+            "latex": r"y = -\frac{F a^2 \left(L-a\right)^2}{3 E L I}",
+        },
+    ],
 }
 
 

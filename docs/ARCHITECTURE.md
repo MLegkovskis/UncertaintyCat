@@ -106,7 +106,9 @@ evaluations, and otherwise recommends direct analysis. The selected AI provider 
 it does not choose the route and does not receive Python source. Curated equations for bundled reference
 models and validated formulas from the guided OpenTURNS SymbolicFunction builder are rendered
 deterministically ahead of that explanation; the language model is never asked to reverse-engineer an
-equation from private Python.
+equation from private Python. Reference models with a curated equation can carry multiple governing
+expressions (for example, the tube section's second moment of area and its resulting deflection), which
+keeps the displayed mathematics exact without weakening source isolation.
 
 Routes are split so the Python editor is loaded only in the model workspace. Reports are responsive HTML,
 lazy-load the plotting runtime, retain exact table/text fallbacks, and lazy-load `html2canvas`/`jsPDF` only
@@ -163,9 +165,12 @@ The model receives conversation history and can read only these projections of p
 - a bounded page from a named series;
 - a bounded row/column window from a named matrix.
 
-It cannot read model source, call compute, run code, write D1, or mutate a report. The chat contract requires
-the actual stored value to lead an answer and treats internal field names as discovery metadata, not answers.
-It also prevents an EDA correlation screen from being presented as a global sensitivity ranking.
+It cannot read model source, call compute, run code, write D1, or mutate a report. The chat contract receives
+the persisted section names and completion states up front, requires the actual stored value to lead an
+answer, and treats internal field names as discovery metadata rather than user-facing prose. Exact evidence
+paths are rendered as compact, readable source badges while retaining the underlying path for inspection.
+The contract also prevents an EDA correlation screen from being presented as a global sensitivity ranking
+and requires all completed sensitivity sections to be inspected before declaring findings absent.
 Model Understanding is also source-isolated: it receives compact validated metadata, has a 220-to-320-word response contract and a bounded
 output budget, and D1 caches it by model hash, prompt version, provider, and model ID. Groq defaults to
 `openai/gpt-oss-20b` for the short brief, with one bounded `openai/gpt-oss-120b` fallback, and uses

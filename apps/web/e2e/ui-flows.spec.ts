@@ -151,12 +151,17 @@ test.describe("model studio", () => {
       window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 86, behavior: "auto" });
     });
     const pane = await page.locator(".understanding-pane").boundingBox();
+    const authoring = await page.locator(".studio-authoring").boundingBox();
     const header = await page.locator(".understanding-pane > header").boundingBox();
     expect(pane).not.toBeNull();
+    expect(authoring).not.toBeNull();
     expect(header).not.toBeNull();
     expect(header!.x).toBeGreaterThanOrEqual(pane!.x);
     expect(header!.x + header!.width).toBeLessThanOrEqual(pane!.x + pane!.width + 1);
     expect(header!.y).toBeGreaterThanOrEqual(pane!.y);
+    expect(Math.abs(pane!.y - authoring!.y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(pane!.y + pane!.height - (authoring!.y + authoring!.height))).toBeLessThanOrEqual(2);
+    await expect(page.locator(".understanding-pane")).toHaveCSS("overflow-y", "auto");
     await expect(page.locator(".understanding-pane > header")).toHaveCSS("position", "static");
     const screenshot = await page.screenshot({ fullPage: true });
     await testInfo.attach("validated-workspace", { body: screenshot, contentType: "image/png" });
@@ -407,7 +412,7 @@ test.describe("run lifecycle", () => {
 });
 
 test.describe("reports and grounded chat", () => {
-  test("renders every evidence type and operates export, share, print, and streaming chat", async ({ page }) => {
+  test("renders every evidence type and operates export, share, print, and streaming chat", async ({ page }, testInfo) => {
     await installMockApi(page, { authenticated: true, projects: [project], runs: [makeRun()], report: makeReport() });
     await page.goto("/reports/report-1");
 
@@ -415,8 +420,18 @@ test.describe("reports and grounded chat", () => {
     await expect(page.locator(".metric")).toHaveCount(2);
     await expect(page.getByRole("table").first()).toBeVisible();
     await expect(page.getByText("Rendered equations")).toBeVisible();
+    await expect(page.getByLabel("Exact immutable Python model source")).toBeVisible();
+    await expect(page.locator(".model-definition-section .cm-line span").first()).toHaveText("import");
     await expect(page.locator(".echart")).toHaveCount(2);
     await expect(page.getByText("Exact heatmap values")).toBeVisible();
+    const chartPanel = page.locator(".plot-panel").filter({ hasText: "Exact chart data" }).first();
+    const chartSummary = chartPanel.getByText("Exact chart data", { exact: true });
+    await expect(chartSummary).toHaveCSS("display", "flex");
+    const chartPanelBox = await chartPanel.boundingBox();
+    const chartSummaryBox = await chartSummary.boundingBox();
+    expect(chartPanelBox).not.toBeNull();
+    expect(chartSummaryBox).not.toBeNull();
+    expect(chartSummaryBox!.x).toBeGreaterThanOrEqual(chartPanelBox!.x);
     await expect(page.getByText("Deliberate partial-failure evidence.")).toBeVisible();
     await page.getByText("Method assumptions and provenance").click();
     await expect(page.getByText(/Core 0.2.0/)).toBeVisible();
@@ -439,7 +454,12 @@ test.describe("reports and grounded chat", () => {
     await expect(page.getByLabel("Question about report")).toHaveValue(/greatest influence/);
     await page.getByRole("button", { name: "Send question" }).click();
     await expect(page.getByText(/x1 is greatest/)).toBeVisible();
-    await expect(page.getByText(/monte_carlo\.fact:strongest_input/)).toBeVisible();
+    await expect(page.getByText("Source: Monte Carlo · Strongest Input")).toBeVisible();
+    await expect(page.getByText(/analysis\.fact:monte_carlo\.strongest_input/)).toHaveCount(0);
+    await testInfo.attach("report-evidence-ui", {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: "image/png",
+    });
   });
 
   test("shared reports are read-only and hide owner chat", async ({ page }) => {

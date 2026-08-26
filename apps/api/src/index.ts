@@ -52,7 +52,7 @@ import {
   deterministicEquationMarkdown,
   MODEL_UNDERSTANDING_SYSTEM_PROMPT,
   referenceModelContext,
-  REPORT_CHAT_SYSTEM_PROMPT,
+  reportChatSystemPrompt,
 } from "./ai-prompts";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
 import { ComputeRequestError, failRunTask, processRunTask, requeueRunTask } from "./compute";
@@ -2823,7 +2823,12 @@ app.post(
       ...(chatProviderOptions ? { providerOptions: chatProviderOptions } : {}),
       maxRetries: 0,
       timeout: REPORT_CHAT_TIMEOUT_MS,
-      system: REPORT_CHAT_SYSTEM_PROMPT,
+      system: reportChatSystemPrompt(
+        run.tasks.map((task) => ({
+          analysis: task.analysisKey,
+          status: task.status,
+        })),
+      ),
       messages: [
         ...history.results
           .reverse()

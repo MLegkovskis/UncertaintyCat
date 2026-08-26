@@ -351,7 +351,17 @@ export const EXAMPLE_CATALOG = [
       "sobol"
     ],
     "source": "import openturns as ot\nimport numpy as np\n\n# Deflection of a Tube Model\ndef function_of_interest(X):\n    F, L, a, De, di, E = X\n    I = np.pi * (De**4 - di**4) / 32\n    b = L - a\n    deflection = -F * a**2 * (L - a) ** 2 / (3 * E * L * I)\n    return [deflection]\n\nmodel = ot.PythonFunction(6, 1, function_of_interest)\n\n# Problem definition for the Tube Deflection Model\n# Define distributions with corrected descriptions\nF = ot.Normal(1.0, 0.1)  # Force\nF.setDescription([\"F\"])\n\nL = ot.Normal(1.5, 0.01)  # Length\nL.setDescription([\"L\"])\n\na = ot.Uniform(0.7, 1.2)  # Position of force\na.setDescription([\"a\"])\n\nDe = ot.Uniform(0.75, 0.85)  # External diameter\nDe.setDescription([\"De\"])\n\ndi = ot.Uniform(0.09, 0.11)  # Internal diameter\ndi.setDescription([\"di\"])\n\nE = ot.Normal(200000, 2000)  # Young's modulus\nE.setDescription([\"E\"])\n\n# Define joint distribution (independent)\nproblem = ot.JointDistribution([\n    F,\n    L,\n    a,\n    De,\n    di,\n    E\n])\n",
-    "sha256": "4a6f92bf88b2bace5fc96d7adfc1f67b84747065d7b16b8991d90b4d55d55403"
+    "sha256": "4a6f92bf88b2bace5fc96d7adfc1f67b84747065d7b16b8991d90b4d55d55403",
+    "equations": [
+      {
+        "outputName": "Second moment of area",
+        "latex": "I = \\frac{\\pi}{32}\\left(D_e^4-d_i^4\\right)"
+      },
+      {
+        "outputName": "Deflection",
+        "latex": "y = -\\frac{F a^2 \\left(L-a\\right)^2}{3 E L I}"
+      }
+    ]
   },
   {
     "id": "undamped_oscillator",

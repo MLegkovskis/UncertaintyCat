@@ -124,7 +124,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
         {messages.map((message, index) => (
           <div className={`chat-message ${message.role}`} key={index}>
             {message.role === "user" ? <User /> : <Bot />}
-            {message.content ? <Markdown>{message.content}</Markdown> : <div className="assistant-placeholder"><span /><span /><span /> Analysing persisted evidence…</div>}
+            {message.content ? <Markdown evidenceCitations>{message.content}</Markdown> : <div className="assistant-placeholder"><span /><span /><span /> Analysing persisted evidence…</div>}
           </div>
         ))}
       </div>
