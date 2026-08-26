@@ -1,8 +1,8 @@
 import { Bot, Send, User } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { api, readTextStream } from "../api";
-import { REPORT_CHAT_AI_MODEL_LABEL } from "@uncertaintycat/contracts";
 import { Markdown } from "./Markdown";
 
 interface Message {
@@ -17,6 +17,12 @@ export function ChatPanel({ reportId }: { reportId: string }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
+  const session = useQuery({
+    queryKey: ["session-policy"],
+    queryFn: api.session,
+  });
+  const aiModelLabel =
+    session.data?.ai?.reportChat.label ?? "Configured AI provider";
 
   useEffect(() => {
     let active = true;
@@ -74,7 +80,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
     } catch (caught) {
       setError(
         caught instanceof DOMException && caught.name === "AbortError"
-          ? "Workers AI did not answer within 50 seconds. Please retry; failed requests are not charged."
+          ? "The AI provider did not answer within 50 seconds. Please retry; failed requests are not charged."
           : caught instanceof Error
             ? caught.message
             : "Chat failed. Please retry; failed requests are not charged.",
@@ -97,7 +103,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
           <small>
             Answers use stored facts and cite their analysis source.
           </small>
-          <small>{REPORT_CHAT_AI_MODEL_LABEL}</small>
+          <small>{aiModelLabel}</small>
         </div>
       </div>
       <div className="chat-messages" aria-live="polite" aria-busy={sending}>
@@ -146,7 +152,7 @@ export function ChatPanel({ reportId }: { reportId: string }) {
         </button>
       </div>
       <small className="ai-label">
-        {REPORT_CHAT_AI_MODEL_LABEL}. AI-generated explanation; verify decisions against the numerical tables.
+        {aiModelLabel}. AI-generated explanation; verify decisions against the numerical tables.
       </small>
     </aside>
   );

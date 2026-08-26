@@ -1,15 +1,8 @@
-export const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.3.0";
-export const MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS = 8_000;
-export const MODEL_UNDERSTANDING_FALLBACK_TIMEOUT_MS = 8_000;
+export const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.4.0";
+export const MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS = 12_000;
+export const MODEL_UNDERSTANDING_FALLBACK_TIMEOUT_MS = 15_000;
 export const REPORT_CHAT_TIMEOUT_MS = 45_000;
 export const MODEL_UNDERSTANDING_LEASE_MS = 30_000;
-
-export const REPORT_CHAT_LOW_LATENCY_AI_SETTINGS = {
-  reasoning_effort: null,
-  chat_template_kwargs: {
-    enable_thinking: false,
-  },
-} as const;
 
 export function generationLeaseIsActive(
   status: string | undefined,
@@ -30,8 +23,8 @@ export function generationFailure(error: unknown) {
   return {
     code: timedOut ? "model_understanding_timeout" : "model_understanding_failed",
     message: timedOut
-      ? "Workers AI did not answer in time. Please retry; failed requests are not charged."
-      : "Workers AI could not create the explanation. Please retry; failed requests are not charged.",
+      ? "The AI provider did not answer in time. Please retry; failed requests are not charged."
+      : "The AI provider could not create the explanation. Please retry; failed requests are not charged.",
     diagnostic: raw.slice(0, 2_000),
     status: timedOut ? 504 : 502,
   } as const;

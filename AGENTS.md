@@ -11,7 +11,7 @@
 
 - `uncertaintycat_core/`: framework-independent Python model validation, strict contracts, orchestration, and analysis plugins.
 - `services/compute/`: private FastAPI/CLI adapter used inside the Cloudflare Sandbox boundary.
-- `apps/api/`: Hono Cloudflare Worker, Better Auth, D1/R2/Queue ownership and lifecycle, exports, sharing, and Workers AI.
+- `apps/api/`: Hono Cloudflare Worker, Better Auth, D1/R2/Queue ownership and lifecycle, exports, sharing, and the deployment-selectable Groq/Workers AI adapter.
 - `apps/web/`: React/Vite UI, route-level auth gate, project dashboard, direct-analysis workspace, reduction/surrogate/distribution studios, reports, and browser tests.
 - `packages/contracts/`: shared Zod schemas, API client, types, and generated reference-model catalog.
 - `examples/`: canonical executable reference models used to generate the authenticated catalog.
@@ -60,5 +60,5 @@ Run `npm run test:e2e:full-stack` for changes that cross the browser, Worker, D1
 
 - Flag any route or handler that permits unauthenticated access outside the explicit public allowlist.
 - Flag numerical behavior that bypasses OpenTURNS without a documented technical reason and benchmark evidence.
-- Flag AI text presented as computed evidence, unbounded AI tools, or model source sent to Workers AI.
+- Flag AI text presented as computed evidence, unbounded AI tools, or model source sent to any AI provider.
 - Flag mutable provenance, destructive migration edits, non-finite JSON, missing ownership predicates, exposed secrets, or reduced CI coverage.

@@ -5,6 +5,8 @@ export interface Env {
   ARTIFACTS: R2Bucket;
   RUN_QUEUE: Queue<RunTaskMessage>;
   AI?: Ai;
+  AI_PROVIDER?: string;
+  GROQ_API_KEY?: string;
   ASSETS?: Fetcher;
   SANDBOX?: DurableObjectNamespace<Sandbox>;
   COMPUTE_SERVICE_URL?: string;

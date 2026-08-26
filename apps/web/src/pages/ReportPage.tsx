@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  ArrowRight,
   Check,
   Code2,
   Download,
@@ -153,12 +154,14 @@ function MorrisReduction({
           <Check />
           <div>
             <strong>Reduced model created</strong>
-            <p>The original model is unchanged. Continue with this explicit reduced model in the current project, or copy its complete Python definition into a new project.</p>
+            <p>The original model is unchanged. Choose where the validated reduced model should be analysed next.</p>
+          </div>
+          <div className="model-handoff-actions">
+            <Link className="model-handoff-option primary-option" to={`/studies/${projectId}/workspace?sourceModel=${createdModelId}`}><span>Continue in this project</span><strong>Start a new analysis with the reduced model</strong><small>Keep the original and reduced versions together in this project.</small><ArrowRight /></Link>
+            <Link className="model-handoff-option" to={`/studies?new=1&sourceModel=${encodeURIComponent(createdModelId)}&suggestedName=${encodeURIComponent(`${displayName} analysis`)}`}><span>Separate investigation</span><strong>Start a new project with the reduced model</strong><small>Copy the complete validated Python model and its provenance into a new project.</small><ArrowRight /></Link>
           </div>
           <div className="reduced-model-actions">
-            <Link className="button primary" to={`/studies/${projectId}/workspace?sourceModel=${createdModelId}`}>Analyse reduced model</Link>
             <button className="button secondary" type="button" disabled={!createdDefinition.data?.definition.source} onClick={() => void navigator.clipboard.writeText(createdDefinition.data?.definition.source ?? "")}>Copy Python model</button>
-            <Link className="button secondary" to="/studies?new=1">Create another project</Link>
           </div>
           {createdDefinition.data?.definition.source && <pre><code>{createdDefinition.data.definition.source}</code></pre>}
         </div>

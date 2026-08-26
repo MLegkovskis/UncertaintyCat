@@ -43,6 +43,7 @@ jobs:
         run: node .github/scripts/prepare-cloudflare-config.mjs
         env:
           CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
+          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
       - name: Validate required deployment secrets
         shell: bash
         env:
@@ -50,11 +51,18 @@ jobs:
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
           CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$BETTER_AUTH_SECRET"
           test -n "$CLOUDFLARE_ACCESS_CLIENT_ID"
           test -n "$CLOUDFLARE_ACCESS_CLIENT_SECRET"
+          case "${AI_PROVIDER:-groq}" in
+            groq) test -n "$GROQ_API_KEY" ;;
+            cloudflare) ;;
+            *) echo "AI_PROVIDER must be groq or cloudflare" >&2; exit 1 ;;
+          esac
       - name: Apply forward-only D1 migrations
         run: npm exec --workspace @uncertaintycat/api -- wrangler d1 migrations apply uncertaintycat-production --remote --config wrangler.generated.jsonc
         env:
@@ -66,12 +74,16 @@ jobs:
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
           CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           umask 077
           {
             printf 'BETTER_AUTH_SECRET=%s\n' "$BETTER_AUTH_SECRET"
             printf 'CLOUDFLARE_ACCESS_CLIENT_ID=%s\n' "$CLOUDFLARE_ACCESS_CLIENT_ID"
             printf 'CLOUDFLARE_ACCESS_CLIENT_SECRET=%s\n' "$CLOUDFLARE_ACCESS_CLIENT_SECRET"
+            if test -n "$GROQ_API_KEY"; then
+              printf 'GROQ_API_KEY=%s\n' "$GROQ_API_KEY"
+            fi
           } > apps/api/.production.secrets
       - name: Deploy Worker, assets, queue consumer, and compute sandbox
         run: npm exec --workspace @uncertaintycat/api -- wrangler deploy --config wrangler.generated.jsonc --secrets-file .production.secrets

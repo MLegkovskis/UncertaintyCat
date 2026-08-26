@@ -122,6 +122,21 @@ test.describe("model studio", () => {
     await expect(page.getByRole("heading", { name: "Fresh engineering project" })).toBeVisible();
   });
 
+  test("requires exact confirmation before permanently deleting a project", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.goto("/studies");
+    await page.getByRole("button", { name: `Delete ${project.name}` }).click();
+    await expect(page.getByRole("dialog", { name: `Delete “${project.name}”?` })).toBeVisible();
+    const remove = page.getByRole("button", { name: "Delete project permanently" });
+    await expect(remove).toBeDisabled();
+    await page.getByLabel("Project name confirmation").fill(`${project.name} typo`);
+    await expect(remove).toBeDisabled();
+    await page.getByLabel("Project name confirmation").fill(project.name);
+    await remove.click();
+    await expect(page.getByText(project.name)).toHaveCount(0);
+    await expect(page.getByText("No projects yet")).toBeVisible();
+  });
+
   test("keeps the validated understanding header inside its panel", async ({ page }, testInfo) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     await page.setViewportSize({ width: 1920, height: 1200 });
@@ -192,7 +207,7 @@ test.describe("model studio", () => {
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
     await expect(
-      page.getByText("An existing Workers AI generation is finishing…"),
+      page.getByText("An existing AI generation is finishing…"),
     ).toBeVisible();
     await expect(
       page.getByText("The existing generation completed once."),
@@ -219,7 +234,7 @@ test.describe("model studio", () => {
           body: JSON.stringify({
             error: {
               message:
-                "Workers AI did not answer in time. Please retry; failed requests are not charged.",
+                "The AI provider did not answer in time. Please retry; failed requests are not charged.",
             },
           }),
         });
@@ -319,10 +334,24 @@ test.describe("model studio", () => {
     await page.getByRole("button", { name: "Build GPR candidate" }).click();
     await expect(page.getByText("Meets default")).toBeVisible();
     await page.getByRole("button", { name: "Promote validated surrogate" }).click();
-    await page.getByRole("link", { name: /Analyse this surrogate/ }).click();
+    await expect(page.getByRole("link", { name: /Start a new project with this surrogate/ })).toHaveAttribute("href", /sourceModel=model-1.*surrogate=surrogate-1/);
+    await page.getByRole("link", { name: /Start a new analysis with this surrogate/ }).click();
     await expect(page.getByText("Promoted surrogate selected in Surrogate Studio")).toBeVisible();
     await page.getByRole("button", { name: "Run analyses" }).click();
     await expect.poll(() => runBody?.surrogateModelId).toBe("surrogate-1");
+  });
+
+  test("copies a promoted surrogate and its exact source model into a new project", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.goto("/studies/project-1/surrogates");
+    await page.getByRole("button", { name: "Build GPR candidate" }).click();
+    await page.getByRole("button", { name: "Promote validated surrogate" }).click();
+    await page.getByRole("link", { name: /Start a new project with this surrogate/ }).click();
+    await expect(page.getByRole("heading", { name: "Start a new project with this surrogate." })).toBeVisible();
+    await expect(page.getByLabel("Project name")).toHaveValue(/surrogate study/);
+    await page.getByRole("button", { name: "Create project with surrogate" }).click();
+    await expect(page).toHaveURL(/\/studies\/project-created-2\/workspace\?sourceModel=.*&surrogate=surrogate-copied/);
+    await expect(page.getByText("Promoted surrogate selected in Surrogate Studio")).toBeVisible();
   });
 
   test("builds and validates a Gaussian-process surrogate from empirical data", async ({ page }) => {
@@ -481,7 +510,8 @@ test.describe("dimensionality screening", () => {
     await page.getByText(/I confirm these explicit fixed values/).click();
     await page.getByRole("button", { name: "Create derived version" }).click();
     await expect(page.getByText("Reduced model created")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Analyse reduced model" })).toHaveAttribute("href", "/studies/project-1/workspace?sourceModel=model-reduced");
+    await expect(page.getByRole("link", { name: /Start a new analysis with the reduced model/ })).toHaveAttribute("href", "/studies/project-1/workspace?sourceModel=model-reduced");
+    await expect(page.getByRole("link", { name: /Start a new project with the reduced model/ })).toHaveAttribute("href", /\/studies\?new=1&sourceModel=model-reduced/);
   });
 });
 

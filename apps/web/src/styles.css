@@ -1817,6 +1817,29 @@ tbody tr:hover td {
   padding: 17px 19px;
   border-bottom: 1px solid var(--line);
 }
+.project-row {
+  grid-template-columns: 30px minmax(0, 1fr) auto 36px 22px;
+}
+.project-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.project-row-main strong,
+.project-row-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-row-open {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.project-row-open svg,
+.project-row .icon-button svg {
+  width: 16px;
+}
 .project-row:last-child,
 .saved-model-row:last-child {
   border-bottom: 0;
@@ -1842,6 +1865,39 @@ tbody tr:hover td {
   color: var(--muted);
   font-size: 10px;
 }
+.dialog-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(10 20 32 / 58%);
+  backdrop-filter: blur(4px);
+}
+.confirmation-dialog {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  width: min(560px, 100%);
+  padding: 28px;
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--line));
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 35%);
+}
+.confirmation-dialog h2,
+.confirmation-dialog p { margin: 0; }
+.confirmation-dialog p { color: var(--muted); line-height: 1.6; }
+.confirmation-dialog label { display: grid; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.confirmation-dialog input { min-height: 42px; padding: 0 11px; color: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.dialog-close { position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 34px; height: 34px; color: var(--muted); border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
+.dialog-close:hover { color: inherit; background: var(--panel-2); }
+.dialog-close svg { width: 17px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.danger-copy { color: var(--danger); }
+.button.danger-button { color: white; border-color: var(--danger); background: var(--danger); }
+.button.danger-button:disabled { opacity: 0.45; }
 .compact-activity {
   max-width: 1180px;
 }
@@ -3815,6 +3871,30 @@ tbody tr:hover td {
 .reduced-model-result p { margin: 6px 0 0; color: var(--muted); font-size: 10px; }
 .reduced-model-result pre { grid-column: 1 / -1; max-height: 420px; overflow: auto; padding: 16px; border: 1px solid var(--line); background: var(--panel); white-space: pre-wrap; }
 .reduced-model-actions { display: flex; flex-wrap: wrap; gap: 8px; grid-column: 1 / -1; }
+.model-handoff-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+.model-handoff-option {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  min-height: 132px;
+  padding: 18px 48px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.model-handoff-option:hover { border-color: var(--cyan); background: var(--panel-2); }
+.model-handoff-option.primary-option { border-color: color-mix(in srgb, var(--success) 55%, var(--line)); }
+.model-handoff-option > span { color: var(--cyan); font: 700 8px var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; }
+.model-handoff-option > strong { font-size: 13px; line-height: 1.35; }
+.model-handoff-option > small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.model-handoff-option > svg { position: absolute; top: 18px; right: 17px; width: 17px; color: var(--cyan); }
+.promoted-next-step .model-handoff-actions { margin-top: 4px; }
 
 /* Data-driven surrogate path */
 .source-choice {
@@ -3934,6 +4014,7 @@ tbody tr:hover td {
   .surrogate-example-data { grid-template-columns: auto 1fr; }
   .surrogate-example-data > .button { grid-column: 1 / -1; }
   .surrogate-metrics { grid-template-columns: 1fr 1fr; }
+  .model-handoff-actions { grid-template-columns: 1fr; }
 }
 
 @media print {

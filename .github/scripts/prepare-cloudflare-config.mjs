@@ -7,15 +7,20 @@ if (!databaseId || !/^[0-9a-f-]{36}$/i.test(databaseId)) {
     "CLOUDFLARE_D1_DATABASE_ID must be a valid D1 database UUID.",
   );
 }
+const aiProvider = (process.env.AI_PROVIDER?.trim().toLowerCase() || "groq");
+if (!["groq", "cloudflare"].includes(aiProvider)) {
+  throw new Error("AI_PROVIDER must be either 'groq' or 'cloudflare'.");
+}
 
 const source = resolve("apps/api/wrangler.production.jsonc");
 const target = resolve("apps/api/wrangler.generated.jsonc");
 const sourceText = await readFile(source, "utf8");
 const config = JSON.parse(sourceText.replace(/,\s*([}\]])/g, "$1"));
 config.d1_databases[0].database_id = databaseId;
+config.vars.AI_PROVIDER = aiProvider;
 await writeFile(target, `${JSON.stringify(config, null, 2)}\n`, {
   mode: 0o600,
 });
 console.log(
-  "Prepared production Wrangler configuration with the configured D1 binding.",
+  `Prepared production Wrangler configuration with D1 and AI provider '${aiProvider}'.`,
 );

@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import {
+  copySurrogateSchema,
   createModelVersionSchema,
   createDataSurrogateSchema,
   createProjectSchema,
@@ -8,9 +9,6 @@ import {
   createSurrogateSchema,
   distributionFitSchema,
   EXAMPLE_CATALOG,
-  MODEL_UNDERSTANDING_AI_MODEL_ID,
-  MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
-  REPORT_CHAT_AI_MODEL_ID,
   type AnalysisCatalogEntry,
   type Dataset,
   type DataSurrogateModel,
@@ -31,7 +29,6 @@ import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
-import { createWorkersAI } from "workers-ai-provider";
 
 import { createAuth, identityFor } from "./auth";
 import {
@@ -41,10 +38,15 @@ import {
   MODEL_UNDERSTANDING_LEASE_MS,
   MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS,
   MODEL_UNDERSTANDING_PROMPT_VERSION,
-  REPORT_CHAT_LOW_LATENCY_AI_SETTINGS,
   REPORT_CHAT_TIMEOUT_MS,
   runSequentialFallback,
 } from "./ai-config";
+import {
+  aiProviderOptions,
+  aiRuntime,
+  createAiLanguageModel,
+  modelUnderstandingCacheVersion,
+} from "./ai-provider";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
 import { ComputeRequestError, failRunTask, processRunTask, requeueRunTask } from "./compute";
 import {
@@ -229,13 +231,29 @@ app.get("/health", (c) =>
 
 app.get("/api/v1/session", async (c) => {
   const identity = await identityFor(c);
+  const ai = aiRuntime(c.env);
   const providers =
     c.env.CLOUDFLARE_ACCESS_CLIENT_ID &&
     c.env.CLOUDFLARE_ACCESS_CLIENT_SECRET &&
     c.env.CLOUDFLARE_ACCESS_ISSUER
       ? (["cloudflare"] as const)
       : [];
-  return c.json({ identity, providers });
+  return c.json({
+    identity,
+    providers,
+    ai: {
+      provider: ai.provider,
+      configured: ai.configured,
+      modelUnderstanding: {
+        modelId: ai.models.modelUnderstanding.modelId,
+        label: ai.models.modelUnderstanding.label,
+      },
+      reportChat: {
+        modelId: ai.models.reportChat.modelId,
+        label: ai.models.reportChat.label,
+      },
+    },
+  });
 });
 
 app.get("/api/v1/analyses/catalog", async (c) => {
@@ -492,6 +510,79 @@ app.post(
     );
   },
 );
+
+app.delete("/api/v1/projects/:projectId", async (c) => {
+  const identity = authenticatedIdentity(c);
+  const projectId = c.req.param("projectId");
+  const project = await c.env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
+  )
+    .bind(projectId, identity.ownerId)
+    .first<{ id: string }>();
+  if (!project)
+    return jsonError(c, 404, "project_not_found", "Project not found.");
+
+  const [artifactRows, activeRunRows] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT source_key AS object_key FROM model_versions WHERE project_id = ?
+       UNION ALL
+       SELECT object_key FROM datasets WHERE project_id = ?
+       UNION ALL
+       SELECT object_key FROM surrogate_models
+         WHERE project_id = ? AND object_key IS NOT NULL
+       UNION ALL
+       SELECT object_key FROM data_surrogate_models WHERE project_id = ?`,
+    )
+      .bind(projectId, projectId, projectId, projectId)
+      .all<{ object_key: string }>(),
+    c.env.DB.prepare(
+      `SELECT id FROM runs WHERE project_id = ? AND owner_id = ?
+       AND status IN ('queued', 'running')`,
+    )
+      .bind(projectId, identity.ownerId)
+      .all<{ id: string }>(),
+  ]);
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `DELETE FROM idempotency_keys
+       WHERE owner_id = ? AND resource_type = 'run'
+         AND resource_id IN (SELECT id FROM runs WHERE project_id = ?)`,
+    ).bind(identity.ownerId, projectId),
+    c.env.DB.prepare(
+      "DELETE FROM projects WHERE id = ? AND owner_id = ?",
+    ).bind(projectId, identity.ownerId),
+  ]);
+  await Promise.all(
+    activeRunRows.results.map((run) => destroyRunSandbox(c.env, run.id)),
+  );
+  const artifactKeys = [
+    ...new Set(
+      artifactRows.results
+        .map((row) => row.object_key)
+        .filter((key): key is string => Boolean(key)),
+    ),
+  ];
+  let deletedArtifactCount = 0;
+  if (artifactKeys.length > 0) {
+    try {
+      await c.env.ARTIFACTS.delete(artifactKeys);
+      deletedArtifactCount = artifactKeys.length;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "project_artifact_cleanup_failed",
+          requestId: c.get("requestId"),
+          projectId,
+          artifactCount: artifactKeys.length,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+  c.header("Cache-Control", "private, no-store");
+  return c.json({ deletedProjectId: projectId, deletedArtifactCount });
+});
 
 app.get("/api/v1/projects/:projectId/datasets", async (c) => {
   const identity = authenticatedIdentity(c);
@@ -1645,6 +1736,119 @@ app.post(
   },
 );
 
+app.post(
+  "/api/v1/surrogates/:surrogateId/copy",
+  zValidator("json", copySurrogateSchema),
+  async (c) => {
+    const identity = authenticatedIdentity(c);
+    const input = c.req.valid("json");
+    const source = await c.env.DB.prepare(
+      `SELECT ${surrogateColumns} FROM surrogate_models
+       WHERE id = ? AND owner_id = ? AND status = 'promoted'`,
+    )
+      .bind(c.req.param("surrogateId"), identity.ownerId)
+      .first<SurrogateRow>();
+    if (!source?.object_key)
+      return jsonError(
+        c,
+        404,
+        "surrogate_not_found",
+        "Promoted surrogate not found.",
+      );
+    const target = await c.env.DB.prepare(
+      `SELECT m.id, m.project_id, m.source_hash
+       FROM model_versions m JOIN projects p ON p.id = m.project_id
+       WHERE m.id = ? AND m.project_id = ? AND p.owner_id = ?`,
+    )
+      .bind(
+        input.targetModelVersionId,
+        input.targetProjectId,
+        identity.ownerId,
+      )
+      .first<{ id: string; project_id: string; source_hash: string }>();
+    if (!target)
+      return jsonError(
+        c,
+        404,
+        "target_model_not_found",
+        "Target model version not found in the selected project.",
+      );
+    if (target.source_hash !== source.source_model_hash)
+      return jsonError(
+        c,
+        409,
+        "surrogate_source_mismatch",
+        "The target model does not match the surrogate's validated source hash.",
+      );
+    const artifact = await c.env.ARTIFACTS.get(source.object_key);
+    if (!artifact)
+      return jsonError(
+        c,
+        500,
+        "surrogate_artifact_missing",
+        "The promoted surrogate artifact is missing.",
+      );
+
+    const id = crypto.randomUUID();
+    const objectKey = `surrogates/${identity.ownerId}/${target.project_id}/${id}.xml`;
+    const timestamp = now();
+    await c.env.ARTIFACTS.put(objectKey, await artifact.arrayBuffer(), {
+      httpMetadata: { contentType: "application/xml" },
+      customMetadata: {
+        ...artifact.customMetadata,
+        copiedFromSurrogateId: source.id,
+      },
+    });
+    try {
+      await c.env.DB.batch([
+        c.env.DB.prepare(
+          `INSERT INTO surrogate_models
+           (id, project_id, owner_id, source_model_version_id,
+            source_model_hash, method, plugin_version, openturns_version,
+            status, validation_json, acknowledgement_json, object_key,
+            created_at, promoted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'promoted', ?, ?, ?, ?, ?)`,
+        ).bind(
+          id,
+          target.project_id,
+          identity.ownerId,
+          target.id,
+          target.source_hash,
+          source.method,
+          source.plugin_version,
+          source.openturns_version,
+          source.validation_json,
+          source.acknowledgement_json,
+          objectKey,
+          timestamp,
+          timestamp,
+        ),
+        c.env.DB.prepare(
+          "UPDATE projects SET updated_at = ? WHERE id = ? AND owner_id = ?",
+        ).bind(timestamp, target.project_id, identity.ownerId),
+      ]);
+    } catch (error) {
+      await c.env.ARTIFACTS.delete(objectKey);
+      throw error;
+    }
+    return c.json(
+      {
+        surrogate: surrogatePayload({
+          ...source,
+          id,
+          project_id: target.project_id,
+          source_model_version_id: target.id,
+          source_model_hash: target.source_hash,
+          object_key: objectKey,
+          created_at: timestamp,
+          promoted_at: timestamp,
+        }),
+      },
+      201,
+    );
+  },
+);
+
 app.get("/api/v1/surrogates/:surrogateId/artifact", async (c) => {
   const identity = authenticatedIdentity(c);
   const row = await c.env.DB.prepare(
@@ -1693,6 +1897,10 @@ function understandingPayload(row: UnderstandingRow) {
 
 app.get("/api/v1/model-versions/:modelVersionId/understanding", async (c) => {
   const identity = authenticatedIdentity(c);
+  const promptVersion = modelUnderstandingCacheVersion(
+    c.env,
+    MODEL_UNDERSTANDING_PROMPT_VERSION,
+  );
   const definition = await loadModelDefinition(
     c.env,
     c.req.param("modelVersionId"),
@@ -1705,7 +1913,7 @@ app.get("/api/v1/model-versions/:modelVersionId/understanding", async (c) => {
             status, content, error, created_at, updated_at
      FROM model_understandings WHERE model_hash = ? AND prompt_version = ?`,
   )
-    .bind(definition.modelVersion.sourceHash, MODEL_UNDERSTANDING_PROMPT_VERSION)
+    .bind(definition.modelVersion.sourceHash, promptVersion)
     .first<UnderstandingRow>();
   c.header("Cache-Control", "private, no-store");
   return c.json({ understanding: row ? understandingPayload(row) : null });
@@ -1717,12 +1925,17 @@ app.post(
   zValidator("json", understandingSchema),
   async (c) => {
     const identity = authenticatedIdentity(c);
-    if (!c.env.AI)
+    const runtime = aiRuntime(c.env);
+    const promptVersion = modelUnderstandingCacheVersion(
+      c.env,
+      MODEL_UNDERSTANDING_PROMPT_VERSION,
+    );
+    if (!runtime.configured)
       return jsonError(
         c,
         503,
         "ai_unavailable",
-        "Workers AI is unavailable in this local environment.",
+        `${runtime.provider === "groq" ? "Groq" : "Cloudflare Workers AI"} is unavailable in this environment.`,
       );
     const definition = await loadModelDefinition(
       c.env,
@@ -1737,7 +1950,7 @@ app.post(
               status, content, error, created_at, updated_at
        FROM model_understandings WHERE model_hash = ? AND prompt_version = ?`,
     )
-      .bind(definition.modelVersion.sourceHash, MODEL_UNDERSTANDING_PROMPT_VERSION)
+      .bind(definition.modelVersion.sourceHash, promptVersion)
       .first<UnderstandingRow>();
     if (!input.regenerate && cached?.status === "succeeded" && cached.content) {
       c.header("Content-Type", "text/markdown; charset=utf-8");
@@ -1791,8 +2004,8 @@ app.post(
         understandingId,
         definition.modelVersion.id,
         definition.modelVersion.sourceHash,
-        MODEL_UNDERSTANDING_PROMPT_VERSION,
-        MODEL_UNDERSTANDING_AI_MODEL_ID,
+        promptVersion,
+        runtime.models.modelUnderstanding.modelId,
         timestamp,
         timestamp,
         staleBefore,
@@ -1806,7 +2019,7 @@ app.post(
       )
         .bind(
           definition.modelVersion.sourceHash,
-          MODEL_UNDERSTANDING_PROMPT_VERSION,
+          promptVersion,
         )
         .first<UnderstandingRow>();
       c.header("Cache-Control", "private, no-store");
@@ -1817,26 +2030,27 @@ app.post(
       );
     }
 
-    const workersai = createWorkersAI({ binding: c.env.AI });
     const generationStartedAt = Date.now();
     console.log(
       JSON.stringify({
         event: "model_understanding_generation_started",
         requestId: c.get("requestId"),
         understandingId,
-        aiModelId: MODEL_UNDERSTANDING_AI_MODEL_ID,
-        fallbackAiModelId: MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
+        aiProvider: runtime.provider,
+        aiModelId: runtime.models.modelUnderstanding.modelId,
+        fallbackAiModelId:
+          runtime.models.modelUnderstanding.fallbackModelId,
         regenerate: input.regenerate,
       }),
     );
     try {
       const attempts = [
         {
-          modelId: MODEL_UNDERSTANDING_AI_MODEL_ID,
+          modelId: runtime.models.modelUnderstanding.modelId,
           timeoutMs: MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS,
         },
         {
-          modelId: MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
+          modelId: runtime.models.modelUnderstanding.fallbackModelId,
           timeoutMs: MODEL_UNDERSTANDING_FALLBACK_TIMEOUT_MS,
         },
       ] as const;
@@ -1855,10 +2069,18 @@ app.post(
             );
           }
           try {
+            const providerOptions = aiProviderOptions(
+              runtime.provider,
+              "modelUnderstanding",
+            );
             const result = await generateText({
-              model: workersai(attempt.modelId, {
-                sessionAffinity: `understanding:${definition.modelVersion.sourceHash.slice(0, 48)}`,
-              }),
+              model: createAiLanguageModel(
+                c.env,
+                attempt.modelId,
+                `understanding:${definition.modelVersion.sourceHash.slice(0, 48)}`,
+                "modelUnderstanding",
+              ),
+              ...(providerOptions ? { providerOptions } : {}),
               maxOutputTokens: 240,
               maxRetries: 0,
               timeout: attempt.timeoutMs,
@@ -1885,7 +2107,7 @@ app.post(
             });
             const content = result.text.trim();
             if (!content)
-              throw new Error("Workers AI returned an empty explanation.");
+              throw new Error("The AI provider returned an empty explanation.");
             return {
               content,
               modelId: attempt.modelId,
@@ -1962,8 +2184,10 @@ app.post(
           event: "model_understanding_generation_failed",
           requestId: c.get("requestId"),
           understandingId,
-          aiModelId: MODEL_UNDERSTANDING_AI_MODEL_ID,
-          fallbackAiModelId: MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID,
+          aiProvider: runtime.provider,
+          aiModelId: runtime.models.modelUnderstanding.modelId,
+          fallbackAiModelId:
+            runtime.models.modelUnderstanding.fallbackModelId,
           durationMs: Date.now() - generationStartedAt,
           code: failure.code,
           error: failure.diagnostic,
@@ -2516,12 +2740,13 @@ app.post(
   zValidator("json", chatSchema),
   async (c) => {
     const identity = authenticatedIdentity(c);
-    if (!c.env.AI)
+    const runtime = aiRuntime(c.env);
+    if (!runtime.configured)
       return jsonError(
         c,
         503,
         "ai_unavailable",
-        "Workers AI is not configured.",
+        `${runtime.provider === "groq" ? "Groq" : "Cloudflare Workers AI"} is not configured.`,
       );
     const report = await c.env.DB.prepare(
       `SELECT reports.id, reports.run_id FROM reports JOIN runs ON runs.id = reports.run_id
@@ -2569,13 +2794,19 @@ app.post(
       )
       .run();
 
-    const workersai = createWorkersAI({ binding: c.env.AI });
     const chatStartedAt = Date.now();
+    const chatProviderOptions = aiProviderOptions(
+      runtime.provider,
+      "reportChat",
+    );
     const result = streamText({
-      model: workersai(REPORT_CHAT_AI_MODEL_ID, {
-        ...REPORT_CHAT_LOW_LATENCY_AI_SETTINGS,
-        sessionAffinity: `report:${report.id}`,
-      }),
+      model: createAiLanguageModel(
+        c.env,
+        runtime.models.reportChat.modelId,
+        `report:${report.id}`,
+        "reportChat",
+      ),
+      ...(chatProviderOptions ? { providerOptions: chatProviderOptions } : {}),
       maxRetries: 0,
       timeout: REPORT_CHAT_TIMEOUT_MS,
       system:
@@ -2754,7 +2985,8 @@ app.post(
               event: "report_chat_generation_succeeded",
               requestId: c.get("requestId"),
               reportId: report.id,
-              aiModelId: REPORT_CHAT_AI_MODEL_ID,
+              aiProvider: runtime.provider,
+              aiModelId: runtime.models.reportChat.modelId,
               durationMs: Date.now() - chatStartedAt,
               outputCharacters: text.length,
             }),
@@ -2767,7 +2999,8 @@ app.post(
             event: "report_chat_generation_failed",
             requestId: c.get("requestId"),
             reportId: report.id,
-            aiModelId: REPORT_CHAT_AI_MODEL_ID,
+            aiProvider: runtime.provider,
+            aiModelId: runtime.models.reportChat.modelId,
             durationMs: Date.now() - chatStartedAt,
             error: error instanceof Error ? error.message : String(error),
           }),

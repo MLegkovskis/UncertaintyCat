@@ -106,6 +106,35 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await page.getByRole("button", { name: "Build data-driven GPR" }).click();
   await expect(page.getByText("Data-driven GPR retained")).toBeVisible({ timeout: 7 * 60_000 });
 
+  // Exercise the promoted-surrogate handoff across the full Worker/D1/R2
+  // boundary, including the copied source hash and immutable XML artifact.
+  await page.getByRole("tab", { name: "From saved model" }).click();
+  await page.getByRole("button", { name: "Build GPR candidate" }).click();
+  await expect(page.getByText("Hold-out R²")).toBeVisible({ timeout: 7 * 60_000 });
+  const overrideAcknowledgement = page.getByText(
+    "I acknowledge the validation is below the default promotion guidance.",
+  );
+  if (await overrideAcknowledgement.isVisible()) {
+    await overrideAcknowledgement.click();
+    await page.getByLabel("Recorded reason").fill(
+      "Full-stack handoff test explicitly records the validation override.",
+    );
+  }
+  await page.getByRole("button", { name: "Promote validated surrogate" }).click();
+  const newProjectLink = page.getByRole("link", { name: /Start a new project with this surrogate/ });
+  await expect(newProjectLink).toBeVisible({ timeout: 120_000 });
+  await newProjectLink.click();
+  const handoffProjectName = `${studyName} surrogate handoff`;
+  await page.getByLabel("Project name").fill(handoffProjectName);
+  await page.getByRole("button", { name: "Create project with surrogate" }).click();
+  await expect(page.getByText("Promoted surrogate selected in Surrogate Studio")).toBeVisible({ timeout: 120_000 });
+
+  await page.goto("/studies");
+  await page.getByRole("button", { name: `Delete ${handoffProjectName}` }).click();
+  await page.getByLabel("Project name confirmation").fill(handoffProjectName);
+  await page.getByRole("button", { name: "Delete project permanently" }).click();
+  await expect(page.getByText(handoffProjectName)).toHaveCount(0);
+
   await page.goto("/studies");
   await expect(page.getByText(studyName)).toBeVisible();
   await expect(page.locator(".project-row")).toHaveCount(1);
@@ -121,5 +150,25 @@ test("retained-user journey persists a project, executes every plugin, and produ
   expect(runs.ok()).toBe(true);
   expect((await runs.json()).runs).toEqual(
     expect.arrayContaining([expect.objectContaining({ id: runId, status: "succeeded" })]),
+  );
+
+  // Finish with the destructive lifecycle boundary: explicit typed confirmation,
+  // D1 cascades, and authenticated absence of the deleted run/project.
+  await page.goto("/studies");
+  await page.getByRole("button", { name: `Delete ${studyName}` }).click();
+  await expect(page.getByRole("button", { name: "Delete project permanently" })).toBeDisabled();
+  await page.getByLabel("Project name confirmation").fill(studyName);
+  await page.getByRole("button", { name: "Delete project permanently" }).click();
+  await expect(page.getByText(studyName)).toHaveCount(0);
+
+  const projectsAfterDelete = await request.get("http://127.0.0.1:8787/api/v1/projects");
+  expect(projectsAfterDelete.ok()).toBe(true);
+  expect((await projectsAfterDelete.json()).projects).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ name: studyName })]),
+  );
+  const runsAfterDelete = await request.get("http://127.0.0.1:8787/api/v1/runs");
+  expect(runsAfterDelete.ok()).toBe(true);
+  expect((await runsAfterDelete.json()).runs).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: runId })]),
   );
 });

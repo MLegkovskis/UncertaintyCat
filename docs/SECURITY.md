@@ -56,26 +56,29 @@ where no human Cloudflare credential is available. Production configuration must
 
 ## AI boundary
 
-Workers AI receives the question, up to 20 prior conversation messages, and outputs from five read-only tools
+The deployment-selected Groq or Cloudflare model receives the question, up to 20 prior conversation messages, and outputs from five read-only tools
 covering the outline, scalar summary, bounded tables, series, and matrices. The system prompt forbids
 inventing or recalculating numbers, and numerical claims must cite an analysis key, field kind, and name.
 The model cannot run Python or mutate a report. This reduces, but does not eliminate, prompt-injection and
 misinterpretation risk; AI prose must remain visibly separate from numerical output.
 
-The orchestration is provided by the MIT-licensed Vercel AI SDK with Zod schemas and Cloudflare's open-source
-Workers AI provider. `workers-ai-provider` is pinned to the Workers-AI-only 3.1.14 build, and the production
-bundle contains no external model-provider endpoint. Workers AI uses a binding, not an API key.
+The orchestration is provided by the MIT-licensed Vercel AI SDK with Zod schemas. Groq is the default through
+the official `@ai-sdk/groq` provider and `https://api.groq.com/openai/v1`; Cloudflare remains selectable through
+the pinned `workers-ai-provider` and an account binding. `AI_PROVIDER` is validated at deployment, only the
+selected adapter executes, and provider/model identity is included in the Model Understanding cache key.
+Neither path receives Python source or private R2 objects. Groq's key is a Worker secret and is never returned
+by session discovery, written to logs, or included in browser assets.
 
 ## Secrets
 
 Real `.dev.vars` and environment files are ignored. The full-stack test configuration contains only
-non-secret synthetic values. In production use Cloudflare secrets for auth and OAuth. Never put secrets in
+non-secret synthetic values. In production use Cloudflare secrets for auth, OAuth, and `GROQ_API_KEY`. Never put secrets in
 checked-in Wrangler configuration, model source, R2 custom metadata, logs, report bundles, or client-side
 environment variables.
 
 ## Remaining launch work
 
-- delete/export-account and retention endpoints;
+- export-account and formal retention endpoints (project deletion is implemented);
 - share-link list/audit UI and security-event audit records;
 - CSRF/provider callback deployment tests;
 - content-security-policy tuning for CodeMirror and application assets;

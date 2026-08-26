@@ -1,15 +1,5 @@
 import { z } from "zod";
 
-export const MODEL_UNDERSTANDING_AI_MODEL_ID =
-  "@cf/meta/llama-3.2-3b-instruct";
-export const MODEL_UNDERSTANDING_AI_MODEL_LABEL =
-  "Cloudflare Workers AI · Llama 3.2 3B Instruct";
-export const MODEL_UNDERSTANDING_FALLBACK_AI_MODEL_ID =
-  "@cf/meta/llama-3.2-1b-instruct";
-export const REPORT_CHAT_AI_MODEL_ID = "@cf/zai-org/glm-4.7-flash";
-export const REPORT_CHAT_AI_MODEL_LABEL =
-  "Cloudflare Workers AI · GLM‑4.7‑Flash";
-
 export interface ExampleCatalogEntry {
   id: string;
   title: string;
@@ -120,6 +110,11 @@ export const promoteSurrogateSchema = z.object({
   reason: z.string().trim().max(1_000).default(""),
 });
 
+export const copySurrogateSchema = z.object({
+  targetProjectId: z.string().min(1),
+  targetModelVersionId: z.string().min(1),
+});
+
 export type AnalysisRequest = z.infer<typeof analysisRequestSchema>;
 export type CreateRun = z.infer<typeof createRunSchema>;
 export type CreateProject = z.infer<typeof createProjectSchema>;
@@ -130,6 +125,7 @@ export type CreateReducedModel = z.infer<typeof createReducedModelSchema>;
 export type CreateSurrogate = z.infer<typeof createSurrogateSchema>;
 export type CreateDataSurrogate = z.infer<typeof createDataSurrogateSchema>;
 export type PromoteSurrogate = z.infer<typeof promoteSurrogateSchema>;
+export type CopySurrogate = z.infer<typeof copySurrogateSchema>;
 
 export interface VariableMetadata {
   index: number;
@@ -277,6 +273,12 @@ export interface SessionPolicy {
     email?: string;
   };
   providers: Array<"cloudflare">;
+  ai: {
+    provider: "groq" | "cloudflare";
+    configured: boolean;
+    modelUnderstanding: { modelId: string; label: string };
+    reportChat: { modelId: string; label: string };
+  };
 }
 
 export interface ModelVersion {
@@ -530,6 +532,11 @@ export class ApiClient {
   listProjects = () => this.request<{ projects: Project[] }>("/projects");
   createProject = (input: CreateProject) =>
     this.request<{ project: Project }>("/projects", { method: "POST", body: JSON.stringify(input) });
+  deleteProject = (projectId: string) =>
+    this.request<{ deletedProjectId: string; deletedArtifactCount: number }>(
+      `/projects/${projectId}`,
+      { method: "DELETE" },
+    );
   createModel = (projectId: string, input: CreateModelVersion) =>
     this.request<{ modelVersion: ModelVersion }>(`/projects/${projectId}/models`, {
       method: "POST",
@@ -600,6 +607,11 @@ export class ApiClient {
     });
   promoteSurrogate = (surrogateId: string, input: PromoteSurrogate) =>
     this.request<{ surrogate: SurrogateModel }>(`/surrogates/${surrogateId}/promote`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  copySurrogate = (surrogateId: string, input: CopySurrogate) =>
+    this.request<{ surrogate: SurrogateModel }>(`/surrogates/${surrogateId}/copy`, {
       method: "POST",
       body: JSON.stringify(input),
     });

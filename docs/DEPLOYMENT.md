@@ -1,6 +1,6 @@
 # Deployment runbook
 
-This is the production runbook for [uncertaintycat.com](https://uncertaintycat.com). The application is delivered as one Cloudflare Worker origin with React assets, Hono APIs, Better Auth, D1, R2, Queues, Workers AI, and Cloudflare Sandbox compute.
+This is the production runbook for [uncertaintycat.com](https://uncertaintycat.com). The application is delivered as one Cloudflare Worker origin with React assets, Hono APIs, Better Auth, D1, R2, Queues, a selectable Groq/Workers AI adapter, and Cloudflare Sandbox compute.
 
 ## Production topology
 
@@ -10,7 +10,7 @@ This is the production runbook for [uncertaintycat.com](https://uncertaintycat.c
 - R2: immutable Python source, original private datasets, and promoted OpenTURNS XML artifacts.
 - Queue and dead-letter queue: analysis-task delivery and retry exhaustion.
 - Per-run Cloudflare Sandbox container: Python/OpenTURNS compute with egress disabled.
-- Workers AI binding: Model Understanding and report explanations; no external model-provider key.
+- AI adapter: Groq by default for Model Understanding and report explanations, with the Workers AI binding retained as a deployment-selectable fallback.
 
 Keeping one origin is intentional. If that changes, review `PUBLIC_WEB_ORIGIN`, `BETTER_AUTH_URL`, trusted origins, cookie policy, CORS, and the OIDC callback as one security change.
 
@@ -33,21 +33,32 @@ Required production secrets:
 - `CLOUDFLARE_API_TOKEN`;
 - `BETTER_AUTH_SECRET` with at least 32 random bytes;
 - `CLOUDFLARE_ACCESS_CLIENT_ID`;
-- `CLOUDFLARE_ACCESS_CLIENT_SECRET`.
+- `CLOUDFLARE_ACCESS_CLIENT_SECRET`;
+- `GROQ_API_KEY` when `AI_PROVIDER=groq` (the current default).
 
 Required repository variables:
 
 - `CLOUDFLARE_ACCOUNT_ID`;
-- `CLOUDFLARE_D1_DATABASE_ID`.
+- `CLOUDFLARE_D1_DATABASE_ID`;
+- `AI_PROVIDER`, exactly `groq` or `cloudflare` (unset also defaults to `groq`).
 
-Non-secret production origins and the Access issuer are checked into `apps/api/wrangler.production.jsonc`. `.github/scripts/prepare-cloudflare-config.mjs` creates an ignored deployment config containing the repository-provided D1 ID. Secrets are passed to Wrangler through an ephemeral permission-restricted file and removed in an `always()` step.
+Non-secret production origins, the default provider, and the Access issuer are checked into `apps/api/wrangler.production.jsonc`. `.github/scripts/prepare-cloudflare-config.mjs` creates an ignored deployment config containing the repository-provided D1 ID and validates the provider variable. Secrets are passed to Wrangler through an ephemeral permission-restricted file and removed in an `always()` step.
+
+Configure Groq without printing the key:
+
+```bash
+gh secret set GROQ_API_KEY < /secure/path/to/groq.txt
+gh variable set AI_PROVIDER --body groq
+```
+
+To return to the Cloudflare models, set `gh variable set AI_PROVIDER --body cloudflare` and redeploy an exact successful `main` SHA. Switching back requires no code change; the Workers AI binding remains deployed. Model Understanding cache keys include provider and model ID, so a switch cannot reuse prose produced by the previous provider.
 
 The deployment token should remain scoped to the UncertaintyCat Cloudflare account/zone and only the Workers Scripts, Containers, D1, R2, Queues, Workers AI, and Workers Routes capabilities needed by the workflow. Never store the global API key in GitHub or the Worker.
 
-Workers Logs are enabled at a 100% head sample rate. AI generation events contain request/record IDs, model ID,
+Workers Logs are enabled at a 100% head sample rate. AI generation events contain request/record IDs, provider, model ID,
 outcome, wall time, and output length only; they deliberately exclude prompts, model source, and persisted numerical
-evidence. Model Understanding requests should normally complete in a few seconds. Its primary and fallback models
-each have an eight-second deadline; exhausting both becomes an explicit retryable 504 and is not charged to the
+evidence. Groq uses `openai/gpt-oss-20b` for concise Model Understanding and `openai/gpt-oss-120b` for grounded report tool use; see Groq's [model catalog](https://console.groq.com/docs/models), [OpenAI-compatible endpoint](https://console.groq.com/docs/openai), and [local tool-calling guide](https://console.groq.com/docs/tool-use/local-tool-calling). Model Understanding requests should normally complete in a few seconds. Its primary and fallback attempts
+have 12- and 15-second deadlines; exhausting both becomes an explicit retryable 504 and is not charged to the
 successful-regeneration quota.
 
 ## Automatic delivery
@@ -91,7 +102,8 @@ For an authenticated manual release audit:
 - create a study, validate a reference model and custom model, and run a small multi-analysis suite;
 - observe queued/running/terminal states and a partial-failure report;
 - upload a small dataset, rank distributions, and retain a generated model draft;
-- build and promote a surrogate, then explicitly select it for a downstream run;
+- build and promote a surrogate, then test both the current-project and new-project handoffs;
+- create a disposable project and verify exact-name confirmation deletes its D1 records and R2 artifacts;
 - download and inspect the evidence bundle and exact source;
 - create and open a share link while authenticated, then expire or revoke it;
 - ask report chat for a numerical value and confirm the persisted-result citation;

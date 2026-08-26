@@ -13,10 +13,28 @@ test("production serves the static overview and rejects every private API surfac
 
   const session = await request.get("/api/v1/session");
   expect(session.ok()).toBe(true);
-  expect(await session.json()).toMatchObject({
+  const sessionBody = await session.json() as {
+    identity: { authenticated: boolean };
+    providers: string[];
+    ai: {
+      provider: "groq" | "cloudflare";
+      configured: boolean;
+      modelUnderstanding: { modelId: string };
+      reportChat: { modelId: string };
+    };
+  };
+  expect(sessionBody).toMatchObject({
     identity: { authenticated: false },
     providers: ["cloudflare"],
+    ai: { configured: true },
   });
+  if (sessionBody.ai.provider === "groq") {
+    expect(sessionBody.ai.modelUnderstanding.modelId).toBe("openai/gpt-oss-20b");
+    expect(sessionBody.ai.reportChat.modelId).toBe("openai/gpt-oss-120b");
+  } else {
+    expect(sessionBody.ai.modelUnderstanding.modelId).toMatch(/^@cf\//);
+    expect(sessionBody.ai.reportChat.modelId).toMatch(/^@cf\//);
+  }
   expect(session.headers()["set-cookie"] ?? "").not.toContain("uncertaintycat_guest");
 
   for (const path of [

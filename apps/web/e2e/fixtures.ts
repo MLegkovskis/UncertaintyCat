@@ -274,6 +274,12 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
         ? { ownerId: "user-1", authenticated: true, name: "Mark Legkovskis", email: "mlegkovskis@gmail.com" }
         : { ownerId: "", authenticated: false },
       providers: ["cloudflare"],
+      ai: {
+        provider: "groq",
+        configured: true,
+        modelUnderstanding: { modelId: "openai/gpt-oss-20b", label: "Groq · GPT-OSS 20B" },
+        reportChat: { modelId: "openai/gpt-oss-120b", label: "Groq · GPT-OSS 120B" },
+      },
     }),
   );
   await page.route("**/api/v1/analyses/catalog", (route) =>
@@ -296,6 +302,15 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       return;
     }
     await json(route, { projects });
+  });
+  await page.route(/\/api\/v1\/projects\/[^/]+$/, async (route) => {
+    if (route.request().method() !== "DELETE") {
+      await route.fallback();
+      return;
+    }
+    const projectId = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    projects = projects.filter((candidate) => candidate.id !== projectId);
+    await json(route, { deletedProjectId: projectId, deletedArtifactCount: 4 });
   });
   await page.route("**/api/v1/projects/*/models", async (route) => {
     if (route.request().method() === "POST") {
@@ -453,6 +468,20 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     const promoted = { ...surrogates[0], status: "promoted", artifact: { sha256: "abcdef", sizeBytes: 1024, resultType: "GaussianProcessRegressionResult" }, promotedAt: "2026-08-19T12:00:02Z" };
     surrogates = [promoted];
     await json(route, { surrogate: promoted });
+  });
+  await page.route(/\/api\/v1\/surrogates\/[^/]+\/copy$/, async (route) => {
+    const input = route.request().postDataJSON() as {
+      targetProjectId: string;
+      targetModelVersionId: string;
+    };
+    const copied = {
+      ...surrogates[0],
+      id: "surrogate-copied",
+      projectId: input.targetProjectId,
+      sourceModelVersionId: input.targetModelVersionId,
+      status: "promoted",
+    };
+    await json(route, { surrogate: copied }, 201);
   });
   await page.route(/\/api\/v1\/model-versions\/[^/]+\/derived-reduction$/, async (route) =>
     json(route, { modelVersion: { id: "model-reduced", projectId: project.id, version: 2, sourceKind: "python", displayName: "Morris-screened model", sourceHash: "fedcba", metadata: { ...modelMetadata, input_dimension: 2, inputs: modelMetadata.inputs.slice(0, 2) }, assessment: modelAssessment, parentVersionId: "model-1", derivation: { type: "morris_parametric_reduction" }, createdAt: "2026-08-19T12:00:03Z" } }, 201),

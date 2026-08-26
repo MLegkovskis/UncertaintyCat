@@ -4,18 +4,10 @@ import {
   generationFailure,
   generationLeaseIsActive,
   MODEL_UNDERSTANDING_LEASE_MS,
-  REPORT_CHAT_LOW_LATENCY_AI_SETTINGS,
   runSequentialFallback,
 } from "./ai-config";
 
-describe("Workers AI runtime policy", () => {
-  it("disables unnecessary hidden reasoning for grounded report chat", () => {
-    expect(REPORT_CHAT_LOW_LATENCY_AI_SETTINGS).toEqual({
-      reasoning_effort: null,
-      chat_template_kwargs: { enable_thinking: false },
-    });
-  });
-
+describe("AI runtime policy", () => {
   it("treats only a recent generating row as an active single-flight lease", () => {
     const current = Date.parse("2026-08-23T20:00:00.000Z");
     expect(

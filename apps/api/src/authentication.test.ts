@@ -29,6 +29,12 @@ describe("authenticated application boundary", () => {
     await expect(session.json()).resolves.toMatchObject({
       identity: { ownerId: "", authenticated: false },
       providers: [],
+      ai: {
+        provider: "groq",
+        configured: false,
+        modelUnderstanding: { modelId: "openai/gpt-oss-20b" },
+        reportChat: { modelId: "openai/gpt-oss-120b" },
+      },
     });
     expect(session.headers.get("set-cookie") ?? "").not.toContain(
       "uncertaintycat_guest",
@@ -48,5 +54,17 @@ describe("authenticated application boundary", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "authentication_required" },
     });
+  });
+
+  it.each([
+    ["DELETE", "/api/v1/projects/project-id"],
+    ["POST", "/api/v1/surrogates/surrogate-id/copy"],
+  ])("rejects unauthenticated %s access to %s", async (method, path) => {
+    const response = await app.request(
+      path,
+      { method, headers: { "Content-Type": "application/json" }, body: "{}" },
+      unauthenticatedEnv,
+    );
+    expect(response.status).toBe(401);
   });
 });
