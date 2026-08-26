@@ -14,7 +14,7 @@
     "@cloudflare/sandbox": "^0.12.7",
     "@hono/zod-validator": "^0.9.0",
     "@uncertaintycat/contracts": "0.2.0",
-    "ai": "^7.0.70",
+    "ai": "^7.0.77",
     "better-auth": "^1.7.1",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
@@ -23,9 +23,9 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260820.1",
+    "@cloudflare/workers-types": "^5.20260822.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.124.0"
+    "wrangler": "^4.125.0"
   }
 }

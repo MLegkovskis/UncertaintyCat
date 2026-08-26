@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@codemirror/lang-python": "^6.2.1",
-    "@tanstack/react-query": "^5.85.0",
+    "@tanstack/react-query": "^5.102.0",
     "@uiw/react-codemirror": "^4.25.11",
     "@uncertaintycat/contracts": "0.2.0",
     "better-auth": "^1.7.1",
