@@ -24,6 +24,32 @@ function humanize(value: string) {
     .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 }
 
+export function humanizeSchemaKeys(value: string) {
+  return value.replace(
+    /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g,
+    (field) => humanize(field),
+  );
+}
+
+interface MarkdownAstNode {
+  type: string;
+  value?: string;
+  children?: MarkdownAstNode[];
+}
+
+function remarkHumanizeSchemaKeys() {
+  return (tree: MarkdownAstNode) => {
+    function visit(node: MarkdownAstNode) {
+      if (node.type === "code" || node.type === "inlineCode") return;
+      if (node.type === "text" && node.value) {
+        node.value = humanizeSchemaKeys(node.value);
+      }
+      node.children?.forEach(visit);
+    }
+    visit(tree);
+  };
+}
+
 export function formatEvidenceCitations(markdown: string) {
   return markdown.replace(
     EVIDENCE_CITATION,
@@ -45,10 +71,13 @@ export function Markdown({
   evidenceCitations?: boolean;
 }) {
   const content = evidenceCitations ? formatEvidenceCitations(children) : children;
+  const plugins = evidenceCitations
+    ? [remarkGfm, remarkMath, remarkHumanizeSchemaKeys]
+    : [remarkGfm, remarkMath];
   return (
     <div className={`markdown ${className ?? ""}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={plugins}
         rehypePlugins={[rehypeKatex]}
         components={{
           a: ({ href, children: linkChildren, ...props }: ComponentProps<"a">) => {

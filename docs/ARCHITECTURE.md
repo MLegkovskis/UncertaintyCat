@@ -169,6 +169,8 @@ It cannot read model source, call compute, run code, write D1, or mutate a repor
 the persisted section names and completion states up front, requires the actual stored value to lead an
 answer, and treats internal field names as discovery metadata rather than user-facing prose. Exact evidence
 paths are rendered as compact, readable source badges while retaining the underlying path for inspection.
+Previously stored snake-case evidence labels are humanized at render time without mutating the retained
+conversation or changing inline code.
 The contract also prevents an EDA correlation screen from being presented as a global sensitivity ranking
 and requires all completed sensitivity sections to be inspected before declaring findings absent.
 Model Understanding is also source-isolated: it receives compact validated metadata, has a 220-to-320-word response contract and a bounded
