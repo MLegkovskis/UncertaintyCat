@@ -128,6 +128,9 @@ describe("AI response contracts", () => {
       "Never equate correlation with global sensitivity",
     );
     expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(
+      "ANCOVA physical and correlation contributions are first-order variance contributions",
+    );
+    expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(
       "[analysis.fact:eda.y0.strongest_linear_input]",
     );
     expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(

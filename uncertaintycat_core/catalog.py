@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uncertaintycat_core.contracts import AnalysisCatalogEntry
 from uncertaintycat_core.errors import UnknownAnalysisError
+from uncertaintycat_core.plugins.ancova import plugin as ancova_plugin
 from uncertaintycat_core.plugins.base import AnalysisPlugin
 from uncertaintycat_core.plugins.convergence import plugin as convergence_plugin
 from uncertaintycat_core.plugins.correlation import plugin as correlation_plugin
@@ -24,6 +25,7 @@ _PLUGINS: dict[str, AnalysisPlugin] = {
         monte_carlo_plugin,
         eda_plugin,
         correlation_plugin,
+        ancova_plugin,
         sobol_plugin,
         fast_plugin,
         hsic_plugin,

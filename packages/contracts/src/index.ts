@@ -256,6 +256,7 @@ export interface AnalysisCatalogEntry {
   description: string;
   assumptions: string[];
   supports_dependent_inputs: boolean;
+  requires_dependent_inputs: boolean;
   supports_multi_output: boolean;
   resource_class: "lite" | "standard" | "heavy";
   config_schema: Record<string, unknown>;

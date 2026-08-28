@@ -9,7 +9,8 @@ Create `uncertaintycat_core/plugins/<key>.py` with:
 1. A `StrictModel` configuration class. Include `seed` and `output_targets` where relevant and put hard,
    defensible bounds on computational parameters.
 2. An `AnalysisPlugin[Config]` implementation with a stable key, semantic implementation version,
-   user-facing metadata, assumptions, applicability flags, resource class, and `run` method.
+   user-facing metadata, assumptions, applicability flags (`supports_dependent_inputs` and, when needed,
+   `requires_dependent_inputs`), resource class, and `run` method.
 3. A module-level `plugin` instance.
 4. Registration in `uncertaintycat_core/catalog.py`.
 
@@ -23,6 +24,8 @@ Reject an analysis with `IncompatibleAnalysisError` when its mathematical interp
 Examples already enforced:
 
 - classical Sobol, FAST, and Morris reject dependent copulas;
+- ANCOVA rejects independent copulas and validates its polynomial decomposition on the actual dependent
+  distribution before returning physical and correlation-driven contributions;
 - scalar algorithms reject missing output indices;
 - Sobol rejects constant selected outputs;
 - PCE reports construction incompatibilities instead of returning a misleading surrogate.

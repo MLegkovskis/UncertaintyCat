@@ -88,13 +88,14 @@ Queueing, persistence, exports, sharing, and report chat already consume the gen
 
 ### Current capability inventory
 
-At this checkpoint the application has 12 plugins:
+At this checkpoint the application has 13 plugins:
 
 | Key | Capability | Important boundary |
 | --- | --- | --- |
 | `monte_carlo` | input propagation and output statistics | bounded inline samples |
 | `eda` | summaries and input/output correlation matrices | descriptive, not causal |
 | `correlation` | Pearson, Spearman, partial, and regression effects | association is not variance attribution |
+| `ancova` | physical and correlation-driven first-order variance contributions | dependent continuous inputs; validated PCE approximation |
 | `sobol` | Saltelli first/total/second-order indices | independent inputs only |
 | `fast` | Fourier amplitude sensitivity indices | independent inputs only |
 | `hsic` | kernel dependence and permutation evidence | dependence is not causality |

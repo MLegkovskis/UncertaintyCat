@@ -41,8 +41,9 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.getByText(/3 inputs → 1 outputs/).first()).toBeVisible();
 
   const analysisOptions = page.locator(".analysis-option");
-  await expect(analysisOptions).toHaveCount(9);
-  const checkboxes = analysisOptions.locator("input[type=checkbox]");
+  await expect(analysisOptions).toHaveCount(10);
+  const checkboxes = analysisOptions.locator("input[type=checkbox]:enabled");
+  await expect(checkboxes).toHaveCount(9);
   for (let index = 0; index < 9; index += 1) {
     await checkboxes.nth(index).check();
   }
@@ -134,6 +135,37 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await page.getByLabel("Project name confirmation").fill(handoffProjectName);
   await page.getByRole("button", { name: "Delete project permanently" }).click();
   await expect(page.getByText(handoffProjectName)).toHaveCount(0);
+
+  // Exercise dependent-input ANCOVA through the real builder, compute,
+  // persistence, report, and export-compatible generic result path.
+  await page.goto(`/studies/${projectId}/workspace`);
+  await page.getByLabel("Model name").fill("Dependent ANCOVA model");
+  await page.getByRole("button", { name: "Guided builder" }).click();
+  await page.getByLabel("Input dependence").selectOption("normal");
+  await page.getByLabel("Correlation x2 and x1").fill("0.4");
+  await page.getByRole("button", { name: "Validate & Assess" }).click();
+  await expect(page.getByText("Model validated", { exact: true })).toBeVisible({ timeout: 120_000 });
+  const ancovaOption = page.locator(".analysis-option", {
+    hasText: "ANCOVA Dependent-Input Sensitivity",
+  });
+  await expect(ancovaOption.locator("input")).toBeEnabled();
+  await expect(
+    page.locator(".analysis-option", { hasText: "Sobol Sensitivity Analysis" }).locator("input"),
+  ).toBeDisabled();
+  const enabledDependentAnalyses = page.locator(".analysis-option input[type=checkbox]:enabled");
+  for (let index = 0; index < await enabledDependentAnalyses.count(); index += 1) {
+    const checkbox = enabledDependentAnalyses.nth(index);
+    if (await checkbox.isChecked()) await checkbox.uncheck();
+  }
+  await ancovaOption.locator("input").check();
+  await page.getByLabel("Standard sample budget").fill("128");
+  await expect(page.getByText(/^1 analysis task ·/)).toBeVisible();
+  await page.getByRole("button", { name: "Run analyses" }).click();
+  await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 7 * 60_000 });
+  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(1);
+  await page.getByRole("link", { name: /Open report/ }).click();
+  await expect(page.locator(".report-section", { hasText: "ANCOVA Contribution" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Correlation Contribution" })).toBeVisible();
 
   await page.goto("/studies");
   await expect(page.getByText(studyName)).toBeVisible();

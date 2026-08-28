@@ -98,6 +98,12 @@ surrogation as an ordinary analysis checkbox. Reduced models and promoted surrog
 analysis in their current project or be copied into a newly created project. Surrogate handoff copies both
 the exact source model and the immutable OpenTURNS XML artifact after checking their source hashes.
 
+Catalog applicability distinguishes methods that support dependent inputs from methods that require them.
+The composer disables incompatible choices after validation: classical Sobol and FAST require independent
+inputs, while ANCOVA is reserved for a dependent copula. ANCOVA fits an independent-marginal polynomial
+decomposition, validates it against the declared dependent distribution, and persists separate physical and
+correlation-driven first-order variance contributions through the generic result envelope.
+
 Model validation records a versioned workflow recommendation. Its validation outcome, deterministic facts,
 AI brief, and recommended route are rendered together so an assessment does not fragment across the
 authoring page. The deterministic rule prioritizes Morris at
@@ -171,8 +177,9 @@ answer, and treats internal field names as discovery metadata rather than user-f
 paths are rendered as compact, readable source badges while retaining the underlying path for inspection.
 Previously stored snake-case evidence labels are humanized at render time without mutating the retained
 conversation or changing inline code.
-The contract also prevents an EDA correlation screen from being presented as a global sensitivity ranking
-and requires all completed sensitivity sections to be inspected before declaring findings absent.
+The contract also prevents an EDA correlation screen from being presented as a global sensitivity ranking,
+prevents ANCOVA correlation contributions from being presented as causal or total-order effects, and
+requires all completed sensitivity sections to be inspected before declaring findings absent.
 Model Understanding is also source-isolated: it receives compact validated metadata, has a 220-to-320-word response contract and a bounded
 output budget, and D1 caches it by model hash, prompt version, provider, and model ID. Groq defaults to
 `openai/gpt-oss-20b` for the short brief, with one bounded `openai/gpt-oss-120b` fallback, and uses

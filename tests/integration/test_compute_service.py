@@ -55,6 +55,36 @@ def test_validate_and_execute() -> None:
     assert gpr_execution.json()["result"]["analysis_key"] == "gpr"
     assert gpr_execution.json()["result"]["runtime"]["model_evaluations"] == 52
 
+    dependent_source = """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2^2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.4
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+    ancova_execution = client.post(
+        "/v1/execute",
+        json={
+            "source": dependent_source,
+            "analysis": {
+                "analysis_key": "ancova",
+                "config": {
+                    "degree": 3,
+                    "training_size": 128,
+                    "validation_size": 64,
+                    "ancova_sample_size": 256,
+                },
+                "output_targets": [0],
+            },
+            "seed": 42,
+        },
+    )
+    assert ancova_execution.status_code == 200
+    ancova_result = ancova_execution.json()["result"]
+    assert ancova_result["analysis_key"] == "ancova"
+    assert ancova_result["runtime"]["model_evaluations"] == 192
+    assert ancova_result["payload"]["metrics"]["validation_q2"] > 0.99
+
 
 def test_public_error_is_structured() -> None:
     response = client.post(
@@ -157,6 +187,7 @@ def test_one_shot_sandbox_protocol() -> None:
     envelope = json.loads(completed.stdout)
     assert envelope["status"] == 200
     assert {entry["key"] for entry in envelope["body"]} >= {
+        "ancova",
         "monte_carlo",
         "sobol",
         "gpr",

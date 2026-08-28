@@ -8,7 +8,7 @@ The public site is a static product overview. Authentication through Cloudflare 
 
 - Immutable Python and symbolic-builder model versions with exact source hashes, deterministic assessment, lineage, and OpenTURNS provenance.
 - Twenty-three hash-checked reference models available inside authenticated workspaces.
-- Twelve versioned analysis plugins: uncertainty propagation by Monte Carlo sampling, exploratory data analysis, correlation, Sobol, FAST, HSIC, Taylor, Morris, expectation convergence, reliability, polynomial chaos, and Gaussian-process regression.
+- Thirteen versioned analysis plugins: uncertainty propagation by Monte Carlo sampling, exploratory data analysis, correlation, dependent-input ANCOVA, Sobol, FAST, HSIC, Taylor, Morris, expectation convergence, reliability, polynomial chaos, and Gaussian-process regression.
 - Multi-output propagation and exploration with explicit output targeting for scalar methods.
 - D1-backed studies, datasets, runs, task state, reports, quotas, model explanations, and report conversations.
 - R2-backed immutable model source, private uploaded data, promoted model-based surrogates, and retained data-driven OpenTURNS Gaussian-process artifacts.
