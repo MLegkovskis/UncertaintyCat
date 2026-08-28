@@ -379,7 +379,7 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
             priority=4,
             rationale_codes=["USER_DEFINED_CRITICAL_DOMAIN_REQUIRED"]
             if target_hsic_compatible
-            else ["TARGET_HSIC_REQUIRES_BOUNDED_CONTINUOUS_INPUTS"],
+            else ["TARGET_HSIC_REQUIRES_CONTINUOUS_INPUTS_WITHIN_DIMENSION_LIMIT"],
             projected_evaluations=250 if target_hsic_compatible else None,
             projected_runtime_ms=(
                 evaluation_runtime_ms * 250 / validation_sample_size

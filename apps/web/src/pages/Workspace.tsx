@@ -125,7 +125,9 @@ function analysisConfig(
       return reliability;
     case "target_hsic":
       return {
-        sample_size: Math.max(50, Math.min(sampleSize, 500)),
+        // Keep the direct-composer default inside the core's conservative
+        // quadratic kernel-operation budget even for a twenty-input model.
+        sample_size: Math.max(50, Math.min(sampleSize, 250)),
         ...targetHsic,
       };
     case "fast":

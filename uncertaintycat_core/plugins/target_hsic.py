@@ -14,8 +14,20 @@ from uncertaintycat_core.model import ModelRuntime
 from uncertaintycat_core.plugins.base import AnalysisPlugin
 
 MAXIMUM_INPUT_DIMENSION = 20
-MAXIMUM_HSIC_WORK_UNITS = 30_000_000
+MAXIMUM_HSIC_WORK_UNITS = 150_000_000
 MINIMUM_TARGET_OBSERVATIONS = 5
+
+
+def estimate_hsic_work_units(sample_size: int, input_dimension: int, permutations: int) -> int:
+    """Conservatively bound the quadratic kernel operations used by OpenTURNS.
+
+    OpenTURNS evaluates every input HSIC statistic for every output permutation.
+    The four additional passes cover covariance construction, the observed and
+    normalized indices, and asymptotic diagnostics.  This is a resource bound,
+    not a wall-clock prediction.
+    """
+
+    return sample_size**2 * (input_dimension + 1) * (permutations + 4)
 
 
 class TargetHsicConfig(StrictModel):
@@ -70,11 +82,11 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
         target = config.output_targets[0] if config.output_targets else 0
         if target < 0 or target >= runtime.metadata.output_dimension:
             raise IncompatibleAnalysisError("The requested output target does not exist.")
-        work_units = config.sample_size**2 * (dimension + max(config.permutations, 1) + 1)
+        work_units = estimate_hsic_work_units(config.sample_size, dimension, config.permutations)
         if work_units > MAXIMUM_HSIC_WORK_UNITS:
             raise IncompatibleAnalysisError(
-                "The requested target-domain HSIC workload exceeds the bounded kernel and "
-                f"permutation budget ({work_units:,} > {MAXIMUM_HSIC_WORK_UNITS:,}). "
+                "The requested target-domain HSIC workload exceeds the bounded quadratic "
+                f"kernel-operation budget ({work_units:,} > {MAXIMUM_HSIC_WORK_UNITS:,}). "
                 "Reduce the sample size or permutations."
             )
         warnings = [
@@ -216,8 +228,10 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
             for index in order
         ]
         top = order[0]
-        work_units = config.sample_size**2 * (
-            runtime.metadata.input_dimension + max(config.permutations, 1) + 1
+        work_units = estimate_hsic_work_units(
+            config.sample_size,
+            runtime.metadata.input_dimension,
+            config.permutations,
         )
         return (
             AnalysisPayload(
@@ -229,7 +243,7 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
                     "target_fraction": target_count / config.sample_size,
                     "smoothing_scale": smoothing_scale,
                     "smoothing_scale_fraction": float(config.smoothing_scale_fraction),
-                    "bounded_work_units": work_units,
+                    "estimated_quadratic_work_units": work_units,
                     "model_evaluations": model_evaluations,
                 },
                 tables={
@@ -253,6 +267,10 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
                     "estimator": "OpenTURNS unbiased HSIC U-statistic",
                     "kernel_bandwidths": (
                         "Empirical standard deviations of sampled inputs and raw output"
+                    ),
+                    "quadratic_work_unit_definition": (
+                        "sample_size^2 * (input_dimension + 1) * (permutations + 4); "
+                        "a conservative kernel-operation resource bound, not elapsed time"
                     ),
                     "strongest_target_association_input": names[top],
                     "largest_target_r2_hsic": normalized_indices[top],

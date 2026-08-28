@@ -186,6 +186,8 @@ problem.setDescription(["X1", "X2", "X3"])
     assert result_a.runtime.model_evaluations == 100
     assert result_a.payload.metrics["model_evaluations"] == 100
     assert result_a.payload.metrics["target_observations"] == 25
+    assert result_a.payload.metrics["estimated_quadratic_work_units"] == 4_160_000
+    assert "permutations + 4" in result_a.payload.facts["quadratic_work_unit_definition"]
     assert result_a.payload.facts["strongest_target_association_input"] == "X1"
     assert "not a failure-probability" in " ".join(result_a.warnings)
     serialized = result_a.model_dump_json()

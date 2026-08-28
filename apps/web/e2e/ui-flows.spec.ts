@@ -322,7 +322,7 @@ test.describe("model studio", () => {
       await enabledCheckboxes.nth(index).check();
     }
     await expect(page.getByText("10 analysis tasks")).toBeVisible();
-    await page.getByLabel("Standard sample budget").fill("128");
+    await page.getByLabel("Standard sample budget").fill("512");
     await page.getByLabel("Reliability method").selectOption("MONTE_CARLO");
     await page.getByLabel("Failure event").selectOption("<");
     await page.getByRole("spinbutton", { name: "Threshold", exact: true }).fill("-2.5");
@@ -346,7 +346,7 @@ test.describe("model studio", () => {
       threshold: -2.5,
     });
     expect(analyses.find((item) => item.analysisKey === "target_hsic")?.config).toMatchObject({
-      sample_size: 128,
+      sample_size: 250,
       operator: "<=",
       threshold: 4.5,
       permutations: 40,
