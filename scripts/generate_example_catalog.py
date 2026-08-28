@@ -1,4 +1,4 @@
-"""Generate the typed public example catalog from canonical examples/*.py sources."""
+"""Generate the typed authenticated example catalog from canonical examples/*.py sources."""
 
 from __future__ import annotations
 
@@ -42,6 +42,14 @@ METADATA: dict[str, tuple[str, str, int, str, str, list[str]]] = {
         "Nonlinear material-response benchmark based on a Chaboche constitutive relation.",
         "advanced",
         ["monte_carlo", "sobol", "gpr"],
+    ),
+    "Calibration_Exponential": (
+        "Nonlinear exponential calibration",
+        "Calibration benchmark",
+        4,
+        "Official OpenTURNS nonlinear least-squares family with three calibration parameters.",
+        "introductory",
+        ["calibration_nlls"],
     ),
     "Chemical_Reactor": (
         "Chemical reactor",
@@ -205,6 +213,12 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
         {
             "outputName": "Y",
             "latex": r"Y = \frac{F L^{3}}{3 E I}",
+        }
+    ],
+    "Calibration_Exponential": [
+        {
+            "outputName": "y",
+            "latex": r"y = a + b\exp\left(c x\right)",
         }
     ],
     "Tube_Deflection": [

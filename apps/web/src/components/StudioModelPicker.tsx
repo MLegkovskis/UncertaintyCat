@@ -16,7 +16,7 @@ export function StudioModelPicker({
   projectId: string;
   modelId: string;
   onModelChange: (id: string) => void;
-  returnTo: "dimension-reduction" | "surrogates";
+  returnTo: "calibration" | "dimension-reduction" | "surrogates";
 }) {
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const examplesQuery = useQuery({ queryKey: ["examples"], queryFn: api.examples });

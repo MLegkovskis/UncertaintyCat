@@ -9,6 +9,7 @@ const routes = [
   ["study detail", "/studies/project-1"],
   ["model and analyses", "/studies/project-1/workspace"],
   ["dimension reduction", "/studies/project-1/dimension-reduction"],
+  ["calibration studio", "/studies/project-1/calibration"],
   ["surrogate studio", "/studies/project-1/surrogates"],
   ["distribution fitting", "/studies/project-1/data-lab"],
   ["run", "/runs/run-1"],

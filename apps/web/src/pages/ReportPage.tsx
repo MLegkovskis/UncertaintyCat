@@ -20,6 +20,11 @@ import { ResultView } from "../components/ResultView";
 import { StatusBadge } from "../components/Status";
 import type { AnalysisResult, ModelMetadata } from "@uncertaintycat/contracts";
 
+function analysisTitle(key: string) {
+  if (key === "calibration_nlls") return "Nonlinear least-squares calibration";
+  return key.replaceAll("_", " ");
+}
+
 function SymbolicDefinitionSummary({ spec }: { spec: Record<string, unknown> | null | undefined }) {
   if (!spec || !Array.isArray(spec.variables) || !Array.isArray(spec.outputs)) return null;
   const variables = spec.variables as Array<{
@@ -379,7 +384,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
           {report.sections.map((section, index) => (
             <a key={section.key} href={`#section-${section.key}`}>
               <span>{String(index + 1).padStart(2, "0")}</span>
-              {section.key.replaceAll("_", " ")}
+              {analysisTitle(section.key)}
             </a>
           ))}
         </nav>
@@ -392,7 +397,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
             <header>
               <span>{String(index + 1).padStart(2, "0")}</span>
               <div>
-                <h2>{section.key.replaceAll("_", " ")}</h2>
+                <h2>{analysisTitle(section.key)}</h2>
                 <p>
                   Versioned numerical result and method-specific provenance.
                 </p>

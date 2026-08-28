@@ -76,6 +76,11 @@ selected adapter executes, and provider/model identity is included in the Model 
 Neither path receives Python source or private R2 objects. Groq's key is a Worker secret and is never returned
 by session discovery, written to logs, or included in browser assets.
 
+Canonical reference-model source is likewise authenticated data. The generated catalog is owned by the
+Worker and must never be imported into the web application bundle. Every web production build runs
+`scripts/check_web_bundle.mjs`, which rejects JavaScript or source-map assets containing a canonical example
+source marker or source hash.
+
 ## Secrets
 
 Real `.dev.vars` and environment files are ignored. The full-stack test configuration contains only

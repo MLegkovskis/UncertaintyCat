@@ -7,20 +7,20 @@ The public site is a static product overview. Authentication through Cloudflare 
 ## Current capabilities
 
 - Immutable Python and symbolic-builder model versions with exact source hashes, deterministic assessment, lineage, and OpenTURNS provenance.
-- Twenty-three hash-checked reference models available inside authenticated workspaces.
-- Thirteen versioned analysis plugins: uncertainty propagation by Monte Carlo sampling, exploratory data analysis, correlation, dependent-input ANCOVA, Sobol, FAST, HSIC, Taylor, Morris, expectation convergence, reliability, polynomial chaos, and Gaussian-process regression.
+- Twenty-four hash-checked reference models available inside authenticated workspaces.
+- Fourteen versioned analysis plugins: uncertainty propagation by Monte Carlo sampling, exploratory data analysis, correlation, dependent-input ANCOVA, Sobol, FAST, HSIC, Taylor, Morris, expectation convergence, reliability, polynomial chaos, Gaussian-process regression, and nonlinear least-squares parameter calibration.
 - Multi-output propagation and exploration with explicit output targeting for scalar methods.
 - D1-backed studies, datasets, runs, task state, reports, quotas, model explanations, and report conversations.
 - R2-backed immutable model source, private uploaded data, promoted model-based surrogates, and retained data-driven OpenTURNS Gaussian-process artifacts.
 - Queue-driven, idempotent computation in isolated Cloudflare Sandbox containers with retry, cancellation, and partial-result handling.
 - Apache ECharts reports with exact data fallbacks, direct browser PDF downloads, ZIP/JSON/CSV exports, and authenticated read-only share links.
-- Study-scoped distribution fitting, explicit Morris-derived model versions, promoted PCE/GPR surrogates, and reliability guidance.
+- Study-scoped distribution fitting, a deterministic Calibration Studio, explicit Morris-derived model versions, promoted PCE/GPR surrogates, and reliability guidance.
 - Deployment-selectable Groq or Cloudflare Workers AI explanations through the open-source Vercel AI SDK. Groq is the default; AI can query bounded persisted-result projections but cannot run calculations, see Python source, or mutate evidence.
 - Weekly OpenTURNS release discovery plus full Python, TypeScript, browser, local-stack, and image CI on every push to `main`.
 
 ## Product workflow
 
-Authenticated users land on a single project index. Creating a project opens its overview; models, direct analyses, dimensionality reduction, surrogate construction, distribution fitting, and previous runs then remain visibly scoped to that project. A new model combines the 23 reference models and the editable Python model into one authoring surface; the model name starts blank, and choosing a reference loads both its name and source unless the name was already edited manually. The Guided Builder compiles its named formulas and distributions into an OpenTURNS [`SymbolicFunction`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.SymbolicFunction.html).
+Authenticated users land on a single project index. Creating a project opens its overview; models, direct analyses, dimensionality reduction, calibration, surrogate construction, distribution fitting, and previous runs then remain visibly scoped to that project. A new model combines the 24 reference models and the editable Python model into one authoring surface; the model name starts blank, and choosing a reference loads both its name and source unless the name was already edited manually. The Guided Builder compiles its named formulas and distributions into an OpenTURNS [`SymbolicFunction`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.SymbolicFunction.html).
 
 `Validate & Assess` performs isolated sample evaluation and records a deterministic next-step route:
 
@@ -28,7 +28,7 @@ Authenticated users land on a single project index. Creating a project opens its
 - Dimensionality Reduction Studio for models with at least 15 inputs, using OTMorris screening; or
 - Surrogate Studio when 1,000 direct evaluations project above five seconds and baseline surrogate eligibility is established.
 
-The threshold decision is versioned numerical metadata, not an AI decision. The selected AI provider gives a separate concise explanation from validated metadata. Validation status, deterministic facts, the AI brief, and the recommended route share one Model Understanding panel. Direct analysis intentionally excludes Morris, PCE, and GPR: those methods live in dedicated project studios. A reduced model or promoted surrogate then offers two explicit, provenance-preserving handoffs: start another analysis in the current project, or copy the model (and surrogate artifact when applicable) into a new project.
+The threshold decision is versioned numerical metadata, not an AI decision. The selected AI provider gives a separate concise explanation from validated metadata. Validation status, deterministic facts, the AI brief, and the recommended route share one Model Understanding panel. Direct analysis intentionally excludes calibration, Morris, PCE, and GPR: those methods live in dedicated project studios. Calibration Studio treats selected continuous model inputs as unknown constant parameters, conditions on named observed explanatory inputs and one observed output, and uses bounded OpenTURNS nonlinear least squares. A reduced model or promoted surrogate then offers two explicit, provenance-preserving handoffs: start another analysis in the current project, or copy the model (and surrogate artifact when applicable) into a new project.
 
 Surrogate Studio accepts either a saved model with a declared input distribution or empirical rows containing paired inputs and outputs. The latter path fits and validates an OpenTURNS Gaussian-process regression model, retains its XML artifact in R2, and makes clear that an input distribution must still be defined before uncertainty propagation or sensitivity analysis. Distribution Fitting includes a meaningful simply-supported-beam sample (`E`, `F`, `L`, `I`) for exploration.
 

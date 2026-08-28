@@ -136,6 +136,33 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await page.getByRole("button", { name: "Delete project permanently" }).click();
   await expect(page.getByText(handoffProjectName)).toHaveCount(0);
 
+  // Exercise project-scoped parameter calibration through the authenticated UI,
+  // Worker queue, Sandbox compute service, immutable report, and export path.
+  await page.goto(`/studies/${projectId}/workspace`);
+  await page.getByLabel("Search reference models").fill("Nonlinear exponential calibration");
+  await page.locator(".example-card").click();
+  await page.getByRole("button", { name: "Validate & Assess" }).click();
+  await expect(page.getByText("Model validated", { exact: true })).toBeVisible({ timeout: 120_000 });
+  await page.getByRole("link", { name: "Calibration Studio" }).click();
+  await expect(page.getByText("Official OpenTURNS exponential example loaded")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByLabel("Calibration observation CSV")).toHaveValue(/^x,y/);
+  await expect(page.getByText("10 / 250")).toBeVisible();
+  await page.getByRole("button", { name: "Run nonlinear least-squares calibration" }).click();
+  await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 7 * 60_000 });
+  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(1);
+  await page.getByRole("link", { name: /Open report/ }).click();
+  const calibrationSection = page.locator("#section-calibration_nlls");
+  await expect(calibrationSection).toBeVisible();
+  await expect(calibrationSection.getByRole("columnheader", { name: "Calibrated Value" })).toBeVisible();
+  await expect(calibrationSection.getByRole("columnheader", { name: "Approximate SD (Local Linear Gaussian)" })).toBeVisible();
+  await expect(calibrationSection.getByText("Observed versus predicted")).toBeVisible();
+  await expect(calibrationSection.getByText(/not exact confidence guarantees/i)).toBeVisible();
+  await expect(calibrationSection.getByText(/do not establish global identifiability/i)).toBeVisible();
+  const calibrationDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Data bundle" }).click();
+  const calibrationDownload = await calibrationDownloadPromise;
+  expect(calibrationDownload.suggestedFilename()).toMatch(/^uncertaintycat-.*\.zip$/);
+
   // Exercise dependent-input ANCOVA through the real builder, compute,
   // persistence, report, and export-compatible generic result path.
   await page.goto(`/studies/${projectId}/workspace`);

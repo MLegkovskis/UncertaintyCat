@@ -65,7 +65,7 @@ successful-regeneration quota.
 
 `.github/workflows/ci.yml` runs on every push to `main`, every pull request, and manual dispatch. It has no repository-variable gate or skip path. The required jobs are:
 
-1. Python formatting, lint, typing, unit/scientific/integration tests, and all 23 reference models;
+1. Python formatting, lint, typing, unit/scientific/integration tests, and all 24 reference models;
 2. TypeScript typing, unit tests, and production build;
 3. mocked-browser navigation and accessibility;
 4. real local Worker/D1/R2/Queue/compute browser journey;

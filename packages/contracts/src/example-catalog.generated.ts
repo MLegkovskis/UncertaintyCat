@@ -61,6 +61,27 @@ export const EXAMPLE_CATALOG = [
     "sha256": "3d41bbb1e792ef582faa14df875abe252739d7b679dc4b811676711c6917ea6e"
   },
   {
+    "id": "calibration_exponential",
+    "title": "Nonlinear exponential calibration",
+    "filename": "Calibration_Exponential.py",
+    "domain": "Calibration benchmark",
+    "inputDimension": 4,
+    "outputDimension": 1,
+    "summary": "Official OpenTURNS nonlinear least-squares family with three calibration parameters.",
+    "difficulty": "introductory",
+    "suggestedAnalyses": [
+      "calibration_nlls"
+    ],
+    "source": "import openturns as ot\n\n# OpenTURNS nonlinear least-squares calibration reference family:\n# y = a + b * exp(c * x)\nmodel = ot.SymbolicFunction(\n    [\"a\", \"b\", \"c\", \"x\"],\n    [\"a + b * exp(c * x)\"],\n)\nmodel.setOutputDescription([\"y\"])\n\n# These distributions make the four-input model independently valid as f(x).\n# Calibration Studio treats a, b, and c as fixed parameters and conditions on\n# observed x values instead of sampling this project distribution.\na = ot.Uniform(0.0, 5.0)\na.setDescription([\"a\"])\n\nb = ot.Uniform(0.5, 2.0)\nb.setDescription([\"b\"])\n\nc = ot.Uniform(0.1, 0.6)\nc.setDescription([\"c\"])\n\nx = ot.Uniform(0.5, 9.5)\nx.setDescription([\"x\"])\n\nproblem = ot.JointDistribution([a, b, c, x])\n",
+    "sha256": "00d3aa5cf2994489b460cf1e2e84feddb2978ab1f24195a457fb1a949aabea11",
+    "equations": [
+      {
+        "outputName": "y",
+        "latex": "y = a + b\\exp\\left(c x\\right)"
+      }
+    ]
+  },
+  {
     "id": "chaboche_model",
     "title": "Chaboche material model",
     "filename": "Chaboche_Model.py",

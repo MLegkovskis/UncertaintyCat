@@ -131,6 +131,9 @@ describe("AI response contracts", () => {
       "ANCOVA physical and correlation contributions are first-order variance contributions",
     );
     expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(
+      "Never call them exact confidence guarantees",
+    );
+    expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(
       "[analysis.fact:eda.y0.strongest_linear_input]",
     );
     expect(REPORT_CHAT_SYSTEM_PROMPT).toContain(

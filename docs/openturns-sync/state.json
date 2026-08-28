@@ -6,25 +6,25 @@
   "upstream_repository": "https://github.com/openturns/openturns",
   "upstream_default_branch_commit_reviewed": "2301120b56f5d879d31c7bdaf73219835e8a118a",
   "upstream_commit_date": "2026-08-23T09:33:57+02:00",
-  "catalog_plugin_count": 13,
+  "catalog_plugin_count": 14,
   "last_delivered_candidate": {
-    "key": "ancova",
-    "name": "ANCOVA Dependent-Input Sensitivity",
+    "key": "calibration_nlls",
+    "name": "Nonlinear Least-Squares Calibration",
     "plugin_version": "1.0.0",
     "result_schema_version": "1.0.0",
-    "upstream_basis": "Stable OpenTURNS ANCOVA closes the retained dependent-input sensitivity gap; the checkpoint-to-HEAD upstream delta itself contained only CI configuration",
+    "upstream_basis": "Stable OpenTURNS ParametricFunction, NonLinearLeastSquaresCalibration, and CalibrationResult APIs close the retained deterministic parameter-estimation gap; the checkpoint-to-HEAD upstream delta was empty",
     "decision": "implemented"
   },
   "reviewed_candidates": [
     {
+      "name": "NonLinearLeastSquaresCalibration",
+      "decision": "implemented",
+      "reason": "Stable in the installed pin, distinct from the existing catalog, bounded to one scalar output and ordinary least squares, and validated against the official fixed-seed nonlinear exponential example plus rank-deficiency checks."
+    },
+    {
       "name": "GaussianProcessRegressionCrossValidation",
       "decision": "rejected",
       "reason": "Still exposed only from openturns.experimental in the installed 1.27.post1 pin; the GPR plugin retains independent hold-out validation."
-    },
-    {
-      "name": "ANCOVA",
-      "decision": "implemented",
-      "reason": "Stable in the installed pin, materially distinct from independent-input Sobol, bounded through a capped PCE basis, and validated against the official correlated-linear construction plus analytical values."
     },
     {
       "name": "RankSobolSensitivityAlgorithm",

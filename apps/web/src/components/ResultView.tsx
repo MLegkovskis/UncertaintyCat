@@ -80,7 +80,8 @@ function SeriesChart({ series }: { series: Record<string, SeriesData> }) {
     points: value.x.map((x, index) => [Number(x), Number(value.y[index])] as [number, number]).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y)),
   })).filter((entry) => entry.points.length > 0);
   if (!entries.length) return null;
-  const scatter = entries.length === 1 && /validation|scatter|qq/i.test(entries[0]!.key);
+  const scatter = entries.every((entry) => /observed_vs_predicted/i.test(entry.key))
+    || (entries.length === 1 && /validation|scatter|qq/i.test(entries[0]!.key));
   const pointCount = Math.max(...entries.map((entry) => entry.points.length));
   const option: EChartsOption = {
     tooltip: { trigger: scatter ? "item" : "axis" },

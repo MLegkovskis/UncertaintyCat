@@ -325,7 +325,7 @@ function ReferenceExamples({
     <div className="examples-browser">
       <div className="examples-toolbar">
         <div><h3>Reference models</h3><p>Select a model to load its editable Python source below.</p></div>
-        <label className="study-search"><Search /><input aria-label="Search reference models" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search 23 examples" /></label>
+        <label className="study-search"><Search /><input aria-label="Search reference models" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search 24 examples" /></label>
       </div>
       <div className="examples-grid">
         {visible.map((example) => (
@@ -784,7 +784,7 @@ export function Workspace() {
     [builderSpec],
   );
   const directAnalyses = useMemo(
-    () => (catalogQuery.data?.analyses ?? []).filter((analysis) => !["morris", "pce", "gpr"].includes(analysis.key)),
+    () => (catalogQuery.data?.analyses ?? []).filter((analysis) => !["calibration_nlls", "morris", "pce", "gpr"].includes(analysis.key)),
     [catalogQuery.data],
   );
   const analysisGroups = useMemo(() => [
@@ -851,6 +851,9 @@ export function Workspace() {
     onSuccess: ({ modelVersion }) => {
       setSavedModel(modelVersion);
       setError(undefined);
+      if (["calibration", "dimension-reduction", "surrogates"].includes(requestedNext)) {
+        navigate(`/studies/${activeProjectId}/${requestedNext}?modelId=${modelVersion.id}`);
+      }
     },
     onError: (caught) =>
       setError(caught instanceof Error ? caught.message : "Validation failed."),
@@ -907,7 +910,7 @@ export function Workspace() {
           </div>
         )}
         {requestedNext && !dataFitProvenance && (
-          <div className="provenance-note">This reference model was opened from {requestedNext === "surrogates" ? "Surrogate Studio" : "Dimension Reduction Studio"}. Validate and assess it before continuing.</div>
+          <div className="provenance-note">This reference model was opened from {requestedNext === "surrogates" ? "Surrogate Studio" : requestedNext === "calibration" ? "Calibration Studio" : "Dimension Reduction Studio"}. Validate and assess it before continuing.</div>
         )}
         <label className="model-name-field">
           <span>Model name</span>
