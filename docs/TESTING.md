@@ -15,7 +15,7 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - authenticated desktop/mobile navigation, account identity, immediate sign-out without a hard refresh, and theme persistence;
 - discovery of all 24 reference models in the unified, immediately editable Python authoring view;
 - blank/manual model naming, resizable Python authoring, project creation from the project index, project-scoped studio navigation, and the multi-output symbolic OpenTURNS builder;
-- model validation success/failure, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
+- model validation success/failure, immediate in-flight Model Understanding feedback, analysis controls locked until validation succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
 - integrated validation/Model Understanding, primary/fallback model policy, single-flight polling, explicit uncharged timeout/failure states, named-observation Calibration Studio, model- and data-driven surrogate fitting, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
 - desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
 - queued/running/terminal run states, cancellation, exact reruns, and project-oriented history;

@@ -352,6 +352,46 @@ function ReferenceExamples({
   );
 }
 
+function ModelValidationPendingPane({ aiModelLabel }: { aiModelLabel: string }) {
+  return (
+    <aside
+      className="understanding-pane validation-pending-pane"
+      aria-label="Model Understanding"
+      aria-busy="true"
+    >
+      <header>
+        <div>
+          <span className="section-kicker">Validation &amp; explanation</span>
+          <h2>Model Understanding</h2>
+        </div>
+        <small>{aiModelLabel}</small>
+      </header>
+      <section className="validation-pending" role="status" aria-live="polite">
+        <div className="validation-loader" aria-hidden="true">
+          <span />
+          <span />
+          <ScanSearch />
+        </div>
+        <div>
+          <strong>Your model is being validated…</strong>
+          <p>
+            OpenTURNS is checking the executable model, input distribution,
+            output shape, and bounded pilot behaviour.
+          </p>
+        </div>
+        <ol aria-label="Validation progress">
+          <li className="active">Isolated model checks</li>
+          <li>Deterministic assessment</li>
+          <li>Model brief</li>
+        </ol>
+        <small>
+          Direct analyses stay locked until deterministic validation succeeds.
+        </small>
+      </section>
+    </aside>
+  );
+}
+
 function ModelUnderstandingPane({
   model,
   projectId,
@@ -868,6 +908,7 @@ export function Workspace() {
           : {}),
       });
     },
+    onMutate: () => setError(undefined),
     onSuccess: ({ modelVersion }) => {
       setSavedModel(modelVersion);
       setError(undefined);
@@ -878,6 +919,7 @@ export function Workspace() {
     onError: (caught) =>
       setError(caught instanceof Error ? caught.message : "Validation failed."),
   });
+  const analysisComposerLocked = !savedModel || saveModel.isPending;
   const createRun = useMutation({
     mutationFn: async () => {
       if (!savedModel) throw new Error("Validate and save the model first.");
@@ -926,7 +968,10 @@ export function Workspace() {
           <p>A model is a Python function <code>y = f(x)</code>. Pair it with an OpenTURNS input distribution, validate it, then choose uncertainty-quantification or sensitivity methods.</p>
         </div>
       </div>
-      <section className={`studio-card ${savedModel ? "validated-studio" : ""}`}>
+      <section
+        className={`studio-card ${savedModel || saveModel.isPending ? "validated-studio" : ""}`}
+        aria-busy={saveModel.isPending}
+      >
         <div className="studio-authoring">
         {dataFitProvenance && (
           <div className="provenance-note">
@@ -982,7 +1027,15 @@ export function Workspace() {
         )}
         <div className="studio-footer">
           <div className="model-status">
-            {!savedModel && (
+            {saveModel.isPending ? (
+              <>
+                <span className="validation-dot" />
+                <div>
+                  <strong>Validation in progress</strong>
+                  <small>OpenTURNS checks are running in the isolated compute boundary.</small>
+                </div>
+              </>
+            ) : !savedModel ? (
               <>
                 <span className="idle-dot" />
                 <div>
@@ -993,8 +1046,9 @@ export function Workspace() {
                   </small>
                 </div>
               </>
+            ) : (
+              <small>Edit the definition to validate another saved model.</small>
             )}
-            {savedModel && <small>Edit the definition to validate another saved model.</small>}
           </div>
           <button
             className="button primary"
@@ -1005,7 +1059,13 @@ export function Workspace() {
           </button>
         </div>
         </div>
-        {savedModel && (
+        {saveModel.isPending ? (
+          <ModelValidationPendingPane
+            aiModelLabel={
+              sessionQuery.data?.ai?.modelUnderstanding.label ?? "Configured AI provider"
+            }
+          />
+        ) : savedModel ? (
           <ModelUnderstandingPane
             model={savedModel}
             projectId={activeProjectId}
@@ -1013,7 +1073,7 @@ export function Workspace() {
               sessionQuery.data?.ai?.modelUnderstanding.label ?? "Configured AI provider"
             }
           />
-        )}
+        ) : null}
       </section>
       {error && <div className="error-banner">{error}</div>}
       {savedModel && analysisSurrogateId && (
@@ -1021,8 +1081,12 @@ export function Workspace() {
       )}
       <section
         id="direct-analyses"
-        className={`analysis-composer ${savedModel ? "" : "disabled-panel"}`}
+        className={`analysis-composer ${analysisComposerLocked ? "disabled-panel" : ""}`}
+        aria-disabled={analysisComposerLocked}
+        aria-busy={saveModel.isPending}
       >
+        <fieldset className="analysis-composer-fields" disabled={analysisComposerLocked}>
+          <legend className="sr-only">Direct analysis configuration</legend>
         <div className="composer-heading">
           <div>
             <span className="section-kicker">Run composer</span>
@@ -1059,6 +1123,22 @@ export function Workspace() {
             )}
           </div>
         </div>
+        {analysisComposerLocked && (
+          <div className="analysis-lock-note" role="status">
+            <ScanSearch />
+            <div>
+              <strong>
+                {saveModel.isPending
+                  ? "Analyses will unlock after validation"
+                  : "Validate the model to unlock analyses"}
+              </strong>
+              <small>
+                Analysis choices are enabled only for a deterministic,
+                successfully validated model.
+              </small>
+            </div>
+          </div>
+        )}
         {selected.includes("reliability") && (
           <div className="analysis-settings">
             {selected.includes("reliability") && (
@@ -1146,7 +1226,7 @@ export function Workspace() {
                       <label className={`analysis-option ${selected.includes(analysis.key) ? "selected" : ""} ${incompatibility ? "incompatible" : ""}`} key={analysis.key}>
                         <input
                           type="checkbox"
-                          disabled={Boolean(incompatibility)}
+                          disabled={analysisComposerLocked || Boolean(incompatibility)}
                           checked={selected.includes(analysis.key)}
                           onChange={() => setSelected((current) => current.includes(analysis.key) ? current.filter((key) => key !== analysis.key) : [...current, analysis.key])}
                         />
@@ -1186,6 +1266,7 @@ export function Workspace() {
             <Play /> {createRun.isPending ? "Queuing…" : "Run analyses"}
           </button>
         </div>
+        </fieldset>
       </section>
     </div>
   );

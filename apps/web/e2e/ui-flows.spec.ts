@@ -282,6 +282,47 @@ test.describe("model studio", () => {
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 
+  test("opens validation feedback immediately and locks analyses until validation succeeds", async ({
+    page,
+  }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    let releaseValidation: (() => void) | undefined;
+    const validationGate = new Promise<void>((resolve) => {
+      releaseValidation = resolve;
+    });
+    await page.route("**/api/v1/projects/*/models", async (route) => {
+      if (route.request().method() === "POST") await validationGate;
+      await route.fallback();
+    });
+
+    await page.goto("/studies/project-1/workspace");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+
+    const propagationChoice = page
+      .locator(".analysis-option", { hasText: "Uncertainty Propagation" })
+      .locator("input");
+    await expect(propagationChoice).toBeDisabled();
+    await expect(page.getByLabel("Standard sample budget")).toBeDisabled();
+
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByLabel("Model Understanding")).toBeVisible();
+    await expect(page.getByText("Your model is being validated…")).toBeVisible();
+    await expect(page.locator(".validation-loader")).toBeVisible();
+    await expect(page.locator("#direct-analyses")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    await expect(propagationChoice).toBeDisabled();
+    await expect(page.getByLabel("Standard sample budget")).toBeDisabled();
+
+    releaseValidation?.();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+    await expect(page.getByText("Your model is being validated…")).toHaveCount(0);
+    await expect(propagationChoice).toBeEnabled();
+    await expect(page.getByLabel("Standard sample budget")).toBeEnabled();
+  });
+
   test("creates a project, authors with the guided builder, configures all direct plugins, and queues the suite", async ({
     page,
   }) => {
