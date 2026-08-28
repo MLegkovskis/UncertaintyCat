@@ -308,9 +308,9 @@ test.describe("model studio", () => {
     const checkboxes = page.locator(".analysis-option input[type=checkbox]");
     const directCatalog = catalog.filter((item) => !["morris", "pce", "gpr"].includes(item.key));
     await expect(checkboxes).toHaveCount(directCatalog.length);
-    await expect(
-      page.locator(".analysis-option", { hasText: "ANCOVA Dependent-Input Sensitivity" }).locator("input"),
-    ).toBeDisabled();
+    const incompatibleAncova = page.locator(".analysis-option", { hasText: "ANCOVA Dependent-Input Sensitivity" });
+    await expect(incompatibleAncova.locator("input")).toBeDisabled();
+    await expect(incompatibleAncova).toContainText("ANCOVA requires two to ten continuous inputs with a dependent copula.");
     const enabledCheckboxes = page.locator(
       ".analysis-option input[type=checkbox]:enabled",
     );

@@ -73,6 +73,7 @@ const modelAssessment: ModelAssessment = {
   },
   workflow: { path: "direct", rationale_codes: ["DIRECT_EVALUATION_PRACTICAL"] },
   recommendations: [
+    { capability: "ancova", status: "incompatible", priority: 2, rationale_codes: ["INDEPENDENT_INPUTS_USE_SOBOL"], compatibility_warnings: ["ANCOVA requires two to ten continuous inputs with a dependent copula."] },
     { capability: "gpr", status: "available", priority: 3, rationale_codes: ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"], compatibility_warnings: [] },
     { capability: "pce", status: "available", priority: 3, rationale_codes: ["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"], compatibility_warnings: [] },
   ],

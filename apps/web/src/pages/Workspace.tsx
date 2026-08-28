@@ -129,6 +129,12 @@ function analysisIncompatibility(
   model: ModelVersion | undefined,
 ) {
   if (!model) return undefined;
+  const assessed = model.assessment?.recommendations.find(
+    (recommendation) => recommendation.capability === analysis.key,
+  );
+  if (assessed?.status === "incompatible") {
+    return assessed.compatibility_warnings[0] ?? "Incompatible with this validated model";
+  }
   const dependent = Boolean(model.metadata.dependent_inputs);
   if (analysis.requires_dependent_inputs && !dependent) {
     return "Requires a dependent input copula";
