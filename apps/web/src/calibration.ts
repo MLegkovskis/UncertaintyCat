@@ -72,8 +72,12 @@ export function parseCalibrationCsv(
 }
 
 export function isOfficialCalibrationModel(
-  inputNames: string[],
-  outputNames: string[],
+  modelSourceHash: string | undefined,
+  referenceSourceHash: string | undefined,
 ) {
-  return inputNames.join("|") === "a|b|c|x" && outputNames.join("|") === "y";
+  return Boolean(
+    modelSourceHash
+    && referenceSourceHash
+    && modelSourceHash === referenceSourceHash,
+  );
 }

@@ -353,6 +353,7 @@ def test_calibration_recovers_official_exponential_parameters_repeatably() -> No
         ({"starting_values": [1.0, float("inf"), 1.0]}, "finite number"),
         ({"observed_input_names": ["wrong"]}, "exactly match"),
         ({"observed_output_name": "wrong"}, "must be named 'y'"),
+        ({"observed_output_name": "x"}, "column names must be unique"),
         ({"observed_inputs": [[0.5, 1.0]] * 10}, "named input columns"),
         ({"observed_outputs": CALIBRATION_OUTPUTS[:-1]}, "row counts must match"),
         ({"observed_outputs": [float("nan")] * 10}, "finite number"),

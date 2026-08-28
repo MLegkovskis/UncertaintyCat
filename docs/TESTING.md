@@ -11,6 +11,7 @@ npm run test:e2e
 This suite uses stateful HTTP fixtures with the real React application. It covers:
 
 - the static public overview, absence of private navigation, private-route login wall, and Cloudflare sign-in initiation;
+- a production-bundle gate proving canonical authenticated example source and hashes are absent from public JavaScript and source maps;
 - authenticated desktop/mobile navigation, account identity, immediate sign-out without a hard refresh, and theme persistence;
 - discovery of all 24 reference models in the unified, immediately editable Python authoring view;
 - blank/manual model naming, resizable Python authoring, project creation from the project index, project-scoped studio navigation, and the multi-output symbolic OpenTURNS builder;

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_CALIBRATION_ROWS,
   OFFICIAL_CALIBRATION_CSV,
+  isOfficialCalibrationModel,
   parseCalibrationCsv,
 } from "./calibration";
 
@@ -29,5 +30,11 @@ describe("calibration CSV", () => {
   it("enforces the stored-observation bound", () => {
     const rows = Array.from({ length: MAX_CALIBRATION_ROWS + 1 }, (_, index) => `${index},${index}`);
     expect(() => parseCalibrationCsv(["x,y", ...rows].join("\n"), ["x"], "y")).toThrow("at most 250");
+  });
+
+  it("recognizes the official setup only by its authenticated source hash", () => {
+    expect(isOfficialCalibrationModel("canonical-hash", "canonical-hash")).toBe(true);
+    expect(isOfficialCalibrationModel("same-variable-names-but-different-source", "canonical-hash")).toBe(false);
+    expect(isOfficialCalibrationModel(undefined, "canonical-hash")).toBe(false);
   });
 });

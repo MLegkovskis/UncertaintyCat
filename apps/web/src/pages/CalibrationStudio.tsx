@@ -28,19 +28,18 @@ export function CalibrationStudio() {
   const [maximumCalls, setMaximumCalls] = useState(250);
   const [error, setError] = useState<string>();
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
+  const examplesQuery = useQuery({ queryKey: ["examples"], queryFn: api.examples });
   const modelsQuery = useQuery({ queryKey: ["models", projectId], queryFn: () => api.listModels(projectId), enabled: Boolean(projectId) });
   const project = projectsQuery.data?.projects.find((item) => item.id === projectId);
   const model = modelsQuery.data?.modelVersions.find((item) => item.id === modelId);
-  const inputNames = useMemo(() => model?.metadata.inputs.map((item) => item.name) ?? [], [model]);
-  const outputNames = useMemo(() => model?.metadata.outputs.map((item) => item.name) ?? [], [model]);
-  const officialModel = isOfficialCalibrationModel(inputNames, outputNames);
+  const officialExampleHash = examplesQuery.data?.examples.find(
+    (example) => example.id === "calibration_exponential",
+  )?.sha256;
+  const officialModel = isOfficialCalibrationModel(model?.sourceHash, officialExampleHash);
 
   useEffect(() => {
     if (!model) return;
-    const official = isOfficialCalibrationModel(
-      model.metadata.inputs.map((item) => item.name),
-      model.metadata.outputs.map((item) => item.name),
-    );
+    const official = isOfficialCalibrationModel(model.sourceHash, officialExampleHash);
     const indices = official ? [0, 1, 2] : [];
     setSelectedParameters(indices);
     setStartingValues(Object.fromEntries(model.metadata.inputs.map((item) => [
@@ -50,7 +49,7 @@ export function CalibrationStudio() {
     setOutputTarget(0);
     setCsv(official ? OFFICIAL_CALIBRATION_CSV : "");
     setError(undefined);
-  }, [model?.id]);
+  }, [model?.id, officialExampleHash]);
 
   const observedInputNames = useMemo(() => model?.metadata.inputs
     .filter((item) => !selectedParameters.includes(item.index))

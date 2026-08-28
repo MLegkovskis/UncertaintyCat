@@ -97,10 +97,10 @@ export const calibrationSavedModel: ModelVersion = {
   ...savedModel,
   id: "model-calibration",
   displayName: "Exponential calibration benchmark",
-  sourceHash: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  sourceHash: EXAMPLE_CATALOG.find((example) => example.id === "calibration_exponential")!.sha256,
   metadata: {
     ...modelMetadata,
-    source_hash: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    source_hash: EXAMPLE_CATALOG.find((example) => example.id === "calibration_exponential")!.sha256,
     input_dimension: 4,
     inputs: [
       { index: 0, name: "a", distribution: "Uniform", parameters: [0, 5], kind: "continuous", mean: 2.5, standard_deviation: 1.44 },

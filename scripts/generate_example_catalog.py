@@ -1,4 +1,4 @@
-"""Generate the typed public example catalog from canonical examples/*.py sources."""
+"""Generate the typed authenticated example catalog from canonical examples/*.py sources."""
 
 from __future__ import annotations
 

@@ -74,6 +74,8 @@ class CalibrationConfig(StrictModel):
             raise ValueError("Provide one starting value per calibration parameter.")
         if len(self.observed_inputs) != len(self.observed_outputs):
             raise ValueError("Observed input and output row counts must match.")
+        if self.observed_output_name in self.observed_input_names:
+            raise ValueError("Observed input and output column names must be unique.")
         expected_dimension = len(self.observed_input_names)
         if any(len(row) != expected_dimension for row in self.observed_inputs):
             raise ValueError("Every observed input row must match the named input columns.")
@@ -160,6 +162,11 @@ class CalibrationPlugin(AnalysisPlugin[CalibrationConfig]):
             raise IncompatibleAnalysisError("The requested calibration output does not exist.")
         if any(index >= runtime.metadata.input_dimension for index in config.parameter_indices):
             raise IncompatibleAnalysisError("A selected calibration parameter does not exist.")
+        input_names = [item.name for item in runtime.metadata.inputs]
+        if len(input_names) != len(set(input_names)):
+            raise IncompatibleAnalysisError(
+                "Calibration requires unique model input names for named observations."
+            )
         selected = set(config.parameter_indices)
         if any(runtime.metadata.inputs[index].kind != "continuous" for index in selected):
             raise IncompatibleAnalysisError(
@@ -174,6 +181,10 @@ class CalibrationPlugin(AnalysisPlugin[CalibrationConfig]):
                 "in model order."
             )
         expected_output = runtime.metadata.outputs[target].name
+        if expected_output in expected_inputs:
+            raise IncompatibleAnalysisError(
+                "The selected output name must differ from every observed input name."
+            )
         if config.observed_output_name != expected_output:
             raise IncompatibleAnalysisError(
                 f"The observed output column must be named '{expected_output}'."

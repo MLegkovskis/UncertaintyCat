@@ -1,9 +1,3 @@
-import { EXAMPLE_CATALOG } from "@uncertaintycat/contracts";
-
-export const ISHIGAMI_SOURCE = EXAMPLE_CATALOG.find(
-  (example) => example.id === "ishigami",
-)!.source;
-
 export type DistributionName =
   | "Normal"
   | "Uniform"
