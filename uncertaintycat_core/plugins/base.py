@@ -22,6 +22,7 @@ class AnalysisPlugin(ABC, Generic[ConfigT]):
     description: str
     assumptions: tuple[str, ...] = ()
     supports_dependent_inputs = True
+    requires_dependent_inputs = False
     supports_multi_output = True
     resource_class: Literal["lite", "standard", "heavy"] = "standard"
     config_model: type[ConfigT]
@@ -43,6 +44,7 @@ class AnalysisPlugin(ABC, Generic[ConfigT]):
             description=self.description,
             assumptions=list(self.assumptions),
             supports_dependent_inputs=self.supports_dependent_inputs,
+            requires_dependent_inputs=self.requires_dependent_inputs,
             supports_multi_output=self.supports_multi_output,
             resource_class=self.resource_class,
             config_schema=self.config_model.model_json_schema(),

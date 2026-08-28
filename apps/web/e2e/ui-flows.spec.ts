@@ -308,8 +308,14 @@ test.describe("model studio", () => {
     const checkboxes = page.locator(".analysis-option input[type=checkbox]");
     const directCatalog = catalog.filter((item) => !["morris", "pce", "gpr"].includes(item.key));
     await expect(checkboxes).toHaveCount(directCatalog.length);
-    for (let index = 0; index < directCatalog.length; index += 1) {
-      await checkboxes.nth(index).check();
+    const incompatibleAncova = page.locator(".analysis-option", { hasText: "ANCOVA Dependent-Input Sensitivity" });
+    await expect(incompatibleAncova.locator("input")).toBeDisabled();
+    await expect(incompatibleAncova).toContainText("ANCOVA requires two to ten continuous inputs with a dependent copula.");
+    const enabledCheckboxes = page.locator(
+      ".analysis-option input[type=checkbox]:enabled",
+    );
+    for (let index = 0; index < await enabledCheckboxes.count(); index += 1) {
+      await enabledCheckboxes.nth(index).check();
     }
     await expect(page.getByText("9 analysis tasks")).toBeVisible();
     await page.getByLabel("Standard sample budget").fill("128");
@@ -325,7 +331,7 @@ test.describe("model studio", () => {
       config: Record<string, unknown>;
     }>;
     expect(analyses.map((item) => item.analysisKey).sort()).toEqual(
-      directCatalog.map((item) => item.key).sort(),
+      directCatalog.filter((item) => !item.requires_dependent_inputs).map((item) => item.key).sort(),
     );
     expect(analyses.find((item) => item.analysisKey === "reliability")?.config).toMatchObject({
       method: "MONTE_CARLO",

@@ -22,6 +22,8 @@ The test suite covers:
 - Ishigami Sobol first-order structure (`S1` near 0.314, `S2` near 0.442, `S3` near zero) with tolerances
   appropriate to a finite Saltelli design;
 - dependent-copula rejection for classical Sobol;
+- stable OpenTURNS ANCOVA physical/correlation decomposition for a correlated-normal linear benchmark,
+  including dependent-holdout PCE validation and exact evaluation accounting;
 - OpenTURNS-authoritative execution and strict serialization for correlation, FAST, HSIC, Taylor, OTMorris, convergence,
   reliability, PCE, and Gaussian-process regression;
 - CSV/XLSX inspection, OpenTURNS marginal ranking/copula composition, and promoted PCE/GPR `ot.Study` XML round trips;
@@ -44,6 +46,9 @@ npm run test:e2e
 ## Method-specific interpretation controls
 
 - Sobol and FAST: independent inputs and non-zero selected-output variance.
+- ANCOVA: two to ten continuous dependent inputs, a bounded polynomial basis, and dependent-holdout Q2 of
+  at least 0.8; physical and correlation contributions are first-order and may include negative correlation
+  contributions.
 - Morris: the pinned official `otmorris==0.20.post1` module is authoritative; independent marginals and trajectories operate in probability space so unbounded marginals remain
   finite without inventing physical bounds.
 - HSIC: normalized empirical Gaussian-kernel dependence; permutation p-values are finite-sample evidence,
@@ -73,7 +78,7 @@ npm run test:e2e
 
 - broader published benchmark corpus for each plugin and multiple dimensions/distribution families;
 - confidence-interval coverage tests across repeated randomized designs;
-- dependent-input sensitivity methods (ANCOVA/Shapley effects) in the new plugin core;
+- broader dependent-input benchmarks, non-Gaussian copulas, and Shapley-effect methods beyond ANCOVA;
 - rare-event reliability benchmarks and FORM failure/fallback cases;
 - PCE basis/sparsity/degree sweeps and correlated-input transformations;
 - repeated-design GPR calibration/coverage studies, anisotropic kernel diagnostics, and high-dimensional

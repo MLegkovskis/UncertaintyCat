@@ -110,7 +110,7 @@ class WorkflowRecommendation(StrictModel):
 
 
 class ModelAssessment(StrictModel):
-    version: str = "1.1.0"
+    version: str = "1.2.0"
     profile: ModelProfile
     workflow: WorkflowRecommendation
     recommendations: list[AnalysisRecommendation]
@@ -220,6 +220,7 @@ class AnalysisCatalogEntry(StrictModel):
     description: str
     assumptions: list[str]
     supports_dependent_inputs: bool
+    requires_dependent_inputs: bool
     supports_multi_output: bool
     resource_class: Literal["lite", "standard", "heavy"]
     config_schema: dict[str, Any]

@@ -67,6 +67,6 @@ def test_reference_models_receive_expected_workflow_routes() -> None:
     morris = compile_model(
         Path("examples/Morris_Function.py").read_text(), validation_sample_size=3
     )
-    assert ishigami.assessment.version == "1.1.0"
+    assert ishigami.assessment.version == "1.2.0"
     assert ishigami.assessment.workflow.path == "direct"
     assert morris.assessment.workflow.path == "dimensionality_reduction"

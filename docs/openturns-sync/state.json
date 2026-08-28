@@ -1,35 +1,40 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-21",
+  "reviewed_at": "2026-08-28",
   "uncertaintycat_openturns_pin": "1.27.post1",
   "latest_stable_pypi_release": "1.27.post1",
   "upstream_repository": "https://github.com/openturns/openturns",
-  "upstream_default_branch_commit_reviewed": "357c247de8771a9868371089cdfc1bdac13b080c",
-  "upstream_commit_date": "2026-08-03T08:16:36+02:00",
-  "catalog_plugin_count": 12,
+  "upstream_default_branch_commit_reviewed": "2301120b56f5d879d31c7bdaf73219835e8a118a",
+  "upstream_commit_date": "2026-08-23T09:33:57+02:00",
+  "catalog_plugin_count": 13,
   "last_delivered_candidate": {
-    "key": "gpr",
-    "name": "Gaussian Process Surrogate",
+    "key": "ancova",
+    "name": "ANCOVA Dependent-Input Sensitivity",
     "plugin_version": "1.0.0",
     "result_schema_version": "1.0.0",
-    "upstream_basis": "OpenTURNS 1.27 moved the GaussianProcessRegression production API out of openturns.experimental",
+    "upstream_basis": "Stable OpenTURNS ANCOVA closes the retained dependent-input sensitivity gap; the checkpoint-to-HEAD upstream delta itself contained only CI configuration",
     "decision": "implemented"
   },
   "reviewed_candidates": [
     {
       "name": "GaussianProcessRegressionCrossValidation",
-      "decision": "deferred",
-      "reason": "Still exposed from openturns.experimental in the reviewed upstream tree; the shipped GPR plugin uses an independent hold-out design instead."
+      "decision": "rejected",
+      "reason": "Still exposed only from openturns.experimental in the installed 1.27.post1 pin; the GPR plugin retains independent hold-out validation."
     },
     {
       "name": "ANCOVA",
-      "decision": "deferred",
-      "reason": "Relevant dependent-input sensitivity candidate, but the 1.27 GPR stabilization was the stronger release-linked product gap for this one-feature rehearsal."
+      "decision": "implemented",
+      "reason": "Stable in the installed pin, materially distinct from independent-input Sobol, bounded through a capped PCE basis, and validated against the official correlated-linear construction plus analytical values."
     },
     {
       "name": "RankSobolSensitivityAlgorithm",
       "decision": "deferred",
-      "reason": "Stable and potentially useful for dependent inputs, but requires a separate interpretation and benchmark review before UI exposure."
+      "reason": "Stable and sample-efficient for first-order indices, but it assumes independent scalar inputs and overlaps the existing Sobol question while total- and higher-order methods remain unimplemented upstream."
+    },
+    {
+      "name": "LineSampling and QuantileConfidence",
+      "decision": "rejected",
+      "reason": "They moved out of experimental only on the unreleased 1.28 development branch and are not stable APIs in the installed pin."
     }
   ]
 }

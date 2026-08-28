@@ -77,6 +77,7 @@ function modelUnderstandingError(caught: unknown) {
 }
 
 const SCALAR_ANALYSES = new Set([
+  "ancova",
   "sobol",
   "fast",
   "hsic",
@@ -104,6 +105,12 @@ function analysisConfig(
   },
 ): Record<string, unknown> {
   switch (key) {
+    case "ancova":
+      return {
+        training_size: Math.max(64, Math.min(sampleSize, 10_000)),
+        validation_size: Math.max(64, Math.min(Math.ceil(sampleSize / 2), 2_000)),
+        ancova_sample_size: Math.max(128, Math.min(sampleSize * 2, 20_000)),
+      };
     case "sobol":
       return { base_sample_size: Math.max(64, sampleSize) };
     case "taylor":
@@ -115,6 +122,27 @@ function analysisConfig(
     default:
       return { sample_size: sampleSize };
   }
+}
+
+function analysisIncompatibility(
+  analysis: AnalysisCatalogEntry,
+  model: ModelVersion | undefined,
+) {
+  if (!model) return undefined;
+  const assessed = model.assessment?.recommendations.find(
+    (recommendation) => recommendation.capability === analysis.key,
+  );
+  if (assessed?.status === "incompatible") {
+    return assessed.compatibility_warnings[0] ?? "Incompatible with this validated model";
+  }
+  const dependent = Boolean(model.metadata.dependent_inputs);
+  if (analysis.requires_dependent_inputs && !dependent) {
+    return "Requires a dependent input copula";
+  }
+  if (!analysis.supports_dependent_inputs && dependent) {
+    return "Requires independent inputs";
+  }
+  return undefined;
 }
 
 function GuidedBuilder({
@@ -771,6 +799,15 @@ export function Workspace() {
       analyses: directAnalyses.filter((analysis) => !["monte_carlo", "eda", "convergence"].includes(analysis.key)),
     },
   ], [directAnalyses]);
+  useEffect(() => {
+    if (!savedModel) return;
+    setSelected((current) =>
+      current.filter((key) => {
+        const analysis = directAnalyses.find((candidate) => candidate.key === key);
+        return !analysis || !analysisIncompatibility(analysis, savedModel);
+      }),
+    );
+  }, [directAnalyses, savedModel]);
   const selectExample = (example: ExampleCatalogEntry) => {
     setSelectedExampleId(example.id);
     setSource(example.source);
@@ -1056,23 +1093,27 @@ export function Workspace() {
               <section className="analysis-group" key={group.title}>
                 <header><h3>{group.title}</h3><p>{group.description}</p></header>
                 <div className="analysis-options">
-                  {group.analyses.map((analysis: AnalysisCatalogEntry) => (
-                    <label className={`analysis-option ${selected.includes(analysis.key) ? "selected" : ""}`} key={analysis.key}>
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(analysis.key)}
-                        onChange={() => setSelected((current) => current.includes(analysis.key) ? current.filter((key) => key !== analysis.key) : [...current, analysis.key])}
-                      />
-                      <span className="option-icon">
-                        {analysis.category === "Sensitivity" ? <Beaker /> : analysis.category === "Exploration" ? <FlaskConical /> : <Code2 />}
-                      </span>
-                      <span>
-                        <strong>{analysis.name}</strong>
-                        <small>{analysis.description}</small>
-                        <em>{analysis.resource_class} · OpenTURNS plugin v{analysis.version}</em>
-                      </span>
-                    </label>
-                  ))}
+                  {group.analyses.map((analysis: AnalysisCatalogEntry) => {
+                    const incompatibility = analysisIncompatibility(analysis, savedModel);
+                    return (
+                      <label className={`analysis-option ${selected.includes(analysis.key) ? "selected" : ""} ${incompatibility ? "incompatible" : ""}`} key={analysis.key}>
+                        <input
+                          type="checkbox"
+                          disabled={Boolean(incompatibility)}
+                          checked={selected.includes(analysis.key)}
+                          onChange={() => setSelected((current) => current.includes(analysis.key) ? current.filter((key) => key !== analysis.key) : [...current, analysis.key])}
+                        />
+                        <span className="option-icon">
+                          {analysis.category === "Sensitivity" ? <Beaker /> : analysis.category === "Exploration" ? <FlaskConical /> : <Code2 />}
+                        </span>
+                        <span>
+                          <strong>{analysis.name}</strong>
+                          <small>{analysis.description}</small>
+                          <em>{incompatibility ?? `${analysis.resource_class} · OpenTURNS plugin v${analysis.version}`}</em>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </section>
             ))}

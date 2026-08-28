@@ -259,6 +259,9 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
     continuous = sum(item.kind == "continuous" for item in inputs)
     discrete = sum(item.kind == "discrete" for item in inputs)
     smooth_candidate = symbolic and continuous == input_dimension and not dependent_inputs
+    ancova_compatible = (
+        dependent_inputs and continuous == input_dimension and 2 <= input_dimension <= 10
+    )
     expensive = projected_runtime_ms > 5_000
     workflow = recommend_workflow(
         input_dimension=input_dimension,
@@ -291,6 +294,27 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
             rationale_codes=["BASELINE_CONVERGENCE_EVIDENCE"],
             projected_evaluations=1000,
             projected_runtime_ms=projected_runtime_ms,
+        ),
+        AnalysisRecommendation(
+            capability="ancova",
+            status="recommended" if ancova_compatible else "incompatible",
+            priority=2,
+            rationale_codes=(
+                ["DEPENDENT_INPUT_VARIANCE_DECOMPOSITION"]
+                if ancova_compatible
+                else ["INDEPENDENT_INPUTS_USE_SOBOL"]
+                if not dependent_inputs
+                else ["ANCOVA_DIMENSION_LIMIT"]
+                if not 2 <= input_dimension <= 10
+                else ["ANCOVA_REQUIRES_CONTINUOUS_INPUTS"]
+            ),
+            projected_evaluations=1500,
+            projected_runtime_ms=evaluation_runtime_ms * 1500 / validation_sample_size,
+            compatibility_warnings=(
+                []
+                if ancova_compatible
+                else ["ANCOVA requires two to ten continuous inputs with a dependent copula."]
+            ),
         ),
         AnalysisRecommendation(
             capability="morris",

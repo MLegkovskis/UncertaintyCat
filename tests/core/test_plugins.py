@@ -99,6 +99,168 @@ problem = ot.JointDistribution([ot.Normal(), ot.Normal()], ot.NormalCopula(corre
         run_analysis(runtime, AnalysisRequest(analysis_key="sobol"))
 
 
+@pytest.mark.scientific
+def test_ancova_matches_correlated_linear_analytical_contributions() -> None:
+    source = """
+import openturns as ot
+model = ot.SymbolicFunction(["X1", "X2"], ["4.0*X1 + 5.0*X2"])
+model.setOutputDescription(["response"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.3
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+problem.setDescription(["X1", "X2"])
+"""
+    request = AnalysisRequest(
+        analysis_key="ancova",
+        config={
+            "degree": 3,
+            "training_size": 500,
+            "validation_size": 300,
+            "ancova_sample_size": 4000,
+        },
+        output_targets=[0],
+    )
+    result_a = run_analysis(compile_model(source), request, seed=42)
+    result_b = run_analysis(compile_model(source), request, seed=42)
+    rows = {str(row[0]): row for row in result_a.payload.tables["indices"].rows}
+
+    assert result_a.plugin_version == "1.0.0"
+    assert result_a.payload.metrics == result_b.payload.metrics
+    assert result_a.payload.tables == result_b.payload.tables
+    assert result_a.payload.metrics["validation_q2"] > 0.999
+    assert float(rows["X1"][1]) == pytest.approx(22.0 / 53.0, abs=0.04)
+    assert float(rows["X2"][1]) == pytest.approx(31.0 / 53.0, abs=0.04)
+    assert float(rows["X1"][2]) == pytest.approx(16.0 / 53.0, abs=0.04)
+    assert float(rows["X2"][2]) == pytest.approx(25.0 / 53.0, abs=0.04)
+    assert float(rows["X1"][3]) == pytest.approx(6.0 / 53.0, abs=0.04)
+    assert float(rows["X2"][3]) == pytest.approx(6.0 / 53.0, abs=0.04)
+    assert result_a.runtime.model_evaluations == 800
+    assert result_a.payload.facts["copula"] == "NormalCopula"
+    assert "NaN" not in result_a.model_dump_json()
+    recommendation = next(
+        item
+        for item in compile_model(source).assessment.recommendations
+        if item.capability == "ancova"
+    )
+    assert recommendation.status == "recommended"
+
+
+def test_ancova_rejects_invalid_applicability_and_untrusted_surrogates() -> None:
+    independent = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2"])
+problem = ot.Normal(2)
+"""
+    )
+    with pytest.raises(IncompatibleAnalysisError, match="dependent inputs"):
+        run_analysis(independent, AnalysisRequest(analysis_key="ancova"))
+
+    discrete = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.2
+problem = ot.JointDistribution([ot.Poisson(2.0), ot.Poisson(3.0)], ot.NormalCopula(correlation))
+"""
+    )
+    with pytest.raises(IncompatibleAnalysisError, match="continuous"):
+        run_analysis(discrete, AnalysisRequest(analysis_key="ancova"))
+
+    constant = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["1.0"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.2
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+    )
+    with pytest.raises(IncompatibleAnalysisError, match="constant"):
+        run_analysis(
+            constant,
+            AnalysisRequest(
+                analysis_key="ancova",
+                config={"training_size": 128, "validation_size": 64},
+            ),
+        )
+
+    with pytest.raises(IncompatibleAnalysisError, match="output target"):
+        run_analysis(
+            compile_model(
+                """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.2
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+            ),
+            AnalysisRequest(analysis_key="ancova", output_targets=[3]),
+        )
+    with pytest.raises(IncompatibleAnalysisError, match="output target"):
+        run_analysis(
+            compile_model(
+                """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.2
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+            ),
+            AnalysisRequest(analysis_key="ancova", output_targets=[-1]),
+        )
+
+
+def test_ancova_selects_one_target_from_a_multi_output_model() -> None:
+    runtime = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2", "2.0*x1 - x2"])
+model.setOutputDescription(["sum", "difference"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.25
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+    )
+    result = run_analysis(
+        runtime,
+        AnalysisRequest(
+            analysis_key="ancova",
+            config={
+                "training_size": 128,
+                "validation_size": 64,
+                "ancova_sample_size": 256,
+            },
+            output_targets=[1],
+        ),
+    )
+
+    assert result.payload.facts["output"] == "difference"
+    assert result.payload.metrics["validation_q2"] > 0.99
+
+
+def test_ancova_rejects_a_polynomial_basis_over_the_resource_cap() -> None:
+    runtime = compile_model(
+        """
+import openturns as ot
+names = [f"x{index}" for index in range(10)]
+model = ot.SymbolicFunction(names, [" + ".join(names)])
+correlation = ot.CorrelationMatrix(10)
+correlation[0, 1] = 0.2
+problem = ot.Normal([0.0] * 10, [1.0] * 10, correlation)
+"""
+    )
+
+    with pytest.raises(IncompatibleAnalysisError, match="maximum is 500"):
+        run_analysis(
+            runtime,
+            AnalysisRequest(analysis_key="ancova", config={"degree": 6}),
+        )
+
+
 @pytest.mark.parametrize(
     ("analysis_key", "config"),
     [

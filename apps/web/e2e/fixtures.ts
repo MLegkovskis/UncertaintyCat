@@ -15,6 +15,7 @@ export const catalog: AnalysisCatalogEntry[] = [
   ["monte_carlo", "Uncertainty Propagation", "Propagation", "lite"],
   ["eda", "Exploratory Data Analysis", "Exploration", "lite"],
   ["correlation", "Correlation Analysis", "Sensitivity", "lite"],
+  ["ancova", "ANCOVA Dependent-Input Sensitivity", "Sensitivity", "heavy"],
   ["sobol", "Sobol Sensitivity", "Sensitivity", "standard"],
   ["fast", "FAST Sensitivity", "Sensitivity", "standard"],
   ["hsic", "HSIC Dependence", "Sensitivity", "standard"],
@@ -26,12 +27,13 @@ export const catalog: AnalysisCatalogEntry[] = [
   ["gpr", "Gaussian Process Surrogate", "Surrogate", "heavy"],
 ].map(([key, name, category, resourceClass]) => ({
   key,
-  version: "2.0.0",
+  version: key === "ancova" ? "1.0.0" : "2.0.0",
   name,
   category,
   description: `${name} produces versioned numerical evidence.`,
   assumptions: [`${name} test assumption`],
-  supports_dependent_inputs: true,
+  supports_dependent_inputs: !["sobol", "fast", "morris", "pce"].includes(key),
+  requires_dependent_inputs: key === "ancova",
   supports_multi_output: true,
   resource_class: resourceClass as AnalysisCatalogEntry["resource_class"],
   config_schema: {},
@@ -54,7 +56,7 @@ const modelMetadata: ModelMetadata = {
 };
 
 const modelAssessment: ModelAssessment = {
-  version: "1.1.0",
+  version: "1.2.0",
   profile: {
     input_dimension: 3,
     output_dimension: 1,
@@ -71,6 +73,7 @@ const modelAssessment: ModelAssessment = {
   },
   workflow: { path: "direct", rationale_codes: ["DIRECT_EVALUATION_PRACTICAL"] },
   recommendations: [
+    { capability: "ancova", status: "incompatible", priority: 2, rationale_codes: ["INDEPENDENT_INPUTS_USE_SOBOL"], compatibility_warnings: ["ANCOVA requires two to ten continuous inputs with a dependent copula."] },
     { capability: "gpr", status: "available", priority: 3, rationale_codes: ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"], compatibility_warnings: [] },
     { capability: "pce", status: "available", priority: 3, rationale_codes: ["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"], compatibility_warnings: [] },
   ],

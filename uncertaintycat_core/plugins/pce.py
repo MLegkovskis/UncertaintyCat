@@ -137,7 +137,7 @@ def fit_pce(runtime: ModelRuntime, config: PceConfig) -> tuple[ot.FunctionalChao
     if target >= runtime.metadata.output_dimension:
         raise IncompatibleAnalysisError("The requested output target does not exist.")
     ot.RandomGenerator.SetSeed(config.seed)
-    basis = _build_basis(runtime.problem)
+    basis = build_pce_basis(runtime.problem)
     enumeration = basis.getEnumerateFunction()
     basis_size = enumeration.getBasisSizeFromTotalDegree(config.degree)
     strategy = ot.FixedStrategy(basis, basis_size)
@@ -160,7 +160,8 @@ def fit_pce(runtime: ModelRuntime, config: PceConfig) -> tuple[ot.FunctionalChao
         ) from exc
 
 
-def _build_basis(distribution: ot.Distribution) -> ot.OrthogonalProductPolynomialFactory:
+def build_pce_basis(distribution: ot.Distribution) -> ot.OrthogonalProductPolynomialFactory:
+    """Build the marginal-product basis shared by PCE-backed analyses."""
     collection = ot.PolynomialFamilyCollection(distribution.getDimension())
     for index in range(distribution.getDimension()):
         collection[index] = ot.StandardDistributionPolynomialFactory(

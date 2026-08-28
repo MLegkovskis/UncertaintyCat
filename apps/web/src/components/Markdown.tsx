@@ -9,6 +9,7 @@ const EVIDENCE_CITATION =
 const EVIDENCE_LINK_PREFIX = "#evidence-";
 
 const ANALYSIS_LABELS: Record<string, string> = {
+  ancova: "ANCOVA",
   eda: "EDA",
   fast: "FAST",
   hsic: "HSIC",
