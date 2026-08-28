@@ -39,8 +39,9 @@ Every autonomous run must obey these rules:
 11. Do not weaken a benchmark or widen a tolerance solely to make a proposed change pass.
 12. Do not expose credentials in logs, commits, artifacts, issue bodies, or prompts.
 13. Preserve unrelated working-tree changes. Never reset, clean, or overwrite user work.
-14. Push `main` only after all applicable local gates pass. CI is the release authority; production deploys
-    only after successful CI. Fix failures forward and never rewrite deployed history.
+14. Use the delivery mode explicitly authorized for the run. Direct user-authorized implementation may follow
+    `AGENTS.md`; the scheduled ChatGPT workflow must use a feature branch and pull request, must not self-merge,
+    and must not deploy production. In every mode CI remains authoritative and failures are fixed forward.
 15. A clear, evidence-backed no-op is a first-class result when nothing crosses the admission threshold.
 
 ## 2. Current system map
@@ -369,8 +370,11 @@ git diff
 ```
 
 Verify every changed file belongs to the capability. Update `state.json` with the exact stable release,
-upstream commit/date, catalog count, selected result, and deferred/rejected candidates. Commit explicit files
-and push directly to `main` only after the complete local gate:
+upstream commit/date, catalog count, selected result, and deferred/rejected candidates. The canonical scheduled
+ChatGPT workflow in [`CHATGPT_SCHEDULED_FEATURE_PROMPT.md`](CHATGPT_SCHEDULED_FEATURE_PROMPT.md) creates a
+feature branch and pull request only after the complete local gate; it never pushes or merges `main`.
+
+For a separate, explicitly user-authorized direct-delivery session, follow `AGENTS.md` and stage explicit files:
 
 ```bash
 git add <explicit files>
@@ -519,10 +523,10 @@ Perform one complete intake cycle:
     candidates so the next run does not rediscover them without new evidence.
 11. Run every Python, TypeScript, build, Playwright, full-stack, and container gate in the README. Inspect the
     full diff. Never weaken evidence merely to pass.
-12. Only when all gates pass, commit explicit files and push directly to main. Observe GitHub CI and the
-    post-CI Cloudflare deployment to terminal success. Verify health, the static public overview, the
-    unauthenticated API boundary, and the new capability through full-stack CI. Record any separately
-    authorized authenticated production audit.
+12. Only when all gates pass, use the delivery mode authorized for the run. The canonical scheduled ChatGPT
+    workflow must commit to a feature branch, open a pull request, observe exact-head PR CI, and stop without
+    self-merging or deploying. Direct `main` delivery and post-CI production observation apply only to a
+    separate session explicitly authorized for that mode.
 13. Diagnose failures and fix forward. Never rewrite deployed history or reverse D1 migrations. If completion
     is unsafe, leave the repository recoverable, do not push unverified code, and report the exact blocker.
 14. Return the section 8 evidence report with direct primary-source links, files, commits, workflow results,
@@ -538,6 +542,11 @@ Run the lightweight release scout weekly and this deeper cycle weekly or fortnig
 rediscover development-branch churn unless state-based no-op exits are cheap. Serialize scheduled agents so
 two runs cannot select or deploy from one baseline. Release concurrency should not cancel an in-progress
 deployment.
+
+For ChatGPT sessions connected to a Codex cloud environment and GitHub, use the canonical, PR-based prompt in
+[`CHATGPT_SCHEDULED_FEATURE_PROMPT.md`](CHATGPT_SCHEDULED_FEATURE_PROMPT.md). It includes collision handling,
+untrusted-web-input boundaries, scientific admission gates, complete evidence, pull-request structure, CI
+shepherding, and explicit no-op behavior. The abbreviated prompt above remains a process synopsis.
 
 Even for a no-op, update the checkpoint only when new upstream commits or candidates were genuinely reviewed.
 That keeps future diffs precise without fabricating repository activity.
