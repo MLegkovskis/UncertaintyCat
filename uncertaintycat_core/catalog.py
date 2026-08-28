@@ -18,6 +18,7 @@ from uncertaintycat_core.plugins.morris import plugin as morris_plugin
 from uncertaintycat_core.plugins.pce import plugin as pce_plugin
 from uncertaintycat_core.plugins.reliability import plugin as reliability_plugin
 from uncertaintycat_core.plugins.sobol import plugin as sobol_plugin
+from uncertaintycat_core.plugins.target_hsic import plugin as target_hsic_plugin
 from uncertaintycat_core.plugins.taylor import plugin as taylor_plugin
 
 _PLUGINS: dict[str, AnalysisPlugin] = {
@@ -30,6 +31,7 @@ _PLUGINS: dict[str, AnalysisPlugin] = {
         sobol_plugin,
         fast_plugin,
         hsic_plugin,
+        target_hsic_plugin,
         taylor_plugin,
         morris_plugin,
         convergence_plugin,

@@ -81,6 +81,11 @@ Worker and must never be imported into the web application bundle. Every web pro
 `scripts/check_web_bundle.mjs`, which rejects JavaScript or source-map assets containing a canonical example
 source marker or source hash.
 
+Target-domain HSIC uses the same authenticated run, ownership, Queue, and Sandbox boundaries as every
+direct numerical plugin. Its strict result stores aggregate indices and diagnostics only; the bounded
+sample used to construct the target score is neither persisted nor sent to report chat. Thresholds and
+permutation controls are ordinary authenticated run configuration and do not expose model source.
+
 ## Secrets
 
 Real `.dev.vars` and environment files are ignored. The full-stack test configuration contains only

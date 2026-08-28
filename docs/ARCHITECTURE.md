@@ -105,6 +105,14 @@ inputs, while ANCOVA is reserved for a dependent copula. ANCOVA fits an independ
 decomposition, validates it against the declared dependent distribution, and persists separate physical and
 correlation-driven first-order variance contributions through the generic result envelope.
 
+Target-domain HSIC remains a project-scoped direct analysis because it consumes the current model and one
+explicit scalar critical domain. Its custom composer controls select the threshold direction, threshold,
+and bounded permutation count; `uncertaintycat_core` alone samples the declared distribution, constructs
+the OpenTURNS distance filter and kernels, validates empirical target coverage, and returns aggregate
+indices. No sampled input/output rows or Python source enter the stored report, browser bundle, logs, or AI
+prompt. The persisted `target_hsic` key and `1.0.0` result schema are separate from global `hsic`, so older
+reports retain their original meaning.
+
 Calibration Studio retains the current project model and uses stable OpenTURNS `ParametricFunction`,
 `NonLinearLeastSquaresCalibration`, and `CalibrationResult` APIs inside the same Sandbox boundary. Selected
 continuous inputs become constant unknown parameters; all remaining inputs and the scalar output must be
@@ -115,7 +123,9 @@ is labelled as OpenTURNS' local linear Gaussian approximation with bootstrap dis
 confidence guarantee. A successful fit is explicitly not evidence of global identifiability, causality, or
 validity outside the observed domain.
 
-Model validation records a versioned workflow recommendation. Its validation outcome, deterministic facts,
+Model validation records a versioned workflow recommendation. Assessment version `1.3.0` adds deterministic
+target-HSIC eligibility for at most twenty continuous inputs while retaining the requirement for a
+user-defined critical domain. Its validation outcome, deterministic facts,
 AI brief, and recommended route are rendered together so an assessment does not fragment across the
 authoring page. The deterministic rule prioritizes Morris at
 15 or more inputs, recommends an eligible surrogate above a measured five-second projection per 1,000

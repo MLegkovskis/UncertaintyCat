@@ -81,6 +81,7 @@ const SCALAR_ANALYSES = new Set([
   "sobol",
   "fast",
   "hsic",
+  "target_hsic",
   "taylor",
   "convergence",
   "reliability",
@@ -103,6 +104,11 @@ function analysisConfig(
     maximum_evaluations: number;
     target_coefficient_of_variation: number;
   },
+  targetHsic: {
+    threshold: number;
+    operator: "<=" | ">=";
+    permutations: number;
+  },
 ): Record<string, unknown> {
   switch (key) {
     case "ancova":
@@ -117,6 +123,13 @@ function analysisConfig(
       return { validation_size: Math.max(64, Math.min(sampleSize, 5_000)) };
     case "reliability":
       return reliability;
+    case "target_hsic":
+      return {
+        // Keep the direct-composer default inside the core's conservative
+        // quadratic kernel-operation budget even for a twenty-input model.
+        sample_size: Math.max(50, Math.min(sampleSize, 250)),
+        ...targetHsic,
+      };
     case "fast":
       return { sample_size: Math.max(65, sampleSize) };
     default:
@@ -714,6 +727,9 @@ export function Workspace() {
   const [reliabilityMaximumEvaluations, setReliabilityMaximumEvaluations] =
     useState(20_000);
   const [reliabilityTargetCov, setReliabilityTargetCov] = useState(0.05);
+  const [targetHsicThreshold, setTargetHsicThreshold] = useState(0);
+  const [targetHsicOperator, setTargetHsicOperator] = useState<"<=" | ">=">(">=");
+  const [targetHsicPermutations, setTargetHsicPermutations] = useState(100);
   const [analysisSurrogateId, setAnalysisSurrogateId] = useState(requestedSurrogateId);
   const [error, setError] = useState<string>();
   const projects = projectsQuery.data?.projects ?? [];
@@ -725,6 +741,10 @@ export function Workspace() {
     queryFn: () => api.getModelDefinition(sourceModelId),
     enabled: Boolean(sourceModelId),
   });
+  useEffect(() => {
+    const pilot = savedModel?.assessment?.profile.pilot_outputs[outputTarget];
+    if (pilot) setTargetHsicThreshold(pilot.mean);
+  }, [outputTarget, savedModel?.id]);
   useEffect(() => {
     const definition = definitionQuery.data?.definition;
     if (!definition) return;
@@ -868,9 +888,14 @@ export function Workspace() {
         maximum_evaluations: reliabilityMaximumEvaluations,
         target_coefficient_of_variation: reliabilityTargetCov,
       };
+      const targetHsic = {
+        threshold: targetHsicThreshold,
+        operator: targetHsicOperator,
+        permutations: targetHsicPermutations,
+      };
       const analyses = selected.map((key) => ({
         analysisKey: key,
-        config: analysisConfig(key, sampleSize, reliability),
+        config: analysisConfig(key, sampleSize, reliability, targetHsic),
         outputTargets: SCALAR_ANALYSES.has(key) ? [outputTarget] : [],
       }));
       return api.createRun({
@@ -1088,6 +1113,25 @@ export function Workspace() {
                 <label><span>Target coefficient of variation</span><input type="number" min="0.001" max="1" step="0.01" value={reliabilityTargetCov} onChange={(event) => setReliabilityTargetCov(Number(event.target.value))} /></label>
               </div>
             )}
+          </div>
+        )}
+        {selected.includes("target_hsic") && (
+          <div className="analysis-settings">
+            <div className="reliability-studio">
+              <div className="reliability-step"><i>1</i><div><strong>Define the critical target domain</strong><small>Output {savedModel?.metadata.outputs[outputTarget]?.name ?? outputTarget}</small></div></div>
+              <label><span>Target domain</span><select value={targetHsicOperator} onChange={(event) => setTargetHsicOperator(event.target.value as "<=" | ">=")}><option value=">=">Output ≥ threshold</option><option value="<=">Output ≤ threshold</option></select></label>
+              <label><span>Target HSIC threshold</span><input type="number" value={targetHsicThreshold} onChange={(event) => setTargetHsicThreshold(Number(event.target.value))} /></label>
+              {savedModel?.assessment?.profile.pilot_outputs[outputTarget] && (() => {
+                const pilot = savedModel.assessment.profile.pilot_outputs[outputTarget]!;
+                const intersects = targetHsicThreshold >= pilot.minimum && targetHsicThreshold <= pilot.maximum;
+                return <div className={`reliability-preview ${intersects ? "intersects" : "outside"}`}>
+                  <div className="reliability-step"><i>2</i><div><strong>Bounded pilot preview</strong><small>{pilot.minimum.toPrecision(4)} to {pilot.maximum.toPrecision(4)} observed · q05 {pilot.quantile_05.toPrecision(4)} · q95 {pilot.quantile_95.toPrecision(4)}</small></div></div>
+                  <p>{intersects ? "The threshold intersects the validation sample. Execution still requires at least five sampled points on each side." : "The threshold is outside the validation sample; the target screen may be rejected for insufficient coverage."}</p>
+                </div>;
+              })()}
+              <div className="reliability-step"><i>3</i><div><strong>Set bounded permutation evidence</strong><small>This screens association with a smoothed target score; it does not estimate event probability or causal influence.</small></div></div>
+              <label><span>Target HSIC permutations</span><input type="number" min="0" max="200" value={targetHsicPermutations} onChange={(event) => setTargetHsicPermutations(Number(event.target.value))} /></label>
+            </div>
           </div>
         )}
         {directAnalyses.length ? (
