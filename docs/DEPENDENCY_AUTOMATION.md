@@ -74,7 +74,7 @@ Bot merges use `GITHUB_TOKEN`, which suppresses a normal chained push workflow. 
 therefore dispatches CI with `expected_sha`; CI rejects the dispatch if GitHub resolved `main` to another
 revision. Any authorized maintainer or bot may initiate that exact-SHA dispatch, but an empty dispatch can
 never release. Successful exact-SHA CI dispatches deployment explicitly. Deployment independently accepts
-only a 40-character commit that belongs to `main` and has successful CI for that exact SHA.
+only the current 40-character `main` tip and requires successful CI for that exact SHA.
 
 The initial shell integrity check rejects malformed or mismatched dispatch inputs before any test can run.
 After all tests pass, a workflow-dispatch-only job revalidates the event, 40-character input, and exact SHA
@@ -82,6 +82,9 @@ inside fail-closed shell code before dispatching deployment. Keeping input compa
 expression prevents GitHub expression coercion from silently skipping an otherwise valid bot release.
 The release job uses `always()` only to force evaluation after the intentionally skipped non-PR dependency
 review; it still requires successful dispatch integrity and aggregate CI before its write-capable step can run.
+Deployment handles successful push CI through `workflow_run` and exact-SHA CI through the explicit dispatch;
+it ignores `workflow_run` notifications originating from a manually dispatched CI run, preventing duplicate
+production releases while retaining the bot-safe handoff required after `GITHUB_TOKEN` initiated merges.
 
 ## Failed-update lifecycle
 

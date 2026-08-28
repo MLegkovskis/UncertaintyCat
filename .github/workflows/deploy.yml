@@ -24,7 +24,8 @@ jobs:
   authorize:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event != 'workflow_dispatch')
     runs-on: ubuntu-latest
     outputs:
       target_sha: ${{ steps.authorize.outputs.target_sha }}
@@ -43,7 +44,7 @@ jobs:
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
 
           comparison="$(gh api "repos/$REPOSITORY/compare/$TARGET_SHA...main" --jq '.status')"
-          [[ "$comparison" == "identical" || "$comparison" == "ahead" ]]
+          [[ "$comparison" == "identical" ]]
 
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             source_run="$(gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
