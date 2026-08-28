@@ -55,6 +55,29 @@ def test_validate_and_execute() -> None:
     assert gpr_execution.json()["result"]["analysis_key"] == "gpr"
     assert gpr_execution.json()["result"]["runtime"]["model_evaluations"] == 52
 
+    target_hsic_execution = client.post(
+        "/v1/execute",
+        json={
+            "source": source,
+            "analysis": {
+                "analysis_key": "target_hsic",
+                "config": {
+                    "sample_size": 100,
+                    "permutations": 20,
+                    "threshold": 0.0,
+                    "operator": ">=",
+                },
+                "output_targets": [0],
+            },
+            "seed": 0,
+        },
+    )
+    assert target_hsic_execution.status_code == 200
+    target_hsic_result = target_hsic_execution.json()["result"]
+    assert target_hsic_result["analysis_key"] == "target_hsic"
+    assert target_hsic_result["runtime"]["model_evaluations"] == 100
+    assert target_hsic_result["payload"]["tables"]["target_indices"]["row_count"] == 3
+
     dependent_source = """
 import openturns as ot
 model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2^2"])
@@ -233,4 +256,5 @@ def test_one_shot_sandbox_protocol() -> None:
         "sobol",
         "gpr",
         "calibration_nlls",
+        "target_hsic",
     }

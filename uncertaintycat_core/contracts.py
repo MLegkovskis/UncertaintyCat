@@ -110,7 +110,7 @@ class WorkflowRecommendation(StrictModel):
 
 
 class ModelAssessment(StrictModel):
-    version: str = "1.2.0"
+    version: str = "1.3.0"
     profile: ModelProfile
     workflow: WorkflowRecommendation
     recommendations: list[AnalysisRecommendation]

@@ -262,6 +262,7 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
     ancova_compatible = (
         dependent_inputs and continuous == input_dimension and 2 <= input_dimension <= 10
     )
+    target_hsic_compatible = continuous == input_dimension and input_dimension <= 20
     expensive = projected_runtime_ms > 5_000
     workflow = recommend_workflow(
         input_dimension=input_dimension,
@@ -371,6 +372,25 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
             compatibility_warnings=[
                 "Reliability is never selected without an explicit failure event."
             ],
+        ),
+        AnalysisRecommendation(
+            capability="target_hsic",
+            status="available" if target_hsic_compatible else "incompatible",
+            priority=4,
+            rationale_codes=["USER_DEFINED_CRITICAL_DOMAIN_REQUIRED"]
+            if target_hsic_compatible
+            else ["TARGET_HSIC_REQUIRES_BOUNDED_CONTINUOUS_INPUTS"],
+            projected_evaluations=250 if target_hsic_compatible else None,
+            projected_runtime_ms=(
+                evaluation_runtime_ms * 250 / validation_sample_size
+                if target_hsic_compatible
+                else None
+            ),
+            compatibility_warnings=(
+                ["Define a scalar critical output domain before target-HSIC execution."]
+                if target_hsic_compatible
+                else ["Target-domain HSIC requires at most twenty continuous inputs."]
+            ),
         ),
         AnalysisRecommendation(
             capability="distribution_fitting",

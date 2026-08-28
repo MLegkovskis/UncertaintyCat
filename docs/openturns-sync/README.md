@@ -88,7 +88,7 @@ Queueing, persistence, exports, sharing, and report chat already consume the gen
 
 ### Current capability inventory
 
-At this checkpoint the application has 14 plugins:
+At this checkpoint the application has 15 plugins:
 
 | Key | Capability | Important boundary |
 | --- | --- | --- |
@@ -99,6 +99,7 @@ At this checkpoint the application has 14 plugins:
 | `sobol` | Saltelli first/total/second-order indices | independent inputs only |
 | `fast` | Fourier amplitude sensitivity indices | independent inputs only |
 | `hsic` | kernel dependence and permutation evidence | dependence is not causality |
+| `target_hsic` | target-domain kernel association and permutation evidence | target association is not probability or causality |
 | `taylor` | local derivative variance decomposition | local linear approximation |
 | `morris` | elementary-effect screening | independent marginals; screening interpretation |
 | `convergence` | running expectation evidence | finite-sample convergence evidence |
@@ -510,6 +511,54 @@ calibration, weighted/correlated residuals, multi-output calibration, MCMC, boot
 competing optimizer selection remain explicit follow-ups rather than hidden scope expansion.
 An exact-response run at the 250-row storage bound produced 250 complete prediction rows in a 50,904-byte
 payload, used 3,250 atomic model evaluations, and completed in 11.77 ms on the review host.
+
+### 2026-08-28 target-domain HSIC intake
+
+This cycle restarted from UncertaintyCat
+`d9a835164f9533a5b73a1f00b086c82714aeeccc`, including the merged calibration work and maintainer
+amendments. The installed and PyPI package versions remained `1.27.post1`; the installed binary reports
+source revision `772da39d3324517acedd6068da1bff3bec9b0345`. The newest upstream stable tag reviewed was
+`v1.27.3` at `26a63963fb71851b2d3d397a53ec1a5286ff8d62` (2026-07-28). Its changes after the installed
+revision are SWIG, symbolic-parser, XML/HDF5, CI, and version fixes, with no target-HSIC algorithm change,
+so this slice does not introduce dependency churn. The upstream default branch remained
+`2301120b56f5d879d31c7bdaf73219835e8a118a` (2026-08-23), exactly the previous checkpoint.
+
+The systematic category review and pinned-API prototypes produced this admission record:
+
+| Candidate | Admission | Weighted score | Decision |
+| --- | --- | ---: | --- |
+| `HSICEstimatorTargetSensitivity` | pass | 91/100 | implemented as the new `target_hsic` key |
+| standard-space cross-entropy importance sampling | pass | 83/100 | deferred; valuable rare-event extension, but broader reliability-method and stopping diagnostics are needed |
+| bounded LHS / low-discrepancy design generation | pass | 78/100 | deferred; requires a retained-design journey rather than an analysis-only wrapper |
+| `RankSobolSensitivityAlgorithm` | pass | 74/100 | below threshold because it duplicates the existing first-order Sobol question |
+| `HSICEstimatorConditionalSensitivity` | pass | 73/100 | below threshold and intentionally deferred behind the first target-HSIC slice |
+| Shapley effects | reject | — | no stable Shapley API exists in the installed pin |
+| `LineSampling` / `QuantileConfidence` | reject | — | stable only on the unreleased 1.28 development line |
+
+The admitted plugin uses stable
+[`HSICEstimatorTargetSensitivity`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.HSICEstimatorTargetSensitivity.html),
+[`DistanceToDomainFunction`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.DistanceToDomainFunction.html),
+`ParametricFunction`, `SquaredExponential`, and `HSICUStat` APIs. Review included the official
+[HSIC theory](https://openturns.github.io/openturns/1.25/theory/reliability_sensitivity/sensitivity_hsic.html),
+[Ishigami example](https://openturns.github.io/openturns/latest/auto_sensitivity_analysis/plot_hsic_estimators_ishigami.html),
+[pinned C++ implementation](https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/lib/src/Uncertainty/Algorithm/Sensitivity/HSICEstimatorTargetSensitivity.cxx),
+and [pinned upstream test](https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/python/test/t_HSICEstimatorTargetSensitivity_std.py).
+
+The vertical slice is scalar-output and continuous-input only. It transforms output through
+`exp(-distance_to_critical_domain / s)`, with `s = 0.1` times the sampled output standard deviation by
+default, and asks which inputs are associated with that smoothed target score. It caps inputs at 20,
+samples at 500, permutations at 200, and estimated quadratic work at 30 million units; requires at least
+five sampled observations inside and outside the target; stores only one bounded input-index table; and
+accounts for exactly the sampled model evaluations. Dependent inputs remain allowed with an explicit
+confounding warning. Reports prohibit interpreting the result as failure probability, variance allocation,
+causal influence, or out-of-domain prediction.
+
+Against the upstream fixed-seed Ishigami test (`a=5`, `b=0.1`, 100 observations, target `Y >= 5`,
+100 permutations), the plugin obtained target R2-HSIC
+`[0.26863688209966674, 0.004684228098984393, 0.0033996249931746553]`, matching the upstream expected
+`[0.26863688, 0.00468423, 0.00339962]` within `1e-8`. Raw HSIC, asymptotic p-values, and permutation
+p-values also match their upstream vectors within `1e-8`. The run was exactly repeatable, used 100 model
+evaluations, took about 33 ms in the local prototype, and serialized to 2,784 bytes.
 
 ## 10. Copy-paste scheduled-agent prompt
 

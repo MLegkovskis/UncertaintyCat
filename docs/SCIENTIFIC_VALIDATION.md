@@ -22,6 +22,9 @@ The test suite covers:
 - Ishigami Sobol first-order structure (`S1` near 0.314, `S2` near 0.442, `S3` near zero) with tolerances
   appropriate to a finite Saltelli design;
 - dependent-copula rejection for classical Sobol;
+- stable OpenTURNS target-domain HSIC on the official fixed-seed Ishigami case: target R2-HSIC
+  `[0.26863688, 0.00468423, 0.00339962]`, raw indices and both p-value diagnostics match the upstream
+  test within `1e-8`, repeat exactly, and account for 100 model evaluations;
 - stable OpenTURNS ANCOVA physical/correlation decomposition for a correlated-normal linear benchmark,
   including dependent-holdout PCE validation and exact evaluation accounting;
 - stable OpenTURNS nonlinear least-squares calibration of the official exponential family
@@ -57,6 +60,13 @@ npm run test:e2e
   finite without inventing physical bounds.
 - HSIC: normalized empirical Gaussian-kernel dependence; permutation p-values are finite-sample evidence,
   not a causal claim.
+- Target-domain HSIC: one scalar output and at most 20 continuous inputs; a threshold must leave at least
+  five sampled observations inside and outside the target domain. Sample size, permutations, quadratic
+  work, and report rows are hard-capped. The exponential distance filter and empirical kernel bandwidths
+  make this a sample-dependent association screen—not event probability, variance allocation, causal
+  influence, or evidence beyond the sampled input distribution. Slightly negative finite-sample unbiased
+  U-statistic estimates are retained rather than clipped. Dependent-input results retain an explicit
+  confounding warning.
 - Taylor: local gradients at the mean; the independently sampled linear-surrogate Q2 exposes when a local
   approximation is poor globally.
 - PCE: independent validation Q2/RMSE is always reported; a fitted surrogate is not automatically an
@@ -89,6 +99,7 @@ npm run test:e2e
 - broader published benchmark corpus for each plugin and multiple dimensions/distribution families;
 - confidence-interval coverage tests across repeated randomized designs;
 - broader dependent-input benchmarks, non-Gaussian copulas, and Shapley-effect methods beyond ANCOVA;
+- broader target-HSIC threshold/filter robustness and conditional-HSIC benchmarks;
 - rare-event reliability benchmarks and FORM failure/fallback cases;
 - PCE basis/sparsity/degree sweeps and correlated-input transformations;
 - repeated-design GPR calibration/coverage studies, anisotropic kernel diagnostics, and high-dimensional

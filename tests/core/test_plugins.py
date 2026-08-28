@@ -142,6 +142,162 @@ problem = ot.JointDistribution([ot.Normal(), ot.Normal()], ot.NormalCopula(corre
 
 
 @pytest.mark.scientific
+def test_target_hsic_matches_official_ishigami_benchmark_repeatably() -> None:
+    source = """
+import math
+import openturns as ot
+model = ot.SymbolicFunction(
+    ["X1", "X2", "X3"],
+    ["sin(X1) + 5.0 * sin(X2)^2 + 0.1 * X3^4 * sin(X1)"],
+)
+model.setOutputDescription(["Y"])
+problem = ot.JointDistribution([ot.Uniform(-math.pi, math.pi)] * 3)
+problem.setDescription(["X1", "X2", "X3"])
+"""
+    request = AnalysisRequest(
+        analysis_key="target_hsic",
+        config={
+            "sample_size": 100,
+            "permutations": 100,
+            "threshold": 5.0,
+            "operator": ">=",
+            "smoothing_scale_fraction": 0.1,
+        },
+        output_targets=[0],
+    )
+    result_a = run_analysis(compile_model(source), request, seed=0)
+    result_b = run_analysis(compile_model(source), request, seed=0)
+    rows = {str(row[0]): row for row in result_a.payload.tables["target_indices"].rows}
+
+    assert [float(rows[name][1]) for name in ("X1", "X2", "X3")] == pytest.approx(
+        [0.26863688, 0.00468423, 0.00339962], abs=1.0e-8
+    )
+    assert [float(rows[name][2]) for name in ("X1", "X2", "X3")] == pytest.approx(
+        [0.00107494, 0.00001868, 0.00001411], abs=1.0e-8
+    )
+    assert [float(rows[name][4]) for name in ("X1", "X2", "X3")] == pytest.approx(
+        [0.0, 0.26201467, 0.28227083], abs=1.0e-8
+    )
+    assert [float(rows[name][3]) for name in ("X1", "X2", "X3")] == pytest.approx(
+        [0.0, 0.25742574, 0.21782178], abs=1.0e-8
+    )
+    assert result_a.payload.metrics == result_b.payload.metrics
+    assert result_a.payload.tables == result_b.payload.tables
+    assert result_a.runtime.model_evaluations == 100
+    assert result_a.payload.metrics["model_evaluations"] == 100
+    assert result_a.payload.metrics["target_observations"] == 25
+    assert result_a.payload.facts["strongest_target_association_input"] == "X1"
+    assert "not a failure-probability" in " ".join(result_a.warnings)
+    serialized = result_a.model_dump_json()
+    assert "NaN" not in serialized
+    assert "Infinity" not in serialized
+    assert len(serialized.encode()) < 10_000
+
+
+@pytest.mark.parametrize(
+    ("source", "config", "message"),
+    [
+        (
+            """
+import openturns as ot
+model = ot.SymbolicFunction(["x"], ["1.0"])
+problem = ot.Uniform(-1.0, 1.0)
+""",
+            {"threshold": 0.0},
+            "constant",
+        ),
+        (
+            """
+import openturns as ot
+model = ot.SymbolicFunction(["x"], ["x"])
+problem = ot.Poisson(3.0)
+""",
+            {"threshold": 3.0},
+            "continuous input marginals",
+        ),
+        (
+            """
+import openturns as ot
+model = ot.SymbolicFunction(["x"], ["x"])
+problem = ot.Normal()
+""",
+            {"threshold": 20.0, "operator": ">="},
+            "in the critical domain",
+        ),
+        (
+            """
+import openturns as ot
+model = ot.SymbolicFunction(["x"], ["x"])
+problem = ot.Normal()
+""",
+            {"threshold": -20.0, "operator": ">="},
+            "outside the critical domain",
+        ),
+    ],
+)
+def test_target_hsic_rejects_invalid_or_degenerate_samples(
+    source: str, config: dict[str, object], message: str
+) -> None:
+    with pytest.raises(IncompatibleAnalysisError, match=message):
+        run_analysis(
+            compile_model(source),
+            AnalysisRequest(
+                analysis_key="target_hsic",
+                config={"sample_size": 50, "permutations": 20, **config},
+                output_targets=[0],
+            ),
+            seed=11,
+        )
+
+
+def test_target_hsic_rejects_invalid_contract_and_excessive_work() -> None:
+    source = """
+import openturns as ot
+names = [f"x{index}" for index in range(20)]
+model = ot.SymbolicFunction(names, [" + ".join(names)])
+problem = ot.Normal(20)
+problem.setDescription(names)
+"""
+    with pytest.raises(ValidationError, match="finite number"):
+        run_analysis(
+            compile_model(source),
+            AnalysisRequest(analysis_key="target_hsic", config={"threshold": float("inf")}),
+        )
+    with pytest.raises(IncompatibleAnalysisError, match="workload exceeds"):
+        run_analysis(
+            compile_model(source),
+            AnalysisRequest(
+                analysis_key="target_hsic",
+                config={"sample_size": 500, "permutations": 200},
+            ),
+        )
+
+
+def test_target_hsic_warns_that_dependent_inputs_can_confound_association() -> None:
+    source = """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.6
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+    result = run_analysis(
+        compile_model(source),
+        AnalysisRequest(
+            analysis_key="target_hsic",
+            config={
+                "sample_size": 100,
+                "permutations": 20,
+                "threshold": 0.0,
+                "operator": "<=",
+            },
+        ),
+        seed=17,
+    )
+    assert "dependent" in " ".join(result.warnings).lower()
+
+
+@pytest.mark.scientific
 def test_ancova_matches_correlated_linear_analytical_contributions() -> None:
     source = """
 import openturns as ot
@@ -483,6 +639,10 @@ problem.setDescription(["a", "b", "x"])
         ("correlation", {"sample_size": 100}),
         ("fast", {"sample_size": 128}),
         ("hsic", {"sample_size": 50, "permutations": 5}),
+        (
+            "target_hsic",
+            {"sample_size": 100, "permutations": 20, "threshold": 0.0},
+        ),
         ("taylor", {"validation_size": 50}),
         ("morris", {"trajectories": 4, "levels": 4}),
         ("convergence", {"sample_size": 50, "max_points": 30}),

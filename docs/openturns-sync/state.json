@@ -6,30 +6,47 @@
   "upstream_repository": "https://github.com/openturns/openturns",
   "upstream_default_branch_commit_reviewed": "2301120b56f5d879d31c7bdaf73219835e8a118a",
   "upstream_commit_date": "2026-08-23T09:33:57+02:00",
-  "catalog_plugin_count": 14,
+  "latest_stable_upstream_tag": "v1.27.3",
+  "latest_stable_upstream_commit_reviewed": "26a63963fb71851b2d3d397a53ec1a5286ff8d62",
+  "catalog_plugin_count": 15,
   "last_delivered_candidate": {
-    "key": "calibration_nlls",
-    "name": "Nonlinear Least-Squares Calibration",
+    "key": "target_hsic",
+    "name": "Target-Domain HSIC Sensitivity",
     "plugin_version": "1.0.0",
     "result_schema_version": "1.0.0",
-    "upstream_basis": "Stable OpenTURNS ParametricFunction, NonLinearLeastSquaresCalibration, and CalibrationResult APIs close the retained deterministic parameter-estimation gap; the checkpoint-to-HEAD upstream delta was empty",
+    "upstream_basis": "Stable OpenTURNS HSICEstimatorTargetSensitivity, DistanceToDomainFunction, ParametricFunction, SquaredExponential, and HSICUStat APIs close the retained critical-domain sensitivity gap; the checkpoint-to-HEAD development delta was empty",
     "decision": "implemented"
   },
   "reviewed_candidates": [
     {
-      "name": "NonLinearLeastSquaresCalibration",
+      "name": "HSICEstimatorTargetSensitivity",
       "decision": "implemented",
-      "reason": "Stable in the installed pin, distinct from the existing catalog, bounded to one scalar output and ordinary least squares, and validated against the official fixed-seed nonlinear exponential example plus rank-deficiency checks."
+      "reason": "Stable in the installed pin, scientifically distinct from global HSIC and reliability probability, bounded for kernel/permutation work and result size, and matched to the official fixed-seed Ishigami upstream test."
     },
     {
-      "name": "GaussianProcessRegressionCrossValidation",
-      "decision": "rejected",
-      "reason": "Still exposed only from openturns.experimental in the installed 1.27.post1 pin; the GPR plugin retains independent hold-out validation."
+      "name": "StandardSpaceCrossEntropyImportanceSampling",
+      "decision": "deferred",
+      "reason": "Stable and valuable for rare-event estimation, but a scientifically complete reliability extension requires additional stopping, auxiliary-distribution, and degeneracy diagnostics."
+    },
+    {
+      "name": "LHSExperiment and LowDiscrepancyExperiment",
+      "decision": "deferred",
+      "reason": "Stable and useful for engineering design generation, but it needs a retained-design product journey rather than an analysis-only wrapper."
     },
     {
       "name": "RankSobolSensitivityAlgorithm",
       "decision": "deferred",
-      "reason": "Stable and sample-efficient for first-order indices, but it assumes independent scalar inputs and overlaps the existing Sobol question while total- and higher-order methods remain unimplemented upstream."
+      "reason": "Stable and sample-efficient for first-order indices, but it assumes independent scalar inputs, overlaps the existing Sobol question, and scored 74/100 below the normal admission threshold."
+    },
+    {
+      "name": "HSICEstimatorConditionalSensitivity",
+      "decision": "deferred",
+      "reason": "Stable but more specialized than target HSIC, restricted to the V-statistic, and below the current scoring threshold for a separate first slice."
+    },
+    {
+      "name": "Shapley effects",
+      "decision": "rejected",
+      "reason": "No stable Shapley-effect API exists in the installed OpenTURNS pin."
     },
     {
       "name": "LineSampling and QuantileConfidence",

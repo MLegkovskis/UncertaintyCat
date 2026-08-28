@@ -41,26 +41,30 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.getByText(/3 inputs → 1 outputs/).first()).toBeVisible();
 
   const analysisOptions = page.locator(".analysis-option");
-  await expect(analysisOptions).toHaveCount(10);
+  await expect(analysisOptions).toHaveCount(11);
   const checkboxes = analysisOptions.locator("input[type=checkbox]:enabled");
-  await expect(checkboxes).toHaveCount(9);
-  for (let index = 0; index < 9; index += 1) {
+  await expect(checkboxes).toHaveCount(10);
+  for (let index = 0; index < 10; index += 1) {
     await checkboxes.nth(index).check();
   }
   await page.getByLabel("Standard sample budget").fill("64");
-  await expect(page.getByText("9 analysis tasks")).toBeVisible();
+  await expect(page.getByText("10 analysis tasks")).toBeVisible();
   await page.getByRole("button", { name: "Run analyses" }).click();
   await expect(page).toHaveURL(/\/runs\/[0-9a-f-]+$/);
   const runId = page.url().split("/").at(-1)!;
 
   await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 7 * 60_000 });
-  await expect(page.locator(".task-row")).toHaveCount(9);
-  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(9);
+  await expect(page.locator(".task-row")).toHaveCount(10);
+  await expect(page.locator(".task-row .status-succeeded")).toHaveCount(10);
   await page.getByRole("link", { name: /Open report/ }).click();
 
   await expect(page.getByRole("heading", { name: "Uncertainty Quantification Report" })).toBeVisible();
-  await expect(page.locator(".report-section")).toHaveCount(9);
-  await expect(page.locator(".report-section .status-succeeded")).toHaveCount(9);
+  await expect(page.locator(".report-section")).toHaveCount(10);
+  await expect(page.locator(".report-section .status-succeeded")).toHaveCount(10);
+  const targetHsicSection = page.locator("#section-target_hsic");
+  await expect(targetHsicSection).toBeVisible();
+  await expect(targetHsicSection.getByRole("columnheader", { name: "Target R2-HSIC" })).toBeVisible();
+  await expect(targetHsicSection.getByText(/not a failure-probability estimate/i)).toBeVisible();
   await expect(page.getByText(/OpenTURNS/).first()).toBeVisible();
   await expect(page.locator(".metrics-grid, .result-block, .plot-panel").first()).toBeVisible();
   await expect(page.getByText("Ask this report")).toBeVisible();
@@ -84,7 +88,7 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
   await expect(page.getByText("Ask this report")).toHaveCount(0);
 
-  // The three methods intentionally removed from the direct composer are
+  // The four methods intentionally removed from the direct composer are
   // exercised through their dedicated scientific workspaces.
   await page.goto(`/studies/${projectId}/dimension-reduction`);
   await expect(page.getByRole("heading", { name: "Screen inputs before expensive analysis." })).toBeVisible();

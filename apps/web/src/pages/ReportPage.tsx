@@ -22,6 +22,7 @@ import type { AnalysisResult, ModelMetadata } from "@uncertaintycat/contracts";
 
 function analysisTitle(key: string) {
   if (key === "calibration_nlls") return "Nonlinear least-squares calibration";
+  if (key === "target_hsic") return "Target-domain HSIC sensitivity";
   return key.replaceAll("_", " ");
 }
 

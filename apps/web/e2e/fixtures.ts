@@ -20,6 +20,7 @@ export const catalog: AnalysisCatalogEntry[] = [
   ["sobol", "Sobol Sensitivity", "Sensitivity", "standard"],
   ["fast", "FAST Sensitivity", "Sensitivity", "standard"],
   ["hsic", "HSIC Dependence", "Sensitivity", "standard"],
+  ["target_hsic", "Target-Domain HSIC Sensitivity", "Sensitivity", "standard"],
   ["taylor", "Taylor Decomposition", "Sensitivity", "standard"],
   ["convergence", "Expectation Convergence", "Propagation", "lite"],
   ["morris", "Morris Screening", "Sensitivity", "standard"],
@@ -29,14 +30,14 @@ export const catalog: AnalysisCatalogEntry[] = [
   ["calibration_nlls", "Nonlinear Least-Squares Calibration", "Calibration", "heavy"],
 ].map(([key, name, category, resourceClass]) => ({
   key,
-  version: ["ancova", "calibration_nlls"].includes(key) ? "1.0.0" : "2.0.0",
+  version: ["ancova", "calibration_nlls", "target_hsic"].includes(key) ? "1.0.0" : "2.0.0",
   name,
   category,
   description: `${name} produces versioned numerical evidence.`,
   assumptions: [`${name} test assumption`],
   supports_dependent_inputs: !["sobol", "fast", "morris", "pce"].includes(key),
   requires_dependent_inputs: key === "ancova",
-  supports_multi_output: key !== "calibration_nlls",
+  supports_multi_output: !["calibration_nlls", "target_hsic"].includes(key),
   resource_class: resourceClass as AnalysisCatalogEntry["resource_class"],
   config_schema: {},
 }));
@@ -58,7 +59,7 @@ const modelMetadata: ModelMetadata = {
 };
 
 const modelAssessment: ModelAssessment = {
-  version: "1.2.0",
+  version: "1.3.0",
   profile: {
     input_dimension: 3,
     output_dimension: 1,
@@ -78,6 +79,7 @@ const modelAssessment: ModelAssessment = {
     { capability: "ancova", status: "incompatible", priority: 2, rationale_codes: ["INDEPENDENT_INPUTS_USE_SOBOL"], compatibility_warnings: ["ANCOVA requires two to ten continuous inputs with a dependent copula."] },
     { capability: "gpr", status: "available", priority: 3, rationale_codes: ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"], compatibility_warnings: [] },
     { capability: "pce", status: "available", priority: 3, rationale_codes: ["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"], compatibility_warnings: [] },
+    { capability: "target_hsic", status: "available", priority: 4, rationale_codes: ["USER_DEFINED_CRITICAL_DOMAIN_REQUIRED"], projected_evaluations: 250, compatibility_warnings: ["Define a scalar critical output domain before target-HSIC execution."] },
   ],
 };
 

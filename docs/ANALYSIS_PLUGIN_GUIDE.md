@@ -29,6 +29,8 @@ Examples already enforced:
 - nonlinear least-squares calibration requires exact named explanatory/output columns, continuous selected
   parameters, sufficient varying observations, full-rank local parameter Jacobians, and a successful bounded
   OpenTURNS optimizer result;
+- target-domain HSIC requires continuous inputs, bounded quadratic kernel/permutation work, non-constant
+  samples, and minimum empirical coverage both inside and outside the selected critical domain;
 - scalar algorithms reject missing output indices;
 - Sobol rejects constant selected outputs;
 - PCE reports construction incompatibilities instead of returning a misleading surrogate.

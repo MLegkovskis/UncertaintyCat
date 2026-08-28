@@ -321,11 +321,14 @@ test.describe("model studio", () => {
     for (let index = 0; index < await enabledCheckboxes.count(); index += 1) {
       await enabledCheckboxes.nth(index).check();
     }
-    await expect(page.getByText("9 analysis tasks")).toBeVisible();
+    await expect(page.getByText("10 analysis tasks")).toBeVisible();
     await page.getByLabel("Standard sample budget").fill("128");
     await page.getByLabel("Reliability method").selectOption("MONTE_CARLO");
     await page.getByLabel("Failure event").selectOption("<");
-    await page.getByRole("spinbutton", { name: "Threshold" }).fill("-2.5");
+    await page.getByRole("spinbutton", { name: "Threshold", exact: true }).fill("-2.5");
+    await page.getByLabel("Target domain").selectOption("<=");
+    await page.getByLabel("Target HSIC threshold").fill("4.5");
+    await page.getByLabel("Target HSIC permutations").fill("40");
     await page.getByRole("button", { name: "Run analyses" }).click();
 
     await expect(page).toHaveURL(/\/runs\/run-1$/);
@@ -341,6 +344,12 @@ test.describe("model studio", () => {
       method: "MONTE_CARLO",
       operator: "<",
       threshold: -2.5,
+    });
+    expect(analyses.find((item) => item.analysisKey === "target_hsic")?.config).toMatchObject({
+      sample_size: 128,
+      operator: "<=",
+      threshold: 4.5,
+      permutations: 40,
     });
     expect(analyses.some((item) => ["calibration_nlls", "morris", "pce", "gpr"].includes(item.analysisKey))).toBe(false);
   });
