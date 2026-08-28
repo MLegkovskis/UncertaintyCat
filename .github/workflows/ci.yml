@@ -201,8 +201,8 @@ jobs:
     if: >-
       needs.required.result == 'success' &&
       github.event_name == 'workflow_dispatch' &&
-      github.actor == 'github-actions[bot]' &&
       github.ref == 'refs/heads/main' &&
+      inputs.expected_sha != '' &&
       inputs.expected_sha == github.sha
     runs-on: ubuntu-latest
     permissions:

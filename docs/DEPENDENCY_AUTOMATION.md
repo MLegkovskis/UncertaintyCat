@@ -63,8 +63,9 @@ vulnerabilities, and the TypeScript gate also audits production npm dependencies
 
 Bot merges use `GITHUB_TOKEN`, which suppresses a normal chained push workflow. The merge workflow
 therefore dispatches CI with `expected_sha`; CI rejects the dispatch if GitHub resolved `main` to another
-revision. Successful bot CI dispatches deployment explicitly. Deployment independently accepts only a
-40-character commit that belongs to `main` and has successful CI for that exact SHA.
+revision. Any authorized maintainer or bot may initiate that exact-SHA dispatch, but an empty dispatch can
+never release. Successful exact-SHA CI dispatches deployment explicitly. Deployment independently accepts
+only a 40-character commit that belongs to `main` and has successful CI for that exact SHA.
 
 ## Failed-update lifecycle
 
