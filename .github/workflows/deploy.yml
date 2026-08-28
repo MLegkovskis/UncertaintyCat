@@ -13,6 +13,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -20,20 +21,58 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  authorize:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      target_sha: ${{ steps.authorize.outputs.target_sha }}
+    steps:
+      - name: Authorize an exact successful main revision
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_SHA: ${{ inputs.sha || github.event.workflow_run.head_sha }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          comparison="$(gh api "repos/$REPOSITORY/compare/$TARGET_SHA...main" --jq '.status')"
+          [[ "$comparison" == "identical" || "$comparison" == "ahead" ]]
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            source_run="$(gh api "repos/$REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
+            [[ "$(jq -r '.path' <<<"$source_run")" == ".github/workflows/ci.yml" ]]
+            [[ "$(jq -r '.head_sha' <<<"$source_run")" == "$TARGET_SHA" ]]
+            [[ "$(jq -r '.head_branch' <<<"$source_run")" == "main" ]]
+            [[ "$(jq -r '.conclusion' <<<"$source_run")" == "success" ]]
+          else
+            successful_runs="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&status=success&per_page=20")"
+            jq -e --arg sha "$TARGET_SHA" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .conclusion == "success")] | length > 0' \
+              <<<"$successful_runs" >/dev/null
+          fi
+
+          echo "target_sha=$TARGET_SHA" >>"$GITHUB_OUTPUT"
+
+  deploy:
+    needs: authorize
+    if: needs.authorize.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
       name: production
       url: https://uncertaintycat.com
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-node@v7
+          ref: ${{ needs.authorize.outputs.target_sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: npm
@@ -96,7 +135,7 @@ jobs:
       - name: Production smoke test
         shell: bash
         run: |
-          for attempt in {1..12}; do
+          for _ in {1..12}; do
             if curl --fail --silent --show-error https://uncertaintycat.com/health | grep -q '"status":"ok"'; then
               exit 0
             fi
@@ -105,14 +144,14 @@ jobs:
           exit 1
 
   verify-ui:
-    needs: deploy
+    needs: [authorize, deploy]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/setup-node@v7
+          ref: ${{ needs.authorize.outputs.target_sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: npm
@@ -121,7 +160,7 @@ jobs:
       - run: npm run test:e2e:production
       - name: Upload production verification evidence
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: production-ui-failure-evidence
           path: |

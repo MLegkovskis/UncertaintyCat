@@ -53,7 +53,7 @@ Run `npm run test:e2e:full-stack` for changes that cross the browser, Worker, D1
 
 - `main` is the delivery branch. For user-authorized implementation work, commit and push directly to `main`; do not open a pull request unless asked.
 - Every push to `main` must run the complete CI workflow. Successful CI for that exact commit triggers production deployment and production Playwright verification. Never add path filters, repository-variable gates, commit-message skips, or manual-only release logic that weakens this chain.
-- Dependabot updates are approved and squash-merged only by the post-CI workflow after it verifies the PR author, base branch, open state, and exact tested head SHA. The bot-dispatched post-merge CI explicitly dispatches deployment for its exact successful SHA because `GITHUB_TOKEN` suppresses chained workflow events. Do not weaken these checks or remove that explicit release handoff.
+- Dependabot updates are approved and squash-merged only by the post-CI workflow after all trust, signed-commit, ecosystem file-scope, merge-readiness, and exact-SHA checks in `docs/DEPENDENCY_AUTOMATION.md` pass. The bot-dispatched post-merge CI explicitly dispatches deployment for its exact successful SHA because `GITHUB_TOKEN` suppresses chained workflow events. Do not broaden this path to agent/source changes, weaken its stale-security exemptions, or remove that explicit release handoff.
 - After pushing, verify the CI run is attached to the expected commit. If CI or deployment fails, inspect the logs, fix the cause, rerun local evidence, and push the repair.
 
 ## Code review rules

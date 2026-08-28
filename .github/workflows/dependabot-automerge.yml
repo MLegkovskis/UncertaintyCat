@@ -5,10 +5,7 @@ on:
     workflows: [CI]
     types: [completed]
 
-permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+permissions: {}
 
 concurrency:
   group: dependabot-automerge-${{ github.event.workflow_run.head_branch }}
@@ -21,38 +18,106 @@ jobs:
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.pull_requests[0] != null
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
     steps:
       - name: Approve and squash the exact tested Dependabot revision
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
 
-          author="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.user.login')"
-          base="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.base.ref')"
-          state="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.state')"
-          current_sha="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          expected_workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml" --jq '.id')"
+          tested_run="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID")"
+          jq -e \
+            --argjson workflow_id "$expected_workflow_id" \
+            --arg sha "$TESTED_SHA" \
+            --argjson pr "$PR_NUMBER" \
+            '.workflow_id == $workflow_id and
+             .path == ".github/workflows/ci.yml" and
+             .event == "pull_request" and
+             .conclusion == "success" and
+             .head_sha == $sha and
+             .actor.login == "dependabot[bot]" and
+             any(.pull_requests[]; .number == $pr)' \
+            <<<"$tested_run" >/dev/null
+
+          pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          author="$(jq -r '.user.login' <<<"$pr")"
+          base="$(jq -r '.base.ref' <<<"$pr")"
+          state="$(jq -r '.state' <<<"$pr")"
+          current_sha="$(jq -r '.head.sha' <<<"$pr")"
+          head_ref="$(jq -r '.head.ref' <<<"$pr")"
+          head_repository="$(jq -r '.head.repo.full_name' <<<"$pr")"
+          draft="$(jq -r '.draft' <<<"$pr")"
+          changed_files="$(jq -r '.changed_files' <<<"$pr")"
+          mergeable_state="$(jq -r '.mergeable_state' <<<"$pr")"
 
           if [[ "$author" != "dependabot[bot]" || "$base" != "main" || "$state" != "open" ]]; then
             echo "PR #$PR_NUMBER is not an open Dependabot update against main; no action taken."
             exit 0
           fi
+          [[ "$head_repository" == "$REPOSITORY" ]]
+          [[ "$head_ref" == dependabot/* ]]
+          [[ "$draft" == "false" ]]
+          (( changed_files > 0 && changed_files <= 30 ))
           if [[ "$current_sha" != "$TESTED_SHA" ]]; then
             echo "PR #$PR_NUMBER moved after CI; waiting for CI on $current_sha."
             exit 0
           fi
+          if [[ "$mergeable_state" != "blocked" && "$mergeable_state" != "clean" ]]; then
+            echo "PR #$PR_NUMBER is not merge-ready ($mergeable_state); Dependabot must rebase it."
+            exit 0
+          fi
 
-          approved="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --jq '[.[] | select(.user.login == "github-actions[bot]" and .state == "APPROVED")] | length')"
+          mapfile -t files < <(gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
+          for file in "${files[@]}"; do
+            case "$head_ref" in
+              dependabot/npm_and_yarn/*)
+                [[ "$file" =~ (^|/)(package\.json|package-lock\.json|npm-shrinkwrap\.json)$ ]]
+                ;;
+              dependabot/pip/*)
+                [[ "$file" == "pyproject.toml" || "$file" == "uv.lock" ]]
+                ;;
+              dependabot/github_actions/*)
+                [[ "$file" =~ ^\.github/(workflows/[^/]+\.(yml|yaml)|actions/.+/action\.(yml|yaml))$ ]]
+                ;;
+              *)
+                echo "Unsupported Dependabot ecosystem in $head_ref."
+                exit 1
+                ;;
+            esac
+          done
+
+          while IFS=$'\t' read -r commit_sha commit_author verified; do
+            [[ -n "$commit_sha" ]]
+            [[ "$commit_author" == "dependabot[bot]" ]]
+            [[ "$verified" == "true" ]]
+          done < <(
+            gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/commits" \
+              --jq '.[] | [.sha, .author.login, .commit.verification.verified] | @tsv'
+          )
+
+          approved="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" | jq \
+            --arg sha "$TESTED_SHA" \
+            '[.[] | select(.user.login == "github-actions[bot]" and .state == "APPROVED" and .commit_id == $sha)] | length')"
           if [[ "$approved" == "0" ]]; then
             gh pr review "$PR_NUMBER" --repo "$REPOSITORY" --approve \
               --body "Automatically approved after the complete CI workflow passed for $TESTED_SHA."
           fi
-          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --squash --delete-branch
+          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --squash --delete-branch \
+            --match-head-commit "$TESTED_SHA"
+
+          merged_sha="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+          [[ "$merged_sha" =~ ^[0-9a-f]{40}$ ]]
 
           # A merge made with GITHUB_TOKEN does not emit another push-triggered
           # workflow run. Dispatch CI so merged main is tested and then deployed.
-          gh workflow run ci.yml --repo "$REPOSITORY" --ref main
+          gh workflow run ci.yml --repo "$REPOSITORY" --ref main -f expected_sha="$merged_sha"

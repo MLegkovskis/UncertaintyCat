@@ -1,7 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const stateDirectory = `.wrangler/e2e-${process.pid}`;
-const wrangler = "node apps/api/node_modules/wrangler/bin/wrangler.js";
+// Resolve Wrangler through npm's workspace contract. npm is free to hoist the
+// executable to the repository root when regenerating the lockfile, so tests
+// must not depend on a particular node_modules layout.
+const wrangler = "npm exec --workspace @uncertaintycat/api -- wrangler";
+// npm exec runs the command from the selected workspace, so these paths are
+// deliberately relative to apps/api rather than the Playwright/root process.
+const stateDirectory = `../../.wrangler/e2e-${process.pid}`;
+const wranglerConfig = "wrangler.no-ai.jsonc";
 
 export default defineConfig({
   testDir: "./e2e/full-stack",
@@ -11,25 +17,40 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   retries: 0,
   reporter: process.env.CI
-    ? [["github"], ["html", { open: "never", outputFolder: "playwright-report-full-stack" }]]
-    : [["list"], ["html", { open: "never", outputFolder: "playwright-report-full-stack" }]],
+    ? [
+        ["github"],
+        [
+          "html",
+          { open: "never", outputFolder: "playwright-report-full-stack" },
+        ],
+      ]
+    : [
+        ["list"],
+        [
+          "html",
+          { open: "never", outputFolder: "playwright-report-full-stack" },
+        ],
+      ],
   use: {
     baseURL: "http://127.0.0.1:4174",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "full-stack-chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "full-stack-chromium", use: { ...devices["Desktop Chrome"] } },
+  ],
   webServer: [
     {
-      command: "uv run uvicorn services.compute.main:app --host 127.0.0.1 --port 8080",
+      command:
+        "uv run uvicorn services.compute.main:app --host 127.0.0.1 --port 8080",
       cwd: "../..",
       url: "http://127.0.0.1:8080/health",
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: `${wrangler} d1 migrations apply uncertaintycat-local --local --persist-to ${stateDirectory} --config apps/api/wrangler.no-ai.jsonc && ${wrangler} dev --local --port 8787 --persist-to ${stateDirectory} --config apps/api/wrangler.no-ai.jsonc`,
+      command: `${wrangler} d1 migrations apply uncertaintycat-local --local --persist-to ${stateDirectory} --config ${wranglerConfig} && ${wrangler} dev --local --port 8787 --persist-to ${stateDirectory} --config ${wranglerConfig}`,
       cwd: "../..",
       url: "http://127.0.0.1:8787/health",
       reuseExistingServer: false,

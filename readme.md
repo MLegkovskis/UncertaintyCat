@@ -47,7 +47,7 @@ React/Vite web  ->  Hono Worker API  ->  D1 metadata
 
 The stable numerical extension point is `uncertaintycat_core.plugins.base.AnalysisPlugin`. Plugins declare strict configuration, applicability, assumptions, resource class, implementation version, and a common JSON-safe result envelope. The Worker and UI consume the catalog rather than importing algorithm-specific code.
 
-Read [Architecture](docs/ARCHITECTURE.md), [plugin development](docs/ANALYSIS_PLUGIN_GUIDE.md), [security](docs/SECURITY.md), [scientific validation](docs/SCIENTIFIC_VALIDATION.md), [testing](docs/TESTING.md), and [deployment](docs/DEPLOYMENT.md). The upstream evaluation and scheduled-agent procedure is in the [OpenTURNS synchronization guide](docs/openturns-sync/README.md). Repository-wide agent rules are in [AGENTS.md](AGENTS.md).
+Read [Architecture](docs/ARCHITECTURE.md), [plugin development](docs/ANALYSIS_PLUGIN_GUIDE.md), [security](docs/SECURITY.md), [scientific validation](docs/SCIENTIFIC_VALIDATION.md), [testing](docs/TESTING.md), [deployment](docs/DEPLOYMENT.md), and the [dependency automation trust model](docs/DEPENDENCY_AUTOMATION.md). The upstream evaluation and scheduled-agent procedure is in the [OpenTURNS synchronization guide](docs/openturns-sync/README.md). Repository-wide agent rules are in [AGENTS.md](AGENTS.md).
 
 ## Quality gates
 

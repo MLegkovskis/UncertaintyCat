@@ -71,17 +71,31 @@ successful-regeneration quota.
 4. real local Worker/D1/R2/Queue/compute browser journey;
 5. local compute and Cloudflare Sandbox image builds.
 
+The branch ruleset requires the aggregate `required` job from GitHub Actions and requires the pull-request
+head to be current with `main`. That aggregate explicitly checks every result above, so GitHub's treatment
+of a skipped job as successful cannot hide a missing gate. Pull requests additionally run GitHub dependency
+review and reject newly introduced high/critical vulnerabilities; the TypeScript job audits production npm
+dependencies. Every external action is pinned to an immutable commit SHA, and repository Actions policy
+rejects floating action tags.
+
 `.github/workflows/deploy.yml` listens for successful `CI` completion on `main`. It checks out the exact successful commit, builds web assets, generates the Wrangler config, validates secrets, applies forward-only D1 migrations, deploys the Worker/assets/bindings/queue consumer/Sandbox image, checks production health, and runs the read-only production Playwright suite.
 
 There is deliberately no `AUTOMATION_ENABLED` variable, pause script, manual-only release path, or commit-message bypass. GitHub workflow concurrency may cancel an older in-progress CI run for the same ref; production deployments are serialized and are not cancelled mid-flight.
 
-Dependabot pull requests follow the same full CI path. `dependabot-automerge.yml` runs only after a successful
-`CI` `workflow_run`, verifies the open PR is authored by `dependabot[bot]`, targets `main`, and still points
-to the exact tested SHA, then approves and squash-merges it. It explicitly dispatches `CI` on the resulting
-`main` revision. Because GitHub suppresses chained workflow events created by `GITHUB_TOKEN`, that bot-triggered
-CI dispatches `deploy.yml` directly for its exact tested SHA after all five jobs pass. Direct pushes and human
-dispatches retain the normal `workflow_run` release path. A moved head waits for its newer CI run; failed CI,
-non-Dependabot PRs, and stale workflow runs cannot merge through this zero-touch update path.
+Dependabot pull requests follow the same full CI path. The privileged post-CI workflow additionally verifies
+the trusted CI workflow/run identity, same-repository branch, signed Dependabot-only commits, ecosystem file
+allowlist, bounded change size, merge readiness, and exact current head before exact-head approval and squash
+merge. It explicitly dispatches `CI` with the resulting merge SHA. Because GitHub suppresses chained workflow
+events created by `GITHUB_TOKEN`, that bot-triggered CI dispatches `deploy.yml` directly for its exact tested
+SHA after the aggregate gate passes. Deployment revalidates that manual/bot inputs belong to `main` and have
+successful CI for that exact revision. Direct pushes and human dispatches retain the normal `workflow_run`
+release path.
+
+Failed current-head dependency runs receive a label and an idempotent audit comment. A daily lifecycle pass
+closes an unchanged non-security failure after 21 days, unless `dependencies:keep-open` is present; it never
+adds a permanent ignore rule. Security-alert lookup failure disables stale closure conservatively. The full
+rationale, update grouping, failure classification procedure, historical audit, and separate trust design for
+future agent-authored code are in [DEPENDENCY_AUTOMATION.md](DEPENDENCY_AUTOMATION.md).
 
 ## Migration rules
 

@@ -20,7 +20,7 @@
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
     "hono": "^4.9.0",
-    "workers-ai-provider": "3.1.14",
+    "workers-ai-provider": "^4.0.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

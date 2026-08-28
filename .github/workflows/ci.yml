@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Optional exact main revision expected by trusted automation
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -14,15 +19,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  python:
+  dispatch-integrity:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - name: Bind trusted dispatches to the intended revision
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$EXPECTED_SHA" ]]; then
+            exit 0
+          fi
+          [[ "$EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]]
+
+  python:
+    needs: dispatch-integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.9.9"
           enable-cache: true
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - run: uv sync --frozen --extra dev
@@ -34,10 +58,11 @@ jobs:
       - run: uv run pytest --cov=uncertaintycat_core --cov=services --cov-report=term-missing
 
   typescript:
+    needs: dispatch-integrity
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: npm
@@ -45,12 +70,14 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:ts
       - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
 
   browser:
+    needs: dispatch-integrity
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: npm
@@ -59,7 +86,7 @@ jobs:
       - run: npm run test:e2e
       - name: Upload browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: browser-failure-evidence
           path: |
@@ -68,18 +95,19 @@ jobs:
           retention-days: 14
 
   full-stack-browser:
+    needs: dispatch-integrity
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.9.9"
           enable-cache: true
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: npm
@@ -89,7 +117,7 @@ jobs:
       - run: npm run test:e2e:full-stack
       - name: Upload full-stack failure evidence
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: full-stack-browser-failure-evidence
           path: |
@@ -98,12 +126,13 @@ jobs:
           retention-days: 14
 
   compute-image:
+    needs: dispatch-integrity
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       - name: Build local compute-service image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: services/compute/Dockerfile
@@ -112,7 +141,7 @@ jobs:
           cache-from: type=gha,scope=compute-service
           cache-to: type=gha,mode=max,scope=compute-service
       - name: Build production Cloudflare Sandbox image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: services/compute/Dockerfile.sandbox
@@ -121,12 +150,60 @@ jobs:
           cache-from: type=gha,scope=cloudflare-sandbox
           cache-to: type=gha,mode=max,scope=cloudflare-sandbox
 
+  dependency-review:
+    needs: dispatch-integrity
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Reject newly introduced vulnerable dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  required:
+    if: always()
+    needs:
+      - dispatch-integrity
+      - python
+      - typescript
+      - browser
+      - full-stack-browser
+      - compute-image
+      - dependency-review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce every required CI result
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_INTEGRITY: ${{ needs.dispatch-integrity.result }}
+          PYTHON: ${{ needs.python.result }}
+          TYPESCRIPT: ${{ needs.typescript.result }}
+          BROWSER: ${{ needs.browser.result }}
+          FULL_STACK_BROWSER: ${{ needs.full-stack-browser.result }}
+          COMPUTE_IMAGE: ${{ needs.compute-image.result }}
+          DEPENDENCY_REVIEW: ${{ needs.dependency-review.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in "$DISPATCH_INTEGRITY" "$PYTHON" "$TYPESCRIPT" "$BROWSER" "$FULL_STACK_BROWSER" "$COMPUTE_IMAGE"; do
+            [[ "$result" == "success" ]]
+          done
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            [[ "$DEPENDENCY_REVIEW" == "success" ]]
+          else
+            [[ "$DEPENDENCY_REVIEW" == "skipped" ]]
+          fi
+
   dispatch-bot-release:
-    needs: [python, typescript, browser, full-stack-browser, compute-image]
+    needs: required
     if: >-
+      needs.required.result == 'success' &&
       github.event_name == 'workflow_dispatch' &&
       github.actor == 'github-actions[bot]' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      inputs.expected_sha == github.sha
     runs-on: ubuntu-latest
     permissions:
       actions: write

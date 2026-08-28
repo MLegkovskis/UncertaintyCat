@@ -1,0 +1,164 @@
+name: Dependabot lifecycle
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  schedule:
+    - cron: "17 05 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: dependabot-lifecycle-${{ github.event_name }}-${{ github.event.workflow_run.head_branch || 'scheduled' }}
+  cancel-in-progress: false
+
+jobs:
+  record-current-failure:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0] != null &&
+      (github.event.workflow_run.conclusion == 'failure' ||
+       github.event.workflow_run.conclusion == 'timed_out' ||
+       github.event.workflow_run.conclusion == 'startup_failure')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Record exact-head CI failure without guessing compatibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml" --jq '.id')"
+          run="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID")"
+          # shellcheck disable=SC2016
+          jq -e \
+            --argjson workflow_id "$expected_workflow_id" \
+            --arg sha "$TESTED_SHA" \
+            '.workflow_id == $workflow_id and
+             .path == ".github/workflows/ci.yml" and
+             .event == "pull_request" and
+             .head_sha == $sha and
+             .actor.login == "dependabot[bot]" and
+             (.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")' \
+            <<<"$run" >/dev/null
+
+          pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          [[ "$(jq -r '.user.login' <<<"$pr")" == "dependabot[bot]" ]]
+          [[ "$(jq -r '.base.ref' <<<"$pr")" == "main" ]]
+          [[ "$(jq -r '.state' <<<"$pr")" == "open" ]]
+          if [[ "$(jq -r '.head.sha' <<<"$pr")" != "$TESTED_SHA" ]]; then
+            echo "The PR moved after this failed run; its newer revision owns the lifecycle state."
+            exit 0
+          fi
+
+          gh label create "dependencies:ci-failed" --repo "$REPOSITORY" --force \
+            --color "B60205" --description "Exact current Dependabot revision failed required CI"
+          gh label create "dependencies:keep-open" --repo "$REPOSITORY" --force \
+            --color "FBCA04" --description "Exempt a dependency update from stale closure"
+          gh label create "dependencies:blocked" --repo "$REPOSITORY" --force \
+            --color "5319E7" --description "Dependency update remained incompatible or unremediated"
+          gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --add-label "dependencies:ci-failed"
+
+          marker="<!-- dependency-ci-failure:$TESTED_SHA -->"
+          existing="$(gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --jq '.[].body')"
+          if ! grep -Fq -- "$marker" <<<"$existing"; then
+            run_url="$(jq -r '.html_url' <<<"$run")"
+            # shellcheck disable=SC2016
+            body="$(printf '%s\nRequired CI failed for exact revision `%s`: %s\n\n%s\n' \
+              "$marker" "$TESTED_SHA" "$run_url" \
+              'Automation has not classified the dependency as incompatible and will not merge it. Dependabot rebases and replacement versions receive a fresh complete test. A non-security revision that remains failed and unchanged for 21 days is closed with an audit comment; add `dependencies:keep-open` to retain it for remediation.')"
+            gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "$body"
+          fi
+
+  close-persistently-failed:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+      security-events: read
+    steps:
+      - name: Close only unchanged non-security failures older than 21 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh label create "dependencies:ci-failed" --repo "$REPOSITORY" --force \
+            --color "B60205" --description "Exact current Dependabot revision failed required CI"
+          gh label create "dependencies:keep-open" --repo "$REPOSITORY" --force \
+            --color "FBCA04" --description "Exempt a dependency update from stale closure"
+          gh label create "dependencies:blocked" --repo "$REPOSITORY" --force \
+            --color "5319E7" --description "Dependency update remained incompatible or unremediated"
+
+          alerts_available=true
+          if ! alert_packages="$(gh api --paginate "repos/$REPOSITORY/dependabot/alerts?state=open&per_page=100" \
+            --jq '.[].dependency.package.name' | sort -u)"; then
+            alerts_available=false
+            alert_packages=""
+            echo "Dependabot alert lookup failed; stale closure is disabled conservatively."
+          fi
+
+          cutoff_epoch="$(date -u -d '21 days ago' +%s)"
+          pulls="$(gh api --paginate "repos/$REPOSITORY/pulls?state=open&base=main&per_page=100")"
+          while IFS= read -r encoded; do
+            pr="$(base64 --decode <<<"$encoded")"
+            number="$(jq -r '.number' <<<"$pr")"
+            head_sha="$(jq -r '.head.sha' <<<"$pr")"
+
+            jq -e 'any(.labels[]; .name == "dependencies:ci-failed")' <<<"$pr" >/dev/null || continue
+            if jq -e 'any(.labels[]; .name == "dependencies:keep-open")' <<<"$pr" >/dev/null; then
+              continue
+            fi
+            [[ "$alerts_available" == "true" ]] || continue
+
+            runs="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$head_sha&status=completed&per_page=20")"
+            latest="$(jq -c --arg sha "$head_sha" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .path == ".github/workflows/ci.yml")] | sort_by(.updated_at) | last // empty' \
+              <<<"$runs")"
+            [[ -n "$latest" ]] || continue
+            conclusion="$(jq -r '.conclusion' <<<"$latest")"
+            [[ "$conclusion" == "failure" || "$conclusion" == "timed_out" || "$conclusion" == "startup_failure" ]] || continue
+            failed_epoch="$(date -u -d "$(jq -r '.updated_at' <<<"$latest")" +%s)"
+            (( failed_epoch <= cutoff_epoch )) || continue
+
+            messages="$(gh api --paginate "repos/$REPOSITORY/pulls/$number/commits" --jq '.[].commit.message')"
+            security_update=false
+            while IFS= read -r package; do
+              [[ -n "$package" ]] || continue
+              if grep -Fq -- "dependency-name: $package" <<<"$messages" || \
+                 grep -Fq -- "dependency-name: \"$package\"" <<<"$messages"; then
+                security_update=true
+                break
+              fi
+            done <<<"$alert_packages"
+            [[ "$security_update" == "false" ]] || continue
+
+            run_url="$(jq -r '.html_url' <<<"$latest")"
+            gh pr edit "$number" --repo "$REPOSITORY" --add-label "dependencies:blocked"
+            marker="<!-- dependency-stale-close:$head_sha -->"
+            body="$(printf '%s\nClosing this non-security Dependabot revision after its exact head remained on failed required CI for at least 21 days: %s\n\n%s\n' \
+              "$marker" "$run_url" \
+              'No ignore rule is created: a later dependency release can open a fresh pull request and will receive the complete test-and-merge lifecycle.')"
+            gh pr comment "$number" --repo "$REPOSITORY" --body "$body"
+            gh pr close "$number" --repo "$REPOSITORY"
+          done < <(
+            jq -r '.[] | select(.user.login == "dependabot[bot]") | @base64' <<<"$pulls"
+          )
