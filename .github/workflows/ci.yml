@@ -204,7 +204,14 @@ jobs:
 
   dispatch-bot-release:
     needs: [dispatch-integrity, required]
-    if: github.event_name == 'workflow_dispatch' && needs.required.result == 'success'
+    # `dependency-review` is intentionally skipped outside pull requests. Its
+    # skipped result is a transitive ancestor of this job, so `always()` is
+    # required to make GitHub evaluate the explicit fail-closed conditions.
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.dispatch-integrity.result == 'success' &&
+      needs.required.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       actions: write
