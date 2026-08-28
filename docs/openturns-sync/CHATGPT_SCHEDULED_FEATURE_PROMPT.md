@@ -303,6 +303,12 @@ Prototype the installed API before committing to the design. Run a normal case, 
 realistic default-size timing. If the prototype invalidates an admission gate, reject the candidate and move to
 the next eligible candidate; do not force it through.
 
+Do not derive a resource formula from API-level intuition. Read the exact pinned upstream implementation and
+account for nested loops, repeated statistics, optimization iterations, matrix factorizations, and permutation
+work. Build a test-side oracle independently from production code. For a bounded plugin, calculate and test the
+UI default at the maximum supported dimension, the first rejected configuration over the cap, and the schema
+maximum. A benchmark that verifies numerical output but never challenges complexity is incomplete evidence.
+
 ## Phase 6: implement one complete vertical slice
 
 For a new or changed numerical analysis:
@@ -317,9 +323,12 @@ For a new or changed numerical analysis:
 6. Emit bounded generic `AnalysisPayload` content with finite JSON scalars, true table row counts/truncation,
    paired series, labeled matrices, and grounded facts.
 7. Register the plugin in `uncertaintycat_core/catalog.py`.
-8. Add a safe run-composer default. Add custom UI controls only for scientifically necessary choices not
+8. Add or refresh `docs/openturns-sync/evidence/<key>.json` with exact pinned implementation/benchmark URLs,
+   declared benchmark/applicability/resource tests, an independent resource oracle, accept/reject boundary
+   calculations, interpretation limits, and browser contracts.
+9. Add a safe run-composer default. Add custom UI controls only for scientifically necessary choices not
    covered by generic budget/output controls.
-9. Verify generic report/export/chat consumption. Add method-specific visualization only when it materially
+10. Verify generic report/export/chat consumption. Add method-specific visualization only when it materially
    clarifies scientific evidence and retains exact accessible data.
 
 For a model/problem builder, distribution, surrogate-studio, or reliability-workflow enhancement, use the
@@ -365,6 +374,10 @@ Tests are part of the feature, not post-processing. Add evidence appropriate to 
 - strict JSON serialization and bounded/truncated payload behavior;
 - exact model-evaluation accounting;
 - realistic default and maximum runtime evidence where practical;
+- an independently implemented complexity oracle that fails if dimension, permutation, optimization, or
+  repeated-statistic factors are changed from multiplication to addition or otherwise undercounted;
+- the exact resource accept/reject boundary, schema maximum rejection, and browser default at the maximum
+  supported model dimension;
 - catalog and service `/v1/execute` behavior;
 - mocked browser configuration, rendering, accessibility, and exact-data behavior;
 - real local full-stack execution, persistence, report, and export behavior; and
@@ -377,12 +390,13 @@ Run focused tests while iterating, then the complete applicable gate using Node 
 
 ```bash
 npm run check:examples
+npm run check:scientific-change
 npm run typecheck
 npm run test:ts
 npm run build
-uv run ruff format --check uncertaintycat_core services tests test_all_examples.py
-uv run ruff check uncertaintycat_core services tests test_all_examples.py
-uv run mypy uncertaintycat_core services
+uv run ruff format --check uncertaintycat_core services tests scripts .github/scripts test_all_examples.py
+uv run ruff check uncertaintycat_core services tests scripts .github/scripts test_all_examples.py
+uv run mypy uncertaintycat_core services scripts/check_scientific_change.py .github/scripts/openturns_scout.py
 uv run pytest --cov=uncertaintycat_core --cov=services --cov-report=term-missing
 uv run python test_all_examples.py
 npm run test:e2e

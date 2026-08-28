@@ -2,6 +2,19 @@
 
 UncertaintyCat uses three complementary Playwright suites. Fast fixture-driven UI evidence is separated from real numerical infrastructure and deployed read-only checks.
 
+## Scientific change policy
+
+```bash
+npm run check:scientific-change
+```
+
+This validates every retained `docs/openturns-sync/evidence/*.json` manifest against the installed OpenTURNS
+pin and plugin catalog, checks exact upstream source permalinks and declared test references, then reruns the
+manifest's benchmark, applicability, independent complexity-oracle, and resource-boundary tests. In CI it is
+also diff-aware: a new or changed plugin cannot pass unless the same change refreshes its manifest, declared
+Python and browser evidence, scientific validation, sync guide, and sync state. The required aggregate CI job
+depends on this gate, so deployment cannot proceed when it fails.
+
 ## UI contract suite
 
 ```bash

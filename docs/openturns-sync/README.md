@@ -62,6 +62,8 @@ Read these files before designing anything:
 | Generic result rendering | `apps/web/src/pages/ReportPage.tsx` and report components |
 | API/queue/D1/R2 orchestration | `apps/api/src/` |
 | Scientific regression tests | `tests/core/test_plugins.py` |
+| Pinned per-plugin evidence and resource audits | `docs/openturns-sync/evidence/*.json` |
+| Diff-aware scientific policy gate | `scripts/check_scientific_change.py` |
 | Service boundary tests | `tests/integration/test_compute_service.py` |
 | Mocked browser suite | `apps/web/e2e/ui-flows.spec.ts` |
 | Real local full-stack suite | `apps/web/e2e/full-stack/journey.spec.ts` |
@@ -279,6 +281,13 @@ affected layers; and persisted-report compatibility.
 Prototype against the installed pin before editing. Exercise a normal case, invalid/boundary case, and realistic
 runtime at the proposed UI default.
 
+For any complexity or resource claim, inspect the pinned upstream implementation's loop nesting rather than
+inferring cost from the public class name. Write the test-side work oracle independently—prefer explicit nested
+loops over repeating production algebra—and prove all three cases: the UI default at the maximum supported
+dimension is admissible, the first configuration over the cap is rejected before sampling, and the schema
+maximum cannot bypass the cap. Record those calculations and exact upstream permalinks in
+`docs/openturns-sync/evidence/<plugin>.json`.
+
 ## 5. Implementation playbook
 
 ### New analysis plugin
@@ -297,9 +306,12 @@ runtime at the proposed UI default.
 7. Emit common fields: scalar `metrics`; bounded `tables` with true row count/truncation; paired `series`;
    labelled `matrices`; and grounded method/output `facts`.
 8. Export `plugin` and register it in `uncertaintycat_core/catalog.py`.
-9. Add scalar keys and an explicit safe config mapping in `Workspace.tsx`. Add custom controls only for a
+9. Add or refresh `docs/openturns-sync/evidence/<key>.json`; it must identify exact pinned implementation and
+   benchmark sources, declared benchmark/applicability/resource tests, independent resource oracle, boundary
+   calculations, interpretation limits, and browser contracts.
+10. Add scalar keys and an explicit safe config mapping in `Workspace.tsx`. Add custom controls only for a
    scientifically important choice not covered by generic budget/output controls.
-10. Update all catalog counts and fixtures; find them rather than guessing:
+11. Update all catalog counts and fixtures; find them rather than guessing:
 
 ```bash
 rg -n '11|12|all .*plugins|analysis tasks|report sections|toHaveCount' \
@@ -336,6 +348,12 @@ Core evidence: fixed-seed repeatability; an analytical/published/official benchm
 invalid applicability; output/dependence behavior; constant/non-finite behavior; config bounds; strict JSON;
 evaluation accounting; table truncation; and realistic default/maximum runtime evidence where practical.
 
+Complexity evidence is adversarial, not a restatement of implementation. The manifest-declared resource tests
+must independently reconstruct upstream nested work, exercise multiple dimensions/sample/permutation counts,
+test the exact accept/reject boundary, and bind the browser default to the maximum supported model dimension.
+The dedicated CI policy job reruns those tests and rejects a plugin diff that does not refresh its manifest,
+declared Python/browser evidence, scientific validation, sync guide, and state record.
+
 Product evidence: catalog schema; `/v1/execute`; mocked UI configuration/request; generic report rendering;
 real full-stack execution/report/export; production health and authentication boundary; and, when a real
 owner session is explicitly available, a focused authenticated live audit. Production APIs never expose the
@@ -344,9 +362,10 @@ analysis catalog to an unauthenticated scout.
 Mandatory local commands:
 
 ```bash
-uv run ruff format --check uncertaintycat_core services tests test_all_examples.py
-uv run ruff check uncertaintycat_core services tests test_all_examples.py
-uv run mypy uncertaintycat_core services
+npm run check:scientific-change
+uv run ruff format --check uncertaintycat_core services tests scripts .github/scripts test_all_examples.py
+uv run ruff check uncertaintycat_core services tests scripts .github/scripts test_all_examples.py
+uv run mypy uncertaintycat_core services scripts/check_scientific_change.py .github/scripts/openturns_scout.py
 uv run pytest --cov=uncertaintycat_core --cov=services --cov-report=term-missing
 npm run typecheck
 npm run test:ts

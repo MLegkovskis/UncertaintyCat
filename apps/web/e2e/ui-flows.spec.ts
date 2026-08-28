@@ -8,6 +8,7 @@ import {
   makeReport,
   makeRun,
   project,
+  savedModel,
 } from "./fixtures";
 
 test.describe("application shell and identity", () => {
@@ -321,6 +322,66 @@ test.describe("model studio", () => {
     await expect(page.getByText("Your model is being validated…")).toHaveCount(0);
     await expect(propagationChoice).toBeEnabled();
     await expect(page.getByLabel("Standard sample budget")).toBeEnabled();
+  });
+
+  test("keeps target HSIC UI defaults within the maximum-dimensional core resource envelope", async ({
+    page,
+  }) => {
+    const maximumDimensionalModel = {
+      ...savedModel,
+      id: "model-20d",
+      metadata: {
+        ...savedModel.metadata,
+        input_dimension: 20,
+        inputs: Array.from({ length: 20 }, (_, index) => ({
+          ...savedModel.metadata.inputs[0]!,
+          index,
+          name: `x${index}`,
+        })),
+      },
+      assessment: savedModel.assessment
+        ? {
+            ...savedModel.assessment,
+            profile: {
+              ...savedModel.assessment.profile,
+              input_dimension: 20,
+            },
+          }
+        : undefined,
+    };
+    await installMockApi(page, {
+      authenticated: true,
+      projects: [project],
+      models: [maximumDimensionalModel],
+    });
+    let runBody: Record<string, unknown> | undefined;
+    page.on("request", (request) => {
+      if (request.url().endsWith("/api/v1/runs") && request.method() === "POST") {
+        runBody = request.postDataJSON() as Record<string, unknown>;
+      }
+    });
+
+    await page.goto("/studies/project-1/workspace");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+    await page.getByLabel("Standard sample budget").fill("20000");
+    await page
+      .locator(".analysis-option", { hasText: "Target-Domain HSIC Sensitivity" })
+      .locator("input")
+      .check();
+    await page.getByRole("button", { name: "Run analyses" }).click();
+
+    await expect.poll(() => runBody).toBeTruthy();
+    const analyses = runBody?.analyses as Array<{
+      analysisKey: string;
+      config: Record<string, unknown>;
+    }>;
+    expect(analyses.find((item) => item.analysisKey === "target_hsic")?.config).toMatchObject({
+      sample_size: 250,
+      permutations: 100,
+    });
   });
 
   test("creates a project, authors with the guided builder, configures all direct plugins, and queues the suite", async ({

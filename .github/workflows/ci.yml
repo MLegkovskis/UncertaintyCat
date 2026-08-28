@@ -52,10 +52,42 @@ jobs:
       - run: uv sync --frozen --extra dev
       - run: npm run check:examples
       - run: uv run python test_all_examples.py
-      - run: uv run ruff format --check uncertaintycat_core services tests test_all_examples.py
-      - run: uv run ruff check uncertaintycat_core services tests test_all_examples.py
-      - run: uv run mypy uncertaintycat_core services
+      - run: uv run ruff format --check uncertaintycat_core services tests scripts .github/scripts test_all_examples.py
+      - run: uv run ruff check uncertaintycat_core services tests scripts .github/scripts test_all_examples.py
+      - run: uv run mypy uncertaintycat_core services scripts/check_scientific_change.py .github/scripts/openturns_scout.py
       - run: uv run pytest --cov=uncertaintycat_core --cov=services --cov-report=term-missing
+
+  scientific-change-policy:
+    needs: dispatch-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.9.9"
+          enable-cache: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --extra dev
+      - name: Enforce pinned evidence and adversarial plugin tests
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--run-declared-tests)
+          if [[ "$EVENT_NAME" != "workflow_dispatch" && -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]]; then
+            git cat-file -e "$BASE_SHA^{commit}"
+            git cat-file -e "$HEAD_SHA^{commit}"
+            args+=(--base "$BASE_SHA" --head "$HEAD_SHA")
+          fi
+          uv run python scripts/check_scientific_change.py "${args[@]}"
 
   typescript:
     needs: dispatch-integrity
@@ -173,6 +205,7 @@ jobs:
     needs:
       - dispatch-integrity
       - python
+      - scientific-change-policy
       - typescript
       - browser
       - full-stack-browser
@@ -185,6 +218,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_INTEGRITY: ${{ needs.dispatch-integrity.result }}
           PYTHON: ${{ needs.python.result }}
+          SCIENTIFIC_CHANGE_POLICY: ${{ needs.scientific-change-policy.result }}
           TYPESCRIPT: ${{ needs.typescript.result }}
           BROWSER: ${{ needs.browser.result }}
           FULL_STACK_BROWSER: ${{ needs.full-stack-browser.result }}
@@ -193,7 +227,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for result in "$DISPATCH_INTEGRITY" "$PYTHON" "$TYPESCRIPT" "$BROWSER" "$FULL_STACK_BROWSER" "$COMPUTE_IMAGE"; do
+          for result in "$DISPATCH_INTEGRITY" "$PYTHON" "$SCIENTIFIC_CHANGE_POLICY" "$TYPESCRIPT" "$BROWSER" "$FULL_STACK_BROWSER" "$COMPUTE_IMAGE"; do
             [[ "$result" == "success" ]]
           done
           if [[ "$EVENT_NAME" == "pull_request" ]]; then

@@ -83,7 +83,7 @@ const modelAssessment: ModelAssessment = {
   ],
 };
 
-const savedModel = {
+export const savedModel: ModelVersion = {
   id: "model-1",
   projectId: "project-1",
   version: 1,
@@ -352,7 +352,11 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   await page.route("**/api/v1/projects/*/models", async (route) => {
     if (route.request().method() === "POST") {
       const input = route.request().postDataJSON() as { displayName?: string; sourceKind?: "python" | "builder" | "example" };
-      const createdModel = { ...savedModel, sourceKind: input.sourceKind ?? "builder", displayName: input.displayName ?? "Browser model" };
+      const createdModel = {
+        ...(options.models?.[0] ?? savedModel),
+        sourceKind: input.sourceKind ?? "builder",
+        displayName: input.displayName ?? "Browser model",
+      };
       models = [createdModel, ...models];
       await json(
         route,

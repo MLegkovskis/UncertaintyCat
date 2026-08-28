@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "pluginKey": "target_hsic",
+  "pluginVersion": "1.0.0",
+  "resultSchemaVersion": "1.0.0",
+  "openturnsVersion": "1.27.post1",
+  "upstreamEvidence": [
+    {
+      "kind": "implementation",
+      "url": "https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/lib/src/Uncertainty/Algorithm/Sensitivity/HSICEstimatorImplementation.cxx"
+    },
+    {
+      "kind": "benchmark",
+      "url": "https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/python/test/t_HSICEstimatorTargetSensitivity_std.py"
+    }
+  ],
+  "benchmarkTests": [
+    "tests/core/test_plugins.py::test_target_hsic_matches_official_ishigami_benchmark_repeatably"
+  ],
+  "applicabilityTests": [
+    "tests/core/test_plugins.py::test_target_hsic_rejects_invalid_or_degenerate_samples",
+    "tests/core/test_plugins.py::test_target_hsic_rejects_invalid_contract_and_excessive_work"
+  ],
+  "resourceModel": {
+    "bounded": true,
+    "complexity": "O(n^2 * (d + 1) * (B + 4))",
+    "formula": "sample_size^2 * (input_dimension + 1) * (permutations + 4)",
+    "unit": "estimated quadratic kernel-operation units",
+    "upstreamDerivation": "The pinned OpenTURNS implementation evaluates every input HSIC statistic for every output permutation; four additional all-variable passes conservatively cover covariance, observed and normalized indices, and asymptotic diagnostics.",
+    "independentOracleTest": "tests/core/test_resource_envelopes.py::test_target_hsic_resource_estimator_matches_independent_loop_oracle",
+    "boundaryTests": [
+      "tests/core/test_resource_envelopes.py::test_target_hsic_default_fits_maximum_supported_dimension_budget",
+      "tests/core/test_resource_envelopes.py::test_target_hsic_rejects_first_permutation_count_above_budget"
+    ],
+    "auditAnswers": {
+      "hiddenLoopNesting": "Yes. Each permutation recomputes the HSIC statistic for every input dimension, so dimension and permutation counts multiply rather than add.",
+      "maximumConfiguration": "The schema maximum n=500, d=20, B=200 estimates 1,071,000,000 units and is rejected before sampling because it exceeds the 150,000,000-unit cap.",
+      "uiMaximumDimension": "The UI default n=250 and B=100 at the supported maximum d=20 estimates 136,500,000 units, remains below the cap, and is asserted through a browser request contract."
+    }
+  },
+  "browserTests": [
+    "apps/web/e2e/ui-flows.spec.ts#keeps target HSIC UI defaults within the maximum-dimensional core resource envelope",
+    "apps/web/e2e/full-stack/journey.spec.ts#retained-user journey persists a project, executes every plugin, and produces a durable report"
+  ],
+  "interpretationBoundaries": [
+    "Target-domain HSIC measures association with a smoothed critical-domain score; it is not a failure-probability estimator or variance allocation.",
+    "The result does not establish causal influence or predictive validity outside the declared sampled input distribution."
+  ]
+}

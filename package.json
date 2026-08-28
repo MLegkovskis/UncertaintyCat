@@ -19,7 +19,8 @@
     "typecheck:py": "uv run mypy uncertaintycat_core services",
     "format:py": "uv run ruff format uncertaintycat_core services tests",
     "generate:examples": "uv run python scripts/generate_example_catalog.py",
-    "check:examples": "uv run python scripts/generate_example_catalog.py --check"
+    "check:examples": "uv run python scripts/generate_example_catalog.py --check",
+    "check:scientific-change": "uv run python scripts/check_scientific_change.py --run-declared-tests"
   },
   "engines": {
     "node": ">=22.0"

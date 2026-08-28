@@ -40,6 +40,7 @@ def main() -> None:
             "- [ ] Update the pin and lockfile on a branch.\n"
             "- [ ] Run all reference models and scientific regression tests.\n"
             "- [ ] Compare catalog/config/result schemas and add plugins deliberately.\n"
+            "- [ ] Refresh pinned evidence manifests and independent complexity oracles.\n"
             "- [ ] Record numerical drift and migration notes before merging.\n\n"
             "Follow the complete autonomous intake procedure in "
             "docs/openturns-sync/README.md. A justified no-op is acceptable; do not expose "

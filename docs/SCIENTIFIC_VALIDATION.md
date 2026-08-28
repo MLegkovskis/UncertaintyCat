@@ -25,6 +25,9 @@ The test suite covers:
 - stable OpenTURNS target-domain HSIC on the official fixed-seed Ishigami case: target R2-HSIC
   `[0.26863688, 0.00468423, 0.00339962]`, raw indices and both p-value diagnostics match the upstream
   test within `1e-8`, repeat exactly, and account for 100 model evaluations;
+- an independent loop-count oracle for target-domain HSIC resource work across zero/default/maximum
+  permutation cases, the exact 150,000,000-unit accept/reject boundary, rejection of the schema maximum,
+  and a browser contract proving the safe default remains admissible at 20 inputs;
 - stable OpenTURNS ANCOVA physical/correlation decomposition for a correlated-normal linear benchmark,
   including dependent-holdout PCE validation and exact evaluation accounting;
 - stable OpenTURNS nonlinear least-squares calibration of the official exponential family
@@ -44,6 +47,7 @@ The test suite covers:
 Run the evidence locally with:
 
 ```bash
+npm run check:scientific-change
 uv run pytest
 uv run pytest -m scientific
 npm run test:ts
@@ -93,6 +97,8 @@ npm run test:e2e
 5. Explain every material drift; do not widen tolerances solely to make CI pass.
 6. Version affected plugins and schemas, add migration notes, and retain old report readability.
 7. Have a domain reviewer approve changes to reliability or sensitivity interpretation.
+8. Refresh the plugin's pinned-source evidence manifest. CI rejects plugin diffs without an independent
+   complexity oracle, exact resource boundary, changed Python/browser evidence, and updated sync records.
 
 ## Known validation gaps before a scientific 1.0 release
 
