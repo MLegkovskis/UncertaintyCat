@@ -1,5 +1,6 @@
 import { getSandbox } from "@cloudflare/sandbox";
 
+import { parseProgressLine } from "./compute-progress";
 import type { Env } from "./env";
 
 type ComputeOperation =
@@ -15,6 +16,17 @@ type ComputeOperation =
 interface SandboxEnvelope {
   status: number;
   body: unknown;
+}
+
+export interface ComputeProgress {
+  phase: string;
+  percent: number;
+  message: string;
+  indeterminate: boolean;
+}
+
+interface ComputeFetchOptions {
+  onProgress?: (progress: ComputeProgress) => void;
 }
 
 function operationFor(path: string): ComputeOperation {
@@ -46,6 +58,7 @@ async function sandboxFetch(
   env: Env,
   path: string,
   init?: RequestInit,
+  options: ComputeFetchOptions = {},
 ): Promise<Response> {
   if (!env.SANDBOX)
     throw new Error("Cloudflare Sandbox binding is unavailable.");
@@ -67,14 +80,32 @@ async function sandboxFetch(
     const command =
       `cd /app && /app/.venv/bin/python -m services.compute.cli ${operation}` +
       (init?.body ? ` ${inputPath}` : "");
-    const result = await sandbox.exec(command, { timeout: 180_000 });
+    let stderrBuffer = "";
+    const result = await sandbox.exec(command, {
+      timeout: 180_000,
+      stream: Boolean(options.onProgress),
+      onOutput: (stream, data) => {
+        if (stream !== "stderr" || !options.onProgress) return;
+        stderrBuffer += data;
+        const lines = stderrBuffer.split("\n");
+        stderrBuffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const progress = parseProgressLine(line.trim());
+          if (progress) options.onProgress(progress);
+        }
+      },
+    });
+    if (stderrBuffer && options.onProgress) {
+      const progress = parseProgressLine(stderrBuffer.trim());
+      if (progress) options.onProgress(progress);
+    }
     if (!result.success) {
       console.error(
         JSON.stringify({
           event: "isolated_compute_failed",
           operation,
           exitCode: result.exitCode,
-          stderr: result.stderr.slice(0, 2_000),
+          stderrBytes: new TextEncoder().encode(result.stderr).byteLength,
         }),
       );
       throw new Error(
@@ -100,10 +131,17 @@ export async function computeFetch(
   env: Env,
   path: string,
   init?: RequestInit,
+  options: ComputeFetchOptions = {},
 ): Promise<Response> {
-  if (env.SANDBOX) return sandboxFetch(env, path, init);
+  if (env.SANDBOX) return sandboxFetch(env, path, init, options);
   if (!env.COMPUTE_SERVICE_URL)
     throw new Error("No compute backend is configured.");
+  options.onProgress?.({
+    phase: "openturns",
+    percent: 20,
+    message: "OpenTURNS computation is active.",
+    indeterminate: true,
+  });
   return fetch(`${env.COMPUTE_SERVICE_URL}${path}`, {
     ...init,
     headers: {

@@ -22,6 +22,12 @@ The test suite covers:
 - Ishigami Sobol first-order structure (`S1` near 0.314, `S2` near 0.442, `S3` near zero) with tolerances
   appropriate to a finite Saltelli design;
 - dependent-copula rejection for classical Sobol;
+- stable OpenTURNS global HSIC on the official fixed-seed Ishigami case: normalized indices
+  `[0.29807297, 0.00344498, 0.07726572]` and permutation p-values
+  `[0.0, 0.29670330, 0.00199800]` match the pinned upstream benchmark within `1e-8`;
+- an independent loop-count oracle for global HSIC and the measured eight-input damped-oscillator boundary:
+  400 samples at 100 permutations is admitted at 149,760,000 estimated units, while 401 samples is rejected
+  before model sampling at 150,509,736 units; the browser request contract enforces the same model-specific cap;
 - stable OpenTURNS target-domain HSIC on the official fixed-seed Ishigami case: target R2-HSIC
   `[0.26863688, 0.00468423, 0.00339962]`, raw indices and both p-value diagnostics match the upstream
   test within `1e-8`, repeat exactly, and account for 100 model evaluations;
@@ -63,7 +69,9 @@ npm run test:e2e
 - Morris: the pinned official `otmorris==0.20.post1` module is authoritative; independent marginals and trajectories operate in probability space so unbounded marginals remain
   finite without inventing physical bounds.
 - HSIC: normalized empirical Gaussian-kernel dependence; permutation p-values are finite-sample evidence,
-  not a causal claim.
+  not a causal claim. Continuous inputs and a variable scalar output are required. The validation assessment
+  publishes a model-specific maximum sample size at the fixed default permutation count, and core repeats the
+  quadratic-work check before any analysis sampling.
 - Target-domain HSIC: one scalar output and at most 20 continuous inputs; a threshold must leave at least
   five sampled observations inside and outside the target domain. Sample size, permutations, quadratic
   work, and report rows are hard-capped. The exponential distance filter and empirical kernel bandwidths

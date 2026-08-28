@@ -15,6 +15,9 @@ also diff-aware: a new or changed plugin cannot pass unless the same change refr
 Python and browser evidence, scientific validation, sync guide, and sync state. The required aggregate CI job
 depends on this gate, so deployment cannot proceed when it fails.
 
+The Python integration suite also executes the one-shot Sandbox CLI directly and asserts that HSIC emits the
+expected monotonic, source-free phase protocol on stderr while stdout remains one valid strict result envelope.
+
 ## UI contract suite
 
 ```bash
@@ -31,7 +34,10 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - model validation success/failure, immediate in-flight Model Understanding feedback, analysis controls locked until validation succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
 - integrated validation/Model Understanding, primary/fallback model policy, single-flight polling, explicit uncharged timeout/failure states, named-observation Calibration Studio, model- and data-driven surrogate fitting, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
 - desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
-- queued/running/terminal run states, cancellation, exact reruns, and project-oriented history;
+- queued/running/terminal run states, separate accessible progress bars and named phase messages for every
+  task, indeterminate OpenTURNS phases, retry state, cancellation, exact reruns, and project-oriented history;
+- catalog-wide post-validation applicability, including explicit dependent-copula disablement and the
+  model-specific damped-oscillator HSIC sample cap in both displayed guidance and submitted request JSON;
 - metrics, tables, truncation notices, series, heatmaps, facts, equations, assumptions, provenance, partial failures, sharing, bundle export, and direct PDF-download wiring;
 - stored report chat, streaming Markdown, human-readable evidence badges, section-aware sensitivity discovery, suggestions, and quota failures;
 - equal-height scroll-bounded Model Understanding, unclipped exact-data disclosure controls, and syntax-highlighted immutable Python source;
@@ -46,7 +52,7 @@ The key regression contract is explicit: an unauthenticated browser cannot mount
 npm run test:e2e:full-stack
 ```
 
-Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated project; validates the Ishigami model; executes the ten independent-input direct analyses—including target-domain HSIC with its real OpenTURNS permutation path—through the direct workspace; calibrates the official nonlinear exponential model through the named-data studio and real compute boundary; builds a dependent symbolic model and executes ANCOVA through compute, persistence, and the generic report; exercises Morris and model-based PCE/GPR through their project studios; fits a data-driven GPR from pre-filled paired observations; downloads real report ZIPs; creates and opens an authenticated share link; reloads project history; and verifies persisted D1 records through the API. Successful execution also proves immutable source, dataset, and surrogate-artifact round-tripping through R2.
+Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated project; validates the Ishigami model; executes the ten independent-input direct analyses—including global and target-domain HSIC with their real OpenTURNS permutation paths—through the direct workspace; asserts terminal per-task progress persistence; calibrates the official nonlinear exponential model through the named-data studio and real compute boundary; builds a dependent symbolic model, proves a direct API attempt cannot bypass the Sobol applicability rejection, and executes ANCOVA through compute, persistence, and the generic report; exercises Morris and model-based PCE/GPR through their project studios; fits a data-driven GPR from pre-filled paired observations; downloads real report ZIPs; creates and opens an authenticated share link; reloads project history; and verifies persisted D1 records through the API. Successful execution also proves immutable source, dataset, and surrogate-artifact round-tripping through R2.
 
 The test Wrangler configurations use `DEV_AUTH_BYPASS=true` and the browser supplies a synthetic Better Auth session. This is intentionally test-only: CI must not hold a human Cloudflare password, session cookie, or MFA recovery material. Production configuration omits the bypass.
 

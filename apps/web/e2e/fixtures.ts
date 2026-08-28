@@ -27,10 +27,19 @@ export const catalog: AnalysisCatalogEntry[] = [
   ["reliability", "Reliability Analysis", "Reliability", "heavy"],
   ["pce", "Polynomial Chaos Expansion", "Metamodel", "heavy"],
   ["gpr", "Gaussian Process Surrogate", "Surrogate", "heavy"],
-  ["calibration_nlls", "Nonlinear Least-Squares Calibration", "Calibration", "heavy"],
+  [
+    "calibration_nlls",
+    "Nonlinear Least-Squares Calibration",
+    "Calibration",
+    "heavy",
+  ],
 ].map(([key, name, category, resourceClass]) => ({
   key,
-  version: ["ancova", "calibration_nlls", "target_hsic"].includes(key) ? "1.0.0" : "2.0.0",
+  version: ["ancova", "calibration_nlls", "target_hsic"].includes(key)
+    ? "1.0.0"
+    : ["hsic", "morris"].includes(key)
+      ? "2.1.0"
+      : "2.0.0",
   name,
   category,
   description: `${name} produces versioned numerical evidence.`,
@@ -43,13 +52,38 @@ export const catalog: AnalysisCatalogEntry[] = [
 }));
 
 const modelMetadata: ModelMetadata = {
-  source_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  source_hash:
+    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   input_dimension: 3,
   output_dimension: 1,
   inputs: [
-    { index: 0, name: "x1", distribution: "Uniform", parameters: [-3.14, 3.14], kind: "continuous", mean: 0, standard_deviation: 1.81 },
-    { index: 1, name: "x2", distribution: "Uniform", parameters: [-3.14, 3.14], kind: "continuous", mean: 0, standard_deviation: 1.81 },
-    { index: 2, name: "x3", distribution: "Uniform", parameters: [-3.14, 3.14], kind: "continuous", mean: 0, standard_deviation: 1.81 },
+    {
+      index: 0,
+      name: "x1",
+      distribution: "Uniform",
+      parameters: [-3.14, 3.14],
+      kind: "continuous",
+      mean: 0,
+      standard_deviation: 1.81,
+    },
+    {
+      index: 1,
+      name: "x2",
+      distribution: "Uniform",
+      parameters: [-3.14, 3.14],
+      kind: "continuous",
+      mean: 0,
+      standard_deviation: 1.81,
+    },
+    {
+      index: 2,
+      name: "x3",
+      distribution: "Uniform",
+      parameters: [-3.14, 3.14],
+      kind: "continuous",
+      mean: 0,
+      standard_deviation: 1.81,
+    },
   ],
   outputs: [{ index: 0, name: "Y" }],
   openturns_version: "1.25",
@@ -59,7 +93,7 @@ const modelMetadata: ModelMetadata = {
 };
 
 const modelAssessment: ModelAssessment = {
-  version: "1.3.0",
+  version: "1.4.0",
   profile: {
     input_dimension: 3,
     output_dimension: 1,
@@ -72,14 +106,68 @@ const modelAssessment: ModelAssessment = {
     validation_evaluation_runtime_ms: 1,
     projected_1000_evaluation_runtime_ms: 125,
     pilot_sample_size: 8,
-    pilot_outputs: [{ output_index: 0, output_name: "Y", minimum: -6, maximum: 8, mean: 1.2, standard_deviation: 2.1, quantile_05: -4.5, quantile_95: 6.8, variable: true }],
+    pilot_outputs: [
+      {
+        output_index: 0,
+        output_name: "Y",
+        minimum: -6,
+        maximum: 8,
+        mean: 1.2,
+        standard_deviation: 2.1,
+        quantile_05: -4.5,
+        quantile_95: 6.8,
+        variable: true,
+      },
+    ],
   },
-  workflow: { path: "direct", rationale_codes: ["DIRECT_EVALUATION_PRACTICAL"] },
+  workflow: {
+    path: "direct",
+    rationale_codes: ["DIRECT_EVALUATION_PRACTICAL"],
+  },
   recommendations: [
-    { capability: "ancova", status: "incompatible", priority: 2, rationale_codes: ["INDEPENDENT_INPUTS_USE_SOBOL"], compatibility_warnings: ["ANCOVA requires two to ten continuous inputs with a dependent copula."] },
-    { capability: "gpr", status: "available", priority: 3, rationale_codes: ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"], compatibility_warnings: [] },
-    { capability: "pce", status: "available", priority: 3, rationale_codes: ["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"], compatibility_warnings: [] },
-    { capability: "target_hsic", status: "available", priority: 4, rationale_codes: ["USER_DEFINED_CRITICAL_DOMAIN_REQUIRED"], projected_evaluations: 250, compatibility_warnings: ["Define a scalar critical output domain before target-HSIC execution."] },
+    {
+      capability: "ancova",
+      status: "incompatible",
+      priority: 2,
+      rationale_codes: ["INDEPENDENT_INPUTS_USE_SOBOL"],
+      compatibility_warnings: [
+        "ANCOVA requires two to ten continuous inputs with a dependent copula.",
+      ],
+    },
+    {
+      capability: "gpr",
+      status: "available",
+      priority: 3,
+      rationale_codes: ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"],
+      compatibility_warnings: [],
+    },
+    {
+      capability: "hsic",
+      status: "available",
+      priority: 3,
+      rationale_codes: ["PLUGIN_MODEL_CONTRACT_SATISFIED"],
+      projected_evaluations: 250,
+      compatibility_warnings: [],
+      safe_config: { maximum_sample_size: 600, permutations: 100 },
+    },
+    {
+      capability: "pce",
+      status: "available",
+      priority: 3,
+      rationale_codes: ["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"],
+      compatibility_warnings: [],
+    },
+    {
+      capability: "target_hsic",
+      status: "available",
+      priority: 4,
+      rationale_codes: ["USER_DEFINED_CRITICAL_DOMAIN_REQUIRED"],
+      projected_evaluations: 250,
+      compatibility_warnings: [
+        "Define a scalar critical output domain before target-HSIC execution.",
+      ],
+      safe_config: { maximum_sample_size: 250, permutations: 100 },
+    },
   ],
 };
 
@@ -99,16 +187,52 @@ export const calibrationSavedModel: ModelVersion = {
   ...savedModel,
   id: "model-calibration",
   displayName: "Exponential calibration benchmark",
-  sourceHash: EXAMPLE_CATALOG.find((example) => example.id === "calibration_exponential")!.sha256,
+  sourceHash: EXAMPLE_CATALOG.find(
+    (example) => example.id === "calibration_exponential",
+  )!.sha256,
   metadata: {
     ...modelMetadata,
-    source_hash: EXAMPLE_CATALOG.find((example) => example.id === "calibration_exponential")!.sha256,
+    source_hash: EXAMPLE_CATALOG.find(
+      (example) => example.id === "calibration_exponential",
+    )!.sha256,
     input_dimension: 4,
     inputs: [
-      { index: 0, name: "a", distribution: "Uniform", parameters: [0, 5], kind: "continuous", mean: 2.5, standard_deviation: 1.44 },
-      { index: 1, name: "b", distribution: "Uniform", parameters: [0.5, 2], kind: "continuous", mean: 1.25, standard_deviation: 0.43 },
-      { index: 2, name: "c", distribution: "Uniform", parameters: [0.1, 0.6], kind: "continuous", mean: 0.35, standard_deviation: 0.14 },
-      { index: 3, name: "x", distribution: "Uniform", parameters: [0.5, 9.5], kind: "continuous", mean: 5, standard_deviation: 2.6 },
+      {
+        index: 0,
+        name: "a",
+        distribution: "Uniform",
+        parameters: [0, 5],
+        kind: "continuous",
+        mean: 2.5,
+        standard_deviation: 1.44,
+      },
+      {
+        index: 1,
+        name: "b",
+        distribution: "Uniform",
+        parameters: [0.5, 2],
+        kind: "continuous",
+        mean: 1.25,
+        standard_deviation: 0.43,
+      },
+      {
+        index: 2,
+        name: "c",
+        distribution: "Uniform",
+        parameters: [0.1, 0.6],
+        kind: "continuous",
+        mean: 0.35,
+        standard_deviation: 0.14,
+      },
+      {
+        index: 3,
+        name: "x",
+        distribution: "Uniform",
+        parameters: [0.5, 9.5],
+        kind: "continuous",
+        mean: 5,
+        standard_deviation: 2.6,
+      },
     ],
     outputs: [{ index: 0, name: "y" }],
     openturns_version: "1.27.post1",
@@ -119,7 +243,9 @@ export const calibrationSavedModel: ModelVersion = {
       ...modelAssessment.profile,
       input_dimension: 4,
       continuous_marginals: 4,
-      pilot_outputs: [{ ...modelAssessment.profile.pilot_outputs[0]!, output_name: "y" }],
+      pilot_outputs: [
+        { ...modelAssessment.profile.pilot_outputs[0]!, output_name: "y" },
+      ],
     },
   },
 };
@@ -132,14 +258,42 @@ const dataset: Dataset = {
   sha256: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
   rowCount: 6,
   columns: [
-    { name: "temperature", type: "numeric", missingCount: 0, invalidNumericCount: 0, nonFiniteCount: 0, finiteCount: 6, uniqueCount: 6, minimum: 18, maximum: 23, mean: 20.5 },
-    { name: "pressure", type: "numeric", missingCount: 0, invalidNumericCount: 0, nonFiniteCount: 0, finiteCount: 6, uniqueCount: 6, minimum: 1, maximum: 1.5, mean: 1.25 },
+    {
+      name: "temperature",
+      type: "numeric",
+      missingCount: 0,
+      invalidNumericCount: 0,
+      nonFiniteCount: 0,
+      finiteCount: 6,
+      uniqueCount: 6,
+      minimum: 18,
+      maximum: 23,
+      mean: 20.5,
+    },
+    {
+      name: "pressure",
+      type: "numeric",
+      missingCount: 0,
+      invalidNumericCount: 0,
+      nonFiniteCount: 0,
+      finiteCount: 6,
+      uniqueCount: 6,
+      minimum: 1,
+      maximum: 1.5,
+      mean: 1.25,
+    },
   ],
   preview: [
-    { temperature: 18, pressure: 1 }, { temperature: 19, pressure: 1.1 }, { temperature: 20, pressure: 1.2 },
-    { temperature: 21, pressure: 1.3 }, { temperature: 22, pressure: 1.4 }, { temperature: 23, pressure: 1.5 },
+    { temperature: 18, pressure: 1 },
+    { temperature: 19, pressure: 1.1 },
+    { temperature: 20, pressure: 1.2 },
+    { temperature: 21, pressure: 1.3 },
+    { temperature: 22, pressure: 1.4 },
+    { temperature: 23, pressure: 1.5 },
   ],
-  warnings: ["temperature: fewer than 20 finite observations; fit evidence is weak."],
+  warnings: [
+    "temperature: fewer than 20 finite observations; fit evidence is weak.",
+  ],
   createdAt: "2026-08-19T12:00:00Z",
 };
 
@@ -171,7 +325,10 @@ export function analysisResult(key = "monte_carlo"): AnalysisResult {
       tables: {
         descriptive_statistics: {
           columns: ["Statistic", "Y"],
-          rows: [["Mean", 3.5], ["Standard deviation", 1.25]],
+          rows: [
+            ["Mean", 3.5],
+            ["Standard deviation", 1.25],
+          ],
           row_count: 500,
           truncated: true,
         },
@@ -211,23 +368,56 @@ export function makeRun(status: Run["status"] = "succeeded"): Run {
     accuracyProfile: "standard",
     evidenceSource: "direct",
     createdAt: "2026-08-19T12:00:00Z",
-    completedAt: status === "running" || status === "queued" ? null : "2026-08-19T12:00:02Z",
-    tasks: catalog.slice(0, 3).map((entry, index) => ({
-      id: `task-${index + 1}`,
-      analysisKey: entry.key,
-      pluginVersion: entry.version,
-      config: { sample_size: 128 },
-      outputTargets: [],
-      status:
+    completedAt:
+      status === "running" || status === "queued"
+        ? null
+        : "2026-08-19T12:00:02Z",
+    tasks: [catalog[0]!, catalog[6]!, catalog[2]!].map((entry, index) => {
+      const taskStatus =
         status === "cancelled"
           ? "cancelled"
-          : status === "running" && index > 0
-            ? "queued"
-            : "succeeded",
-      ...(status !== "cancelled" && !(status === "running" && index > 0)
-        ? { result: analysisResult(entry.key) }
-        : {}),
-    })),
+          : status === "running"
+            ? index === 0
+              ? "succeeded"
+              : index === 1
+                ? "running"
+                : "queued"
+            : "succeeded";
+      return {
+        id: `task-${index + 1}`,
+        analysisKey: entry.key,
+        pluginVersion: entry.version,
+        config: { sample_size: 128 },
+        outputTargets: [],
+        status: taskStatus,
+        ...(taskStatus === "succeeded"
+          ? { result: analysisResult(entry.key) }
+          : {}),
+        ...(taskStatus === "running"
+          ? {
+              progress: {
+                phase: "permutation_inference",
+                percent: 58,
+                message: "OpenTURNS is evaluating 100 permutation replicates.",
+                indeterminate: true,
+                attempt: 0,
+                updatedAt: "2026-08-19T12:00:01Z",
+              },
+            }
+          : taskStatus === "queued"
+            ? {
+                progress: {
+                  phase: "queued",
+                  percent: 0,
+                  message: "Waiting for isolated compute capacity.",
+                  indeterminate: true,
+                  attempt: 0,
+                  updatedAt: "2026-08-19T12:00:00Z",
+                },
+              }
+            : {}),
+      };
+    }),
   };
 }
 
@@ -256,7 +446,10 @@ export function makeReport(): Report {
       {
         key: "sobol",
         status: "failed",
-        error: { code: "fixture_failure", message: "Deliberate partial-failure evidence." },
+        error: {
+          code: "fixture_failure",
+          message: "Deliberate partial-failure evidence.",
+        },
       },
     ],
   };
@@ -282,7 +475,9 @@ export interface MockApiOptions {
 export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   let projects = options.projects ?? [];
   let runs = options.runs ?? [];
-  let models = options.models ?? (options.authenticated && projects.length ? [savedModel] : []);
+  let models =
+    options.models ??
+    (options.authenticated && projects.length ? [savedModel] : []);
   let surrogates: Array<Record<string, unknown>> = [];
   let dataSurrogates: Array<Record<string, unknown>> = [];
   const report = options.report ?? makeReport();
@@ -293,7 +488,11 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       options.authenticated
         ? {
             session: { id: "session-1", expiresAt: "2099-01-01T00:00:00Z" },
-            user: { id: "user-1", name: "Mark Legkovskis", email: "mlegkovskis@gmail.com" },
+            user: {
+              id: "user-1",
+              name: "Mark Legkovskis",
+              email: "mlegkovskis@gmail.com",
+            },
           }
         : null,
     ),
@@ -304,18 +503,31 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       url: "https://uncertaintycat.cloudflareaccess.com/cdn-cgi/access/sso/oidc/authorize?client_id=test",
     }),
   );
-  await page.route("**/api/auth/sign-out", (route) => json(route, { success: true }));
+  await page.route("**/api/auth/sign-out", (route) =>
+    json(route, { success: true }),
+  );
   await page.route("**/api/v1/session", (route) =>
     json(route, {
       identity: options.authenticated
-        ? { ownerId: "user-1", authenticated: true, name: "Mark Legkovskis", email: "mlegkovskis@gmail.com" }
+        ? {
+            ownerId: "user-1",
+            authenticated: true,
+            name: "Mark Legkovskis",
+            email: "mlegkovskis@gmail.com",
+          }
         : { ownerId: "", authenticated: false },
       providers: ["cloudflare"],
       ai: {
         provider: "groq",
         configured: true,
-        modelUnderstanding: { modelId: "openai/gpt-oss-20b", label: "Groq · GPT-OSS 20B" },
-        reportChat: { modelId: "openai/gpt-oss-120b", label: "Groq · GPT-OSS 120B" },
+        modelUnderstanding: {
+          modelId: "openai/gpt-oss-20b",
+          label: "Groq · GPT-OSS 20B",
+        },
+        reportChat: {
+          modelId: "openai/gpt-oss-120b",
+          label: "Groq · GPT-OSS 120B",
+        },
       },
     }),
   );
@@ -327,7 +539,10 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   );
   await page.route("**/api/v1/projects", async (route) => {
     if (route.request().method() === "POST") {
-      const input = route.request().postDataJSON() as { name: string; description: string };
+      const input = route.request().postDataJSON() as {
+        name: string;
+        description: string;
+      };
       const created = {
         ...project,
         id: `project-created-${projects.length + 1}`,
@@ -345,13 +560,18 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       await route.fallback();
       return;
     }
-    const projectId = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const projectId = new URL(route.request().url()).pathname
+      .split("/")
+      .at(-1)!;
     projects = projects.filter((candidate) => candidate.id !== projectId);
     await json(route, { deletedProjectId: projectId, deletedArtifactCount: 4 });
   });
   await page.route("**/api/v1/projects/*/models", async (route) => {
     if (route.request().method() === "POST") {
-      const input = route.request().postDataJSON() as { displayName?: string; sourceKind?: "python" | "builder" | "example" };
+      const input = route.request().postDataJSON() as {
+        displayName?: string;
+        sourceKind?: "python" | "builder" | "example";
+      };
       const createdModel = {
         ...(options.models?.[0] ?? savedModel),
         sourceKind: input.sourceKind ?? "builder",
@@ -395,22 +615,100 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       await json(route, { fitRuns: [] });
       return;
     }
-    const input = route.request().postDataJSON() as { selectedMarginals?: Record<string, string>; copula?: string };
+    const input = route.request().postDataJSON() as {
+      selectedMarginals?: Record<string, string>;
+      copula?: string;
+    };
     const selected = input.selectedMarginals ?? {};
     const makeColumn = (name: string, values: number[]) => ({
       column: name,
       sampleSize: values.length,
       warnings: ["Fewer than 20 observations."],
       rankings: [
-        { candidate: "Normal", distribution: "Normal", parameters: [20, 2], parameterDescription: ["mu", "sigma"], bic: 2.1, aic: 2, aicc: 2.2, test: { name: "Lilliefors", statistic: 0.1, pValue: 0.6, significanceLevel: 0.05, rejected: false } },
-        { candidate: "Uniform", distribution: "Uniform", parameters: [17.5, 23.5], parameterDescription: ["a", "b"], bic: 2.4, aic: 2.3, aicc: 2.5, test: { name: "Lilliefors", statistic: 0.12, pValue: 0.4, significanceLevel: 0.05, rejected: false } },
+        {
+          candidate: "Normal",
+          distribution: "Normal",
+          parameters: [20, 2],
+          parameterDescription: ["mu", "sigma"],
+          bic: 2.1,
+          aic: 2,
+          aicc: 2.2,
+          test: {
+            name: "Lilliefors",
+            statistic: 0.1,
+            pValue: 0.6,
+            significanceLevel: 0.05,
+            rejected: false,
+          },
+        },
+        {
+          candidate: "Uniform",
+          distribution: "Uniform",
+          parameters: [17.5, 23.5],
+          parameterDescription: ["a", "b"],
+          bic: 2.4,
+          aic: 2.3,
+          aicc: 2.5,
+          test: {
+            name: "Lilliefors",
+            statistic: 0.12,
+            pValue: 0.4,
+            significanceLevel: 0.05,
+            rejected: false,
+          },
+        },
       ],
       rejectedCandidates: [],
       selectedMarginal: selected[name] ?? null,
-      plot: { sample: values, pdf: { x: values, y: values.map(() => 0.2) }, cdf: { empiricalX: values, empiricalY: values.map((_value, index) => (index + 1) / values.length), fittedX: values, fittedY: values.map((_value, index) => (index + 0.5) / values.length) }, qq: { theoretical: values, observed: values } },
+      plot: {
+        sample: values,
+        pdf: { x: values, y: values.map(() => 0.2) },
+        cdf: {
+          empiricalX: values,
+          empiricalY: values.map(
+            (_value, index) => (index + 1) / values.length,
+          ),
+          fittedX: values,
+          fittedY: values.map((_value, index) => (index + 0.5) / values.length),
+        },
+        qq: { theoretical: values, observed: values },
+      },
     });
     const generated = Object.keys(selected).length > 0;
-    await json(route, { fitRun: { id: generated ? "fit-2" : "fit-1", datasetId: dataset.id, status: "succeeded", config: input, result: { openturnsVersion: "1.27.post1", columns: [makeColumn("temperature", [18, 19, 20, 21, 22, 23]), makeColumn("pressure", [1, 1.1, 1.2, 1.3, 1.4, 1.5])], copula: generated ? { kind: input.copula ?? "independent", className: "IndependentCopula" } : null, generatedSource: generated ? "import openturns as ot\nproblem = ot.JointDistribution([ot.Normal(), ot.Normal()])\n" : null, builderSpec: generated ? { inputs: [] } : null, assumptions: ["OpenTURNS authority"] }, generatedSource: generated ? "import openturns as ot" : null, openturnsVersion: "1.27.post1", createdAt: "2026-08-19T12:00:00Z", completedAt: "2026-08-19T12:00:01Z" } }, 201);
+    await json(
+      route,
+      {
+        fitRun: {
+          id: generated ? "fit-2" : "fit-1",
+          datasetId: dataset.id,
+          status: "succeeded",
+          config: input,
+          result: {
+            openturnsVersion: "1.27.post1",
+            columns: [
+              makeColumn("temperature", [18, 19, 20, 21, 22, 23]),
+              makeColumn("pressure", [1, 1.1, 1.2, 1.3, 1.4, 1.5]),
+            ],
+            copula: generated
+              ? {
+                  kind: input.copula ?? "independent",
+                  className: "IndependentCopula",
+                }
+              : null,
+            generatedSource: generated
+              ? "import openturns as ot\nproblem = ot.JointDistribution([ot.Normal(), ot.Normal()])\n"
+              : null,
+            builderSpec: generated ? { inputs: [] } : null,
+            assumptions: ["OpenTURNS authority"],
+          },
+          generatedSource: generated ? "import openturns as ot" : null,
+          openturnsVersion: "1.27.post1",
+          createdAt: "2026-08-19T12:00:00Z",
+          completedAt: "2026-08-19T12:00:01Z",
+        },
+      },
+      201,
+    );
   });
   await page.route(/\/api\/v1\/datasets\/[^/]+\/surrogates$/, async (route) => {
     const input = route.request().postDataJSON() as {
@@ -430,9 +728,27 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       openturnsVersion: "1.27.post1",
       inputColumns: input.inputColumns,
       outputColumn: input.outputColumn,
-      config: { kernel: input.kernel, trend: input.trend, validationFraction: input.validationFraction, seed: input.seed },
-      validation: { trainingSize: 24, validationSize: 6, r2: 0.982, rmse: 0.12, normalizedRmse: 0.06, meetsDefault: true, observed: [18, 19, 20, 21, 22, 23], predicted: [18.1, 18.9, 20.2, 20.9, 22.1, 22.8] },
-      artifact: { sha256: "dataabcdef", sizeBytes: 2048, resultType: "GaussianProcessRegressionResult" },
+      config: {
+        kernel: input.kernel,
+        trend: input.trend,
+        validationFraction: input.validationFraction,
+        seed: input.seed,
+      },
+      validation: {
+        trainingSize: 24,
+        validationSize: 6,
+        r2: 0.982,
+        rmse: 0.12,
+        normalizedRmse: 0.06,
+        meetsDefault: true,
+        observed: [18, 19, 20, 21, 22, 23],
+        predicted: [18.1, 18.9, 20.2, 20.9, 22.1, 22.8],
+      },
+      artifact: {
+        sha256: "dataabcdef",
+        sizeBytes: 2048,
+        resultType: "GaussianProcessRegressionResult",
+      },
       createdAt: "2026-08-23T12:00:00Z",
     };
     dataSurrogates = [surrogate];
@@ -447,9 +763,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/runs\/[^/]+$/, (route) =>
     json(route, { run: runs[0] ?? makeRun("succeeded") }),
   );
-  await page.route("**/api/v1/reports/*", (route) =>
-    json(route, { report }),
-  );
+  await page.route("**/api/v1/reports/*", (route) => json(route, { report }));
   await page.route(/\/api\/v1\/model-versions\/[^/]+\/definition$/, (route) =>
     json(route, {
       definition: {
@@ -472,41 +786,85 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
             { name: "x2", distribution: "Uniform", parameters: [-1, 1] },
           ],
           outputs: [{ name: "response", formula: "x1 + x2^2" }],
-          copula: { kind: "independent", correlation: [[1, 0], [0, 1]] },
+          copula: {
+            kind: "independent",
+            correlation: [
+              [1, 0],
+              [0, 1],
+            ],
+          },
         },
         visibility: "owner",
       },
     }),
   );
-  await page.route(/\/api\/v1\/model-versions\/[^/]+\/understanding$/, async (route) => {
-    if (options.modelUnderstanding) {
-      await options.modelUnderstanding(route);
-      return;
-    }
-    if (route.request().method() === "GET") {
-      await json(route, { understanding: null });
-      return;
-    }
-    await route.fulfill({
-      contentType: "text/markdown; charset=utf-8",
-      body: "### Model equation\n\n$$y = x_1 + x_2^2$$\n\n### Model overview\n\nThe validated fixture has **three inputs**.\n\n### Questions to confirm\n\n- Which units apply?",
-    });
-  });
-  await page.route(/\/api\/v1\/model-versions\/[^/]+\/surrogates$/, async (route) => {
-    const validation = analysisResult("gpr");
-    validation.payload.metrics = { validation_r2: 0.98, validation_normalized_rmse: 0.06 };
-    const surrogate = {
-      id: "surrogate-1", projectId: project.id, sourceModelVersionId: "model-1",
-      sourceModelHash: modelMetadata.source_hash, method: "gpr", pluginVersion: "2.0.0",
-      openturnsVersion: "1.27.post1", status: "validated",
-      validation: { config: { training_size: 128, validation_size: 128 }, outputTargets: [0], seed: 42, result: validation, guidance: { score: 0.98, normalizedRmse: 0.06, scoreThreshold: 0.95, normalizedRmseThreshold: 0.1, meetsDefault: true } },
-      acknowledgement: null, artifact: null, createdAt: "2026-08-19T12:00:00Z", promotedAt: null,
-    };
-    surrogates = [surrogate];
-    await json(route, { surrogate }, 201);
-  });
+  await page.route(
+    /\/api\/v1\/model-versions\/[^/]+\/understanding$/,
+    async (route) => {
+      if (options.modelUnderstanding) {
+        await options.modelUnderstanding(route);
+        return;
+      }
+      if (route.request().method() === "GET") {
+        await json(route, { understanding: null });
+        return;
+      }
+      await route.fulfill({
+        contentType: "text/markdown; charset=utf-8",
+        body: "### Model equation\n\n$$y = x_1 + x_2^2$$\n\n### Model overview\n\nThe validated fixture has **three inputs**.\n\n### Questions to confirm\n\n- Which units apply?",
+      });
+    },
+  );
+  await page.route(
+    /\/api\/v1\/model-versions\/[^/]+\/surrogates$/,
+    async (route) => {
+      const validation = analysisResult("gpr");
+      validation.payload.metrics = {
+        validation_r2: 0.98,
+        validation_normalized_rmse: 0.06,
+      };
+      const surrogate = {
+        id: "surrogate-1",
+        projectId: project.id,
+        sourceModelVersionId: "model-1",
+        sourceModelHash: modelMetadata.source_hash,
+        method: "gpr",
+        pluginVersion: "2.0.0",
+        openturnsVersion: "1.27.post1",
+        status: "validated",
+        validation: {
+          config: { training_size: 128, validation_size: 128 },
+          outputTargets: [0],
+          seed: 42,
+          result: validation,
+          guidance: {
+            score: 0.98,
+            normalizedRmse: 0.06,
+            scoreThreshold: 0.95,
+            normalizedRmseThreshold: 0.1,
+            meetsDefault: true,
+          },
+        },
+        acknowledgement: null,
+        artifact: null,
+        createdAt: "2026-08-19T12:00:00Z",
+        promotedAt: null,
+      };
+      surrogates = [surrogate];
+      await json(route, { surrogate }, 201);
+    },
+  );
   await page.route(/\/api\/v1\/surrogates\/[^/]+\/promote$/, async (route) => {
-    const promoted = { ...surrogates[0], status: "promoted", artifact: { sha256: "abcdef", sizeBytes: 1024, resultType: "GaussianProcessRegressionResult" }, promotedAt: "2026-08-19T12:00:02Z" };
+    const promoted = {
+      ...surrogates[0],
+      status: "promoted",
+      artifact: {
+        sha256: "abcdef",
+        sizeBytes: 1024,
+        resultType: "GaussianProcessRegressionResult",
+      },
+      promotedAt: "2026-08-19T12:00:02Z",
+    };
     surrogates = [promoted];
     await json(route, { surrogate: promoted });
   });
@@ -524,8 +882,32 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     };
     await json(route, { surrogate: copied }, 201);
   });
-  await page.route(/\/api\/v1\/model-versions\/[^/]+\/derived-reduction$/, async (route) =>
-    json(route, { modelVersion: { id: "model-reduced", projectId: project.id, version: 2, sourceKind: "python", displayName: "Morris-screened model", sourceHash: "fedcba", metadata: { ...modelMetadata, input_dimension: 2, inputs: modelMetadata.inputs.slice(0, 2) }, assessment: modelAssessment, parentVersionId: "model-1", derivation: { type: "morris_parametric_reduction" }, createdAt: "2026-08-19T12:00:03Z" } }, 201),
+  await page.route(
+    /\/api\/v1\/model-versions\/[^/]+\/derived-reduction$/,
+    async (route) =>
+      json(
+        route,
+        {
+          modelVersion: {
+            id: "model-reduced",
+            projectId: project.id,
+            version: 2,
+            sourceKind: "python",
+            displayName: "Morris-screened model",
+            sourceHash: "fedcba",
+            metadata: {
+              ...modelMetadata,
+              input_dimension: 2,
+              inputs: modelMetadata.inputs.slice(0, 2),
+            },
+            assessment: modelAssessment,
+            parentVersionId: "model-1",
+            derivation: { type: "morris_parametric_reduction" },
+            createdAt: "2026-08-19T12:00:03Z",
+          },
+        },
+        201,
+      ),
   );
   await page.route("**/api/v1/shared-reports/*", (route) =>
     json(route, { report }),
@@ -558,7 +940,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   await page.route("**/api/v1/reports/*/export", (route) =>
     route.fulfill({
       contentType: "application/zip",
-      headers: { "Content-Disposition": "attachment; filename=uncertaintycat-run-1.zip" },
+      headers: {
+        "Content-Disposition": "attachment; filename=uncertaintycat-run-1.zip",
+      },
       body: "PK synthetic archive",
     }),
   );

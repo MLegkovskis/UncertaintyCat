@@ -19,8 +19,9 @@ from uncertaintycat_core.contracts import (
 )
 from uncertaintycat_core.errors import IncompatibleAnalysisError
 from uncertaintycat_core.model import ModelRuntime, compile_model
+from uncertaintycat_core.progress import ProgressCallback, progress_scope, report_progress
 
-ProgressCallback = Callable[[str, int, int], None]
+SuiteProgressCallback = Callable[[str, int, int], None]
 
 
 def run_analysis(
@@ -29,6 +30,7 @@ def run_analysis(
     *,
     seed: int = 42,
     run_id: UUID | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> AnalysisResultEnvelope:
     plugin = get_plugin(request.analysis_key)
     if request.plugin_version and request.plugin_version != plugin.version:
@@ -39,8 +41,12 @@ def run_analysis(
     config = plugin.parse_config(request.config, seed=seed, output_targets=request.output_targets)
     started_at = datetime.now(timezone.utc)
     started = time.perf_counter()
-    warnings = plugin.applicability_warnings(runtime, config)
-    payload, evaluations = plugin.run(runtime, config)
+    with progress_scope(progress_callback):
+        report_progress("applicability", 12, "Checking the model against the analysis contract.")
+        warnings = plugin.applicability_warnings(runtime, config)
+        report_progress("openturns", 18, f"OpenTURNS is running {plugin.name}.", indeterminate=True)
+        payload, evaluations = plugin.run(runtime, config)
+        report_progress("serializing", 95, "Serializing deterministic numerical evidence.")
     duration_ms = (time.perf_counter() - started) * 1000
     return AnalysisResultEnvelope(
         run_id=run_id or uuid4(),
@@ -60,7 +66,7 @@ def run_analysis(
 
 
 def run_suite(
-    request: RunRequest, progress_callback: ProgressCallback | None = None
+    request: RunRequest, progress_callback: SuiteProgressCallback | None = None
 ) -> list[AnalysisResultEnvelope]:
     if request.model_source is None:
         raise ValueError("The local runner requires model_source.")

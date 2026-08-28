@@ -10,7 +10,7 @@
   "latest_stable_upstream_commit_reviewed": "26a63963fb71851b2d3d397a53ec1a5286ff8d62",
   "catalog_plugin_count": 15,
   "scientific_change_policy_version": 1,
-  "scientific_evidence_manifest_count": 1,
+  "scientific_evidence_manifest_count": 2,
   "last_delivered_candidate": {
     "key": "target_hsic",
     "name": "Target-Domain HSIC Sensitivity",

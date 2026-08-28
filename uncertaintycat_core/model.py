@@ -12,7 +12,6 @@ import numpy as np
 import openturns as ot
 
 from uncertaintycat_core.contracts import (
-    AnalysisRecommendation,
     ModelAssessment,
     ModelMetadata,
     ModelProfile,
@@ -259,11 +258,6 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
     continuous = sum(item.kind == "continuous" for item in inputs)
     discrete = sum(item.kind == "discrete" for item in inputs)
     smooth_candidate = symbolic and continuous == input_dimension and not dependent_inputs
-    ancova_compatible = (
-        dependent_inputs and continuous == input_dimension and 2 <= input_dimension <= 10
-    )
-    target_hsic_compatible = continuous == input_dimension and input_dimension <= 20
-    expensive = projected_runtime_ms > 5_000
     workflow = recommend_workflow(
         input_dimension=input_dimension,
         projected_1000_evaluation_runtime_ms=projected_runtime_ms,
@@ -271,175 +265,54 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
             (continuous == input_dimension and input_dimension <= 10) or smooth_candidate
         ),
     )
-    recommendations = [
-        AnalysisRecommendation(
-            capability="monte_carlo",
-            status="recommended",
-            priority=1,
-            rationale_codes=["BASELINE_PROPAGATION"],
-            projected_evaluations=1000,
-            projected_runtime_ms=projected_runtime_ms,
-        ),
-        AnalysisRecommendation(
-            capability="eda",
-            status="recommended",
-            priority=1,
-            rationale_codes=["BASELINE_OUTPUT_CHARACTERISATION"],
-            projected_evaluations=1000,
-            projected_runtime_ms=projected_runtime_ms,
-        ),
-        AnalysisRecommendation(
-            capability="convergence",
-            status="recommended",
-            priority=1,
-            rationale_codes=["BASELINE_CONVERGENCE_EVIDENCE"],
-            projected_evaluations=1000,
-            projected_runtime_ms=projected_runtime_ms,
-        ),
-        AnalysisRecommendation(
-            capability="ancova",
-            status="recommended" if ancova_compatible else "incompatible",
-            priority=2,
-            rationale_codes=(
-                ["DEPENDENT_INPUT_VARIANCE_DECOMPOSITION"]
-                if ancova_compatible
-                else ["INDEPENDENT_INPUTS_USE_SOBOL"]
-                if not dependent_inputs
-                else ["ANCOVA_DIMENSION_LIMIT"]
-                if not 2 <= input_dimension <= 10
-                else ["ANCOVA_REQUIRES_CONTINUOUS_INPUTS"]
-            ),
-            projected_evaluations=1500,
-            projected_runtime_ms=evaluation_runtime_ms * 1500 / validation_sample_size,
-            compatibility_warnings=(
-                []
-                if ancova_compatible
-                else ["ANCOVA requires two to ten continuous inputs with a dependent copula."]
-            ),
-        ),
-        AnalysisRecommendation(
-            capability="morris",
-            status="recommended" if input_dimension >= 8 else "available",
-            priority=2 if input_dimension >= 15 else 3,
-            rationale_codes=(
-                ["HIGH_DIMENSION_SCREENING"]
-                if input_dimension >= 15
-                else ["DIMENSION_SCREENING_THRESHOLD"]
-                if input_dimension >= 8
-                else ["LOW_DIMENSION_SCREENING_OPTIONAL"]
-            ),
-            projected_evaluations=10 * (input_dimension + 1),
-            projected_runtime_ms=evaluation_runtime_ms
-            * 10
-            * (input_dimension + 1)
-            / validation_sample_size,
-        ),
-        AnalysisRecommendation(
-            capability="gpr",
-            status="recommended"
-            if expensive and continuous == input_dimension and input_dimension <= 10
-            else "available"
-            if continuous == input_dimension and input_dimension <= 10
-            else "incompatible",
-            priority=3,
-            rationale_codes=["DIRECT_MODEL_RUNTIME_EXCEEDS_FIVE_SECONDS"]
-            if expensive
-            else ["DIRECT_MODEL_RUNTIME_WITHIN_FIVE_SECONDS"],
-            compatibility_warnings=[]
-            if continuous == input_dimension and input_dimension <= 10
-            else ["GPR baseline eligibility requires at most ten continuous inputs."],
-        ),
-        AnalysisRecommendation(
-            capability="pce",
-            status="recommended"
-            if expensive and smooth_candidate
-            else "available"
-            if smooth_candidate
-            else "incompatible",
-            priority=3,
-            rationale_codes=["SYMBOLIC_SMOOTH_CONTINUOUS_MODEL"]
-            if smooth_candidate
-            else ["PCE_SMOOTH_CONTINUOUS_ELIGIBILITY_NOT_ESTABLISHED"],
-            compatibility_warnings=[]
-            if smooth_candidate
-            else ["PCE requires independent validation for suitable continuous, smooth models."],
-        ),
-        AnalysisRecommendation(
-            capability="reliability",
-            status="available",
-            priority=4,
-            rationale_codes=["USER_DEFINED_FAILURE_EVENT_REQUIRED"],
-            compatibility_warnings=[
-                "Reliability is never selected without an explicit failure event."
-            ],
-        ),
-        AnalysisRecommendation(
-            capability="target_hsic",
-            status="available" if target_hsic_compatible else "incompatible",
-            priority=4,
-            rationale_codes=["USER_DEFINED_CRITICAL_DOMAIN_REQUIRED"]
-            if target_hsic_compatible
-            else ["TARGET_HSIC_REQUIRES_CONTINUOUS_INPUTS_WITHIN_DIMENSION_LIMIT"],
-            projected_evaluations=250 if target_hsic_compatible else None,
-            projected_runtime_ms=(
-                evaluation_runtime_ms * 250 / validation_sample_size
-                if target_hsic_compatible
-                else None
-            ),
-            compatibility_warnings=(
-                ["Define a scalar critical output domain before target-HSIC execution."]
-                if target_hsic_compatible
-                else ["Target-domain HSIC requires at most twenty continuous inputs."]
-            ),
-        ),
-        AnalysisRecommendation(
-            capability="distribution_fitting",
-            status="incompatible",
-            priority=4,
-            rationale_codes=["NO_EMPIRICAL_DATA_ATTACHED"],
-            compatibility_warnings=[
-                "Attach empirical data in Data Lab before fitting distributions."
-            ],
-        ),
-    ]
+    profile = ModelProfile(
+        input_dimension=input_dimension,
+        output_dimension=output_dimension,
+        continuous_marginals=continuous,
+        discrete_marginals=discrete,
+        copula=copula,
+        dependent_inputs=dependent_inputs,
+        function_type=function_type,
+        batch_support=batch_supported,
+        validation_evaluation_runtime_ms=evaluation_runtime_ms,
+        projected_1000_evaluation_runtime_ms=projected_runtime_ms,
+        pilot_sample_size=validation_sample_size,
+        pilot_outputs=[
+            PilotOutputSummary(
+                output_index=index,
+                output_name=output_names[index],
+                minimum=float(minima[index]),
+                maximum=float(maxima[index]),
+                mean=float(means[index]),
+                standard_deviation=float(standard_deviations[index]),
+                quantile_05=float(quantile_05[index]),
+                quantile_95=float(quantile_95[index]),
+                variable=float(standard_deviations[index]) > np.finfo(float).eps,
+            )
+            for index in range(output_dimension)
+        ],
+    )
     assessment = ModelAssessment(
         workflow=workflow,
-        profile=ModelProfile(
-            input_dimension=input_dimension,
-            output_dimension=output_dimension,
-            continuous_marginals=continuous,
-            discrete_marginals=discrete,
-            copula=copula,
-            dependent_inputs=dependent_inputs,
-            function_type=function_type,
-            batch_support=batch_supported,
-            validation_evaluation_runtime_ms=evaluation_runtime_ms,
-            projected_1000_evaluation_runtime_ms=projected_runtime_ms,
-            pilot_sample_size=validation_sample_size,
-            pilot_outputs=[
-                PilotOutputSummary(
-                    output_index=index,
-                    output_name=output_names[index],
-                    minimum=float(minima[index]),
-                    maximum=float(maxima[index]),
-                    mean=float(means[index]),
-                    standard_deviation=float(standard_deviations[index]),
-                    quantile_05=float(quantile_05[index]),
-                    quantile_95=float(quantile_95[index]),
-                    variable=float(standard_deviations[index]) > np.finfo(float).eps,
-                )
-                for index in range(output_dimension)
-            ],
-        ),
-        recommendations=recommendations,
+        profile=profile,
+        recommendations=[],
     )
-    return ModelRuntime(
+    runtime = ModelRuntime(
         source=source,
         model=model,
         problem=problem,
         metadata=metadata,
         assessment=assessment,
     )
+    # Import after ModelRuntime is fully defined so plugins can own their
+    # applicability rules without introducing a module-import cycle.
+    from uncertaintycat_core.applicability import build_analysis_recommendations
+
+    assessment.recommendations = build_analysis_recommendations(
+        runtime,
+        projected_1000_evaluation_runtime_ms=projected_runtime_ms,
+    )
+    return runtime
 
 
 def validate_model_source(

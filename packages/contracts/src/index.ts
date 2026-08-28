@@ -104,7 +104,9 @@ export const createDataSurrogateSchema = z.object({
   inputColumns: z.array(z.string().min(1)).min(1).max(40),
   outputColumn: z.string().min(1).max(200),
   validationFraction: z.number().min(0.1).max(0.5).default(0.2),
-  kernel: z.enum(["MATERN_1_5", "MATERN_2_5", "SQUARED_EXPONENTIAL"]).default("MATERN_2_5"),
+  kernel: z
+    .enum(["MATERN_1_5", "MATERN_2_5", "SQUARED_EXPONENTIAL"])
+    .default("MATERN_2_5"),
   trend: z.enum(["CONSTANT", "LINEAR"]).default("CONSTANT"),
   seed: z.number().int().nonnegative().max(2_147_483_647).default(42),
 });
@@ -179,6 +181,7 @@ export interface AnalysisRecommendation {
   projected_evaluations?: number | null;
   projected_runtime_ms?: number | null;
   compatibility_warnings: string[];
+  safe_config?: Record<string, string | number | boolean | null>;
 }
 
 export interface ModelAssessment {
@@ -236,7 +239,11 @@ export interface AnalysisResult {
   status: "succeeded";
   started_at: string;
   completed_at: string;
-  runtime: { duration_ms: number; model_evaluations: number; sample_size?: number | null };
+  runtime: {
+    duration_ms: number;
+    model_evaluations: number;
+    sample_size?: number | null;
+  };
   warnings: string[];
   assumptions: string[];
   payload: {
@@ -374,7 +381,12 @@ export interface FittedColumnResult {
   plot: {
     sample: number[];
     pdf: { x: number[]; y: number[] };
-    cdf: { empiricalX: number[]; empiricalY: number[]; fittedX: number[]; fittedY: number[] };
+    cdf: {
+      empiricalX: number[];
+      empiricalY: number[];
+      fittedX: number[];
+      fittedY: number[];
+    };
     qq: { theoretical: number[]; observed: number[] };
   };
 }
@@ -469,6 +481,14 @@ export interface AnalysisTask {
   config: Record<string, unknown>;
   outputTargets: number[];
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  progress?: {
+    phase: string;
+    percent: number;
+    message: string;
+    indeterminate: boolean;
+    attempt: number;
+    updatedAt: string;
+  };
   result?: AnalysisResult;
   error?: { code: string; message: string };
 }
@@ -490,7 +510,13 @@ export interface Run {
   modelDisplayName?: string;
   modelVersion?: number;
   sourceKind?: ModelVersion["sourceKind"];
-  status: "queued" | "running" | "succeeded" | "partially_succeeded" | "failed" | "cancelled";
+  status:
+    | "queued"
+    | "running"
+    | "succeeded"
+    | "partially_succeeded"
+    | "failed"
+    | "cancelled";
   seed: number;
   accuracyProfile: "preview" | "standard" | "high";
   createdAt: string;
@@ -530,49 +556,73 @@ export class ApiClient {
     return (await response.json()) as T;
   }
 
-  catalog = () => this.request<{ analyses: AnalysisCatalogEntry[] }>("/analyses/catalog");
-  examples = () => this.request<{ examples: readonly ExampleCatalogEntry[] }>("/examples");
-  example = (id: string) => this.request<{ example: ExampleCatalogEntry }>(`/examples/${id}`);
+  catalog = () =>
+    this.request<{ analyses: AnalysisCatalogEntry[] }>("/analyses/catalog");
+  examples = () =>
+    this.request<{ examples: readonly ExampleCatalogEntry[] }>("/examples");
+  example = (id: string) =>
+    this.request<{ example: ExampleCatalogEntry }>(`/examples/${id}`);
   session = () => this.request<SessionPolicy>("/session");
   listProjects = () => this.request<{ projects: Project[] }>("/projects");
   createProject = (input: CreateProject) =>
-    this.request<{ project: Project }>("/projects", { method: "POST", body: JSON.stringify(input) });
+    this.request<{ project: Project }>("/projects", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   deleteProject = (projectId: string) =>
     this.request<{ deletedProjectId: string; deletedArtifactCount: number }>(
       `/projects/${projectId}`,
       { method: "DELETE" },
     );
   createModel = (projectId: string, input: CreateModelVersion) =>
-    this.request<{ modelVersion: ModelVersion }>(`/projects/${projectId}/models`, {
+    this.request<{ modelVersion: ModelVersion }>(
+      `/projects/${projectId}/models`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+  listModels = (projectId: string) =>
+    this.request<{ modelVersions: ModelVersion[] }>(
+      `/projects/${projectId}/models`,
+    );
+  createRun = (input: CreateRun) =>
+    this.request<{ run: Run }>("/runs", {
       method: "POST",
       body: JSON.stringify(input),
     });
-  listModels = (projectId: string) =>
-    this.request<{ modelVersions: ModelVersion[] }>(`/projects/${projectId}/models`);
-  createRun = (input: CreateRun) =>
-    this.request<{ run: Run }>("/runs", { method: "POST", body: JSON.stringify(input) });
   listRuns = () => this.request<{ runs: Run[] }>("/runs");
   getRun = (id: string) => this.request<{ run: Run }>(`/runs/${id}`);
   rerun = (id: string) =>
     this.request<{ run: Run }>(`/runs/${id}/rerun`, { method: "POST" });
   cancelRun = (id: string) =>
-    this.request<{ status: "cancelled" }>(`/runs/${id}/cancel`, { method: "POST" });
-  getReport = (id: string) => this.request<{ report: Report }>(`/reports/${id}`);
-  getSharedReport = (token: string) => this.request<{ report: Report }>(`/shared-reports/${token}`);
+    this.request<{ status: "cancelled" }>(`/runs/${id}/cancel`, {
+      method: "POST",
+    });
+  getReport = (id: string) =>
+    this.request<{ report: Report }>(`/reports/${id}`);
+  getSharedReport = (token: string) =>
+    this.request<{ report: Report }>(`/shared-reports/${token}`);
   createShareLink = (
     id: string,
     expiresInDays: number | null = 30,
     includeModelDefinition = false,
   ) =>
-    this.request<{ shareLink: { id: string; url: string; expiresAt: string | null; createdAt: string } }>(
-      `/reports/${id}/share-links`,
-      {
-        method: "POST",
-        body: JSON.stringify({ expiresInDays, includeModelDefinition }),
-      },
-    );
+    this.request<{
+      shareLink: {
+        id: string;
+        url: string;
+        expiresAt: string | null;
+        createdAt: string;
+      };
+    }>(`/reports/${id}/share-links`, {
+      method: "POST",
+      body: JSON.stringify({ expiresInDays, includeModelDefinition }),
+    });
   getModelDefinition = (id: string) =>
-    this.request<{ definition: ModelDefinition }>(`/model-versions/${id}/definition`);
+    this.request<{ definition: ModelDefinition }>(
+      `/model-versions/${id}/definition`,
+    );
   getModelUnderstanding = (id: string) =>
     this.request<{ understanding: ModelUnderstanding | null }>(
       `/model-versions/${id}/understanding`,
@@ -585,41 +635,62 @@ export class ApiClient {
       body: JSON.stringify(input),
     });
   fitDataset = (datasetId: string, input: DistributionFitInput) =>
-    this.request<{ fitRun: DistributionFitRun }>(`/datasets/${datasetId}/fits`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    this.request<{ fitRun: DistributionFitRun }>(
+      `/datasets/${datasetId}/fits`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
   listDistributionFits = (datasetId: string) =>
-    this.request<{ fitRuns: DistributionFitRun[] }>(`/datasets/${datasetId}/fits`);
+    this.request<{ fitRuns: DistributionFitRun[] }>(
+      `/datasets/${datasetId}/fits`,
+    );
   createReducedModel = (modelVersionId: string, input: CreateReducedModel) =>
     this.request<{ modelVersion: ModelVersion }>(
       `/model-versions/${modelVersionId}/derived-reduction`,
       { method: "POST", body: JSON.stringify(input) },
     );
   listSurrogates = (projectId: string) =>
-    this.request<{ surrogates: SurrogateModel[] }>(`/projects/${projectId}/surrogates`);
+    this.request<{ surrogates: SurrogateModel[] }>(
+      `/projects/${projectId}/surrogates`,
+    );
   createSurrogate = (modelVersionId: string, input: CreateSurrogate) =>
-    this.request<{ surrogate: SurrogateModel }>(`/model-versions/${modelVersionId}/surrogates`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    this.request<{ surrogate: SurrogateModel }>(
+      `/model-versions/${modelVersionId}/surrogates`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
   listDataSurrogates = (projectId: string) =>
-    this.request<{ surrogates: DataSurrogateModel[] }>(`/projects/${projectId}/data-surrogates`);
+    this.request<{ surrogates: DataSurrogateModel[] }>(
+      `/projects/${projectId}/data-surrogates`,
+    );
   createDataSurrogate = (datasetId: string, input: CreateDataSurrogate) =>
-    this.request<{ surrogate: DataSurrogateModel }>(`/datasets/${datasetId}/surrogates`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    this.request<{ surrogate: DataSurrogateModel }>(
+      `/datasets/${datasetId}/surrogates`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
   promoteSurrogate = (surrogateId: string, input: PromoteSurrogate) =>
-    this.request<{ surrogate: SurrogateModel }>(`/surrogates/${surrogateId}/promote`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    this.request<{ surrogate: SurrogateModel }>(
+      `/surrogates/${surrogateId}/promote`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
   copySurrogate = (surrogateId: string, input: CopySurrogate) =>
-    this.request<{ surrogate: SurrogateModel }>(`/surrogates/${surrogateId}/copy`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    this.request<{ surrogate: SurrogateModel }>(
+      `/surrogates/${surrogateId}/copy`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
   getChatMessages = (id: string) =>
     this.request<{ messages: ChatMessage[] }>(`/reports/${id}/chat`);
 }

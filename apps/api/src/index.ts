@@ -55,7 +55,12 @@ import {
   reportChatSystemPrompt,
 } from "./ai-prompts";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
-import { ComputeRequestError, failRunTask, processRunTask, requeueRunTask } from "./compute";
+import {
+  ComputeRequestError,
+  failRunTask,
+  processRunTask,
+  requeueRunTask,
+} from "./compute";
 import {
   loadModelDefinition,
   loadOwnedRun,
@@ -85,7 +90,9 @@ function jsonError(
 function authenticatedIdentity(c: AppContext): Identity {
   const identity = c.get("identity");
   if (!identity?.authenticated) {
-    throw new Error("Authenticated API middleware did not resolve an identity.");
+    throw new Error(
+      "Authenticated API middleware did not resolve an identity.",
+    );
   }
   return identity;
 }
@@ -126,7 +133,11 @@ function encodeBase64(value: ArrayBuffer): string {
   return btoa(chunks.join(""));
 }
 
-function forwardedJsonRequest(c: AppContext, path: string, body: unknown): Request {
+function forwardedJsonRequest(
+  c: AppContext,
+  path: string,
+  body: unknown,
+): Request {
   const headers = new Headers(c.req.raw.headers);
   headers.delete("Content-Length");
   headers.set("Content-Type", "application/json");
@@ -311,9 +322,10 @@ interface DatasetRow {
 }
 
 function datasetPayload(row: DatasetRow): Dataset {
-  const metadata = parseJson<
-    Pick<Dataset, "columns" | "preview" | "warnings">
-  >(row.column_metadata_json, { columns: [], preview: [], warnings: [] });
+  const metadata = parseJson<Pick<Dataset, "columns" | "preview" | "warnings">>(
+    row.column_metadata_json,
+    { columns: [], preview: [], warnings: [] },
+  );
   return {
     id: row.id,
     projectId: row.project_id,
@@ -443,12 +455,10 @@ function surrogatePayload(row: SurrogateRow): SurrogateModel {
     openturnsVersion: row.openturns_version,
     status: row.status,
     validation,
-    acknowledgement: parseJson<
-      { acknowledgeOverride: boolean; reason: string } | null
-    >(
-      row.acknowledgement_json,
-      null,
-    ),
+    acknowledgement: parseJson<{
+      acknowledgeOverride: boolean;
+      reason: string;
+    } | null>(row.acknowledgement_json, null),
     artifact: validation.artifact ?? null,
     createdAt: row.created_at,
     promotedAt: row.promoted_at,
@@ -556,9 +566,10 @@ app.delete("/api/v1/projects/:projectId", async (c) => {
        WHERE owner_id = ? AND resource_type = 'run'
          AND resource_id IN (SELECT id FROM runs WHERE project_id = ?)`,
     ).bind(identity.ownerId, projectId),
-    c.env.DB.prepare(
-      "DELETE FROM projects WHERE id = ? AND owner_id = ?",
-    ).bind(projectId, identity.ownerId),
+    c.env.DB.prepare("DELETE FROM projects WHERE id = ? AND owner_id = ?").bind(
+      projectId,
+      identity.ownerId,
+    ),
   ]);
   await Promise.all(
     activeRunRows.results.map((run) => destroyRunSandbox(c.env, run.id)),
@@ -944,7 +955,10 @@ app.post(
         "Data-driven surrogate fitting is unavailable.",
       );
     const body = (await response.json()) as {
-      surrogate?: Omit<DataSurrogateModel, "id" | "projectId" | "datasetId" | "createdAt"> & {
+      surrogate?: Omit<
+        DataSurrogateModel,
+        "id" | "projectId" | "datasetId" | "createdAt"
+      > & {
         artifact: DataSurrogateModel["artifact"] & { xmlBase64: string };
       };
       error?: { code?: string; message?: string };
@@ -960,10 +974,20 @@ app.post(
     try {
       xml = decodeBase64(body.surrogate.artifact.xmlBase64);
     } catch {
-      return jsonError(c, 500, "surrogate_artifact_invalid", "The fitted surrogate artifact is invalid.");
+      return jsonError(
+        c,
+        500,
+        "surrogate_artifact_invalid",
+        "The fitted surrogate artifact is invalid.",
+      );
     }
-    if (await sha256Bytes(xml) !== body.surrogate.artifact.sha256)
-      return jsonError(c, 500, "surrogate_artifact_checksum_mismatch", "The fitted surrogate checksum did not match.");
+    if ((await sha256Bytes(xml)) !== body.surrogate.artifact.sha256)
+      return jsonError(
+        c,
+        500,
+        "surrogate_artifact_checksum_mismatch",
+        "The fitted surrogate checksum did not match.",
+      );
     const id = crypto.randomUUID();
     const timestamp = now();
     const objectKey = `data-surrogates/${identity.ownerId}/${dataset.project_id}/${id}.xml`;
@@ -1175,6 +1199,13 @@ app.post(
         created_at: string;
       }>();
     if (existing) {
+      if (assessment) {
+        await c.env.DB.prepare(
+          "UPDATE model_versions SET assessment_json = ? WHERE id = ?",
+        )
+          .bind(JSON.stringify(assessment), existing.id)
+          .run();
+      }
       return c.json({
         modelVersion: {
           id: existing.id,
@@ -1184,10 +1215,9 @@ app.post(
           displayName: existing.display_name,
           sourceHash: existing.source_hash,
           metadata: parseJson<ModelMetadata>(existing.metadata_json, metadata),
-          assessment: parseJson<ModelAssessment | null>(
-            existing.assessment_json,
-            assessment ?? null,
-          ),
+          assessment:
+            assessment ??
+            parseJson<ModelAssessment | null>(existing.assessment_json, null),
           parentVersionId: existing.parent_version_id,
           derivation: parseJson<Record<string, unknown> | null>(
             existing.derivation_json,
@@ -1327,7 +1357,10 @@ app.post(
       plugin_version?: string;
       payload?: { tables?: { effects?: { rows?: unknown[][] } } };
     }>(morris.result_json, {});
-    if (!new Set(["2.0.0", "2.1.0"]).has(result.plugin_version ?? "") || !result.payload?.tables?.effects)
+    if (
+      !new Set(["2.0.0", "2.1.0"]).has(result.plugin_version ?? "") ||
+      !result.payload?.tables?.effects
+    )
       return jsonError(
         c,
         422,
@@ -1335,7 +1368,9 @@ app.post(
         "The reduction requires compatible OTMorris plugin evidence.",
       );
     const dimension = definition.modelVersion.metadata.input_dimension;
-    const fixed = [...input.fixedVariables].sort((left, right) => left.index - right.index);
+    const fixed = [...input.fixedVariables].sort(
+      (left, right) => left.index - right.index,
+    );
     if (new Set(fixed.map((item) => item.index)).size !== fixed.length)
       return jsonError(
         c,
@@ -1343,7 +1378,10 @@ app.post(
         "duplicate_fixed_variable",
         "Each fixed variable may be specified only once.",
       );
-    if (fixed.some((item) => item.index >= dimension) || fixed.length >= dimension)
+    if (
+      fixed.some((item) => item.index >= dimension) ||
+      fixed.length >= dimension
+    )
       return jsonError(
         c,
         422,
@@ -1352,11 +1390,13 @@ app.post(
       );
     const fixedIndices = fixed.map((item) => item.index);
     const fixedValues = fixed.map((item) => item.value);
-    const retainedIndices = Array.from({ length: dimension }, (_, index) => index).filter(
-      (index) => !fixedIndices.includes(index),
-    );
+    const retainedIndices = Array.from(
+      { length: dimension },
+      (_, index) => index,
+    ).filter((index) => !fixedIndices.includes(index));
     const retainedVariables = retainedIndices.map(
-      (index) => definition.modelVersion.metadata.inputs[index]?.name ?? `X${index}`,
+      (index) =>
+        definition.modelVersion.metadata.inputs[index]?.name ?? `X${index}`,
     );
     const fixedVariables = fixed.map((item) => ({
       index: item.index,
@@ -1607,7 +1647,8 @@ app.post(
     const acknowledgement = c.req.valid("json");
     if (
       !validation.guidance.meetsDefault &&
-      (!acknowledgement.acknowledgeOverride || acknowledgement.reason.length < 10)
+      (!acknowledgement.acknowledgeOverride ||
+        acknowledgement.reason.length < 10)
     )
       return jsonError(
         c,
@@ -1620,7 +1661,10 @@ app.post(
       row.source_model_version_id,
       identity.ownerId,
     );
-    if (!definition || definition.modelVersion.sourceHash !== row.source_model_hash)
+    if (
+      !definition ||
+      definition.modelVersion.sourceHash !== row.source_model_hash
+    )
       return jsonError(
         c,
         409,
@@ -1767,11 +1811,7 @@ app.post(
        FROM model_versions m JOIN projects p ON p.id = m.project_id
        WHERE m.id = ? AND m.project_id = ? AND p.owner_id = ?`,
     )
-      .bind(
-        input.targetModelVersionId,
-        input.targetProjectId,
-        identity.ownerId,
-      )
+      .bind(input.targetModelVersionId, input.targetProjectId, identity.ownerId)
       .first<{ id: string; project_id: string; source_hash: string }>();
     if (!target)
       return jsonError(
@@ -1864,12 +1904,25 @@ app.get("/api/v1/surrogates/:surrogateId/artifact", async (c) => {
     .bind(c.req.param("surrogateId"), identity.ownerId)
     .first<{ object_key: string; method: string }>();
   if (!row?.object_key)
-    return jsonError(c, 404, "surrogate_not_found", "Promoted surrogate not found.");
+    return jsonError(
+      c,
+      404,
+      "surrogate_not_found",
+      "Promoted surrogate not found.",
+    );
   const object = await c.env.ARTIFACTS.get(row.object_key);
   if (!object)
-    return jsonError(c, 500, "surrogate_artifact_missing", "Surrogate artifact is missing.");
+    return jsonError(
+      c,
+      500,
+      "surrogate_artifact_missing",
+      "Surrogate artifact is missing.",
+    );
   c.header("Content-Type", "application/xml");
-  c.header("Content-Disposition", `attachment; filename=${row.method}-surrogate.xml`);
+  c.header(
+    "Content-Disposition",
+    `attachment; filename=${row.method}-surrogate.xml`,
+  );
   c.header("Cache-Control", "private, no-store");
   return c.body(object.body);
 });
@@ -1926,7 +1979,9 @@ app.get("/api/v1/model-versions/:modelVersionId/understanding", async (c) => {
   return c.json({ understanding: row ? understandingPayload(row) : null });
 });
 
-const understandingSchema = z.object({ regenerate: z.boolean().default(false) });
+const understandingSchema = z.object({
+  regenerate: z.boolean().default(false),
+});
 app.post(
   "/api/v1/model-versions/:modelVersionId/understanding",
   zValidator("json", understandingSchema),
@@ -2024,10 +2079,7 @@ app.post(
                 status, content, error, created_at, updated_at
          FROM model_understandings WHERE model_hash = ? AND prompt_version = ?`,
       )
-        .bind(
-          definition.modelVersion.sourceHash,
-          promptVersion,
-        )
+        .bind(definition.modelVersion.sourceHash, promptVersion)
         .first<UnderstandingRow>();
       c.header("Cache-Control", "private, no-store");
       c.header("Retry-After", "1");
@@ -2045,8 +2097,7 @@ app.post(
         understandingId,
         aiProvider: runtime.provider,
         aiModelId: runtime.models.modelUnderstanding.modelId,
-        fallbackAiModelId:
-          runtime.models.modelUnderstanding.fallbackModelId,
+        fallbackAiModelId: runtime.models.modelUnderstanding.fallbackModelId,
         regenerate: input.regenerate,
       }),
     );
@@ -2102,8 +2153,7 @@ app.post(
                     definition.modelVersion.metadata.output_dimension,
                   inputs: definition.modelVersion.metadata.inputs,
                   outputs: definition.modelVersion.metadata.outputs,
-                  functionType:
-                    definition.modelVersion.metadata.function_type,
+                  functionType: definition.modelVersion.metadata.function_type,
                   copula: definition.modelVersion.metadata.copula,
                   dependentInputs:
                     definition.modelVersion.metadata.dependent_inputs,
@@ -2200,8 +2250,7 @@ app.post(
           understandingId,
           aiProvider: runtime.provider,
           aiModelId: runtime.models.modelUnderstanding.modelId,
-          fallbackAiModelId:
-            runtime.models.modelUnderstanding.fallbackModelId,
+          fallbackAiModelId: runtime.models.modelUnderstanding.fallbackModelId,
           durationMs: Date.now() - generationStartedAt,
           code: failure.code,
           error: failure.diagnostic,
@@ -2216,13 +2265,35 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
   const identity = authenticatedIdentity(c);
   const input = c.req.valid("json");
   const model = await c.env.DB.prepare(
-    `SELECT m.id, m.project_id FROM model_versions m
+    `SELECT m.id, m.project_id, m.assessment_json FROM model_versions m
      JOIN projects p ON p.id = m.project_id WHERE m.id = ? AND p.owner_id = ?`,
   )
     .bind(input.modelVersionId, identity.ownerId)
-    .first<{ id: string; project_id: string }>();
+    .first<{
+      id: string;
+      project_id: string;
+      assessment_json: string | null;
+    }>();
   if (!model)
     return jsonError(c, 404, "model_not_found", "Model version not found.");
+  const assessment = parseJson<ModelAssessment | null>(
+    model.assessment_json,
+    null,
+  );
+  for (const analysis of input.analyses) {
+    const recommendation = assessment?.recommendations.find(
+      (candidate) => candidate.capability === analysis.analysisKey,
+    );
+    if (recommendation?.status === "incompatible") {
+      return jsonError(
+        c,
+        422,
+        "analysis_incompatible",
+        recommendation.compatibility_warnings[0] ??
+          `${analysis.analysisKey} is incompatible with this validated model.`,
+      );
+    }
+  }
   if (input.surrogateModelId) {
     const surrogate = await c.env.DB.prepare(
       `SELECT id, validation_json FROM surrogate_models
@@ -2257,7 +2328,9 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
       );
     if (
       input.analyses.some((analysis) =>
-        analysis.outputTargets.some((target) => target !== surrogateOutputTarget),
+        analysis.outputTargets.some(
+          (target) => target !== surrogateOutputTarget,
+        ),
       )
     )
       return jsonError(
@@ -2324,8 +2397,9 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
     ...taskRows.map(({ id, analysis }) =>
       c.env.DB.prepare(
         `INSERT INTO analysis_tasks
-         (id, run_id, analysis_key, plugin_version, status, config_json, output_targets_json, created_at)
-         VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)`,
+         (id, run_id, analysis_key, plugin_version, status, config_json,
+          output_targets_json, progress_json, created_at)
+         VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
       ).bind(
         id,
         runId,
@@ -2333,6 +2407,14 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
         analysis.pluginVersion ?? null,
         JSON.stringify(analysis.config),
         JSON.stringify(analysis.outputTargets),
+        JSON.stringify({
+          phase: "queued",
+          percent: 0,
+          message: "Waiting for compute capacity.",
+          indeterminate: true,
+          attempt: 0,
+          updatedAt: timestamp,
+        }),
         timestamp,
       ),
     ),
@@ -2390,22 +2472,21 @@ app.post("/api/v1/runs/:runId/rerun", async (c) => {
     c.req.param("runId"),
     identity.ownerId,
   );
-  if (!sourceRun)
-    return jsonError(c, 404, "run_not_found", "Run not found.");
+  if (!sourceRun) return jsonError(c, 404, "run_not_found", "Run not found.");
   const request = forwardedJsonRequest(c, "/api/v1/runs", {
-      modelVersionId: sourceRun.modelVersionId,
-      ...(sourceRun.surrogateModelId
-        ? { surrogateModelId: sourceRun.surrogateModelId }
-        : {}),
-      analyses: sourceRun.tasks.map((task) => ({
-        analysisKey: task.analysisKey,
-        ...(task.pluginVersion ? { pluginVersion: task.pluginVersion } : {}),
-        config: task.config,
-        outputTargets: task.outputTargets,
-      })),
-      seed: sourceRun.seed,
-      accuracyProfile: sourceRun.accuracyProfile,
-      idempotencyKey: crypto.randomUUID(),
+    modelVersionId: sourceRun.modelVersionId,
+    ...(sourceRun.surrogateModelId
+      ? { surrogateModelId: sourceRun.surrogateModelId }
+      : {}),
+    analyses: sourceRun.tasks.map((task) => ({
+      analysisKey: task.analysisKey,
+      ...(task.pluginVersion ? { pluginVersion: task.pluginVersion } : {}),
+      config: task.config,
+      outputTargets: task.outputTargets,
+    })),
+    seed: sourceRun.seed,
+    accuracyProfile: sourceRun.accuracyProfile,
+    idempotencyKey: crypto.randomUUID(),
   });
   return app.fetch(request, c.env, c.executionCtx);
 });
@@ -2992,12 +3073,7 @@ app.post(
             ),
             c.env.DB.prepare(
               "INSERT INTO usage_ledger (id, owner_id, kind, units, reference_id, created_at) VALUES (?, ?, 'ai_chat', 1, ?, ?)",
-            ).bind(
-              crypto.randomUUID(),
-              identity.ownerId,
-              report.id,
-              now(),
-            ),
+            ).bind(crypto.randomUUID(), identity.ownerId, report.id, now()),
           ]);
           console.log(
             JSON.stringify({
@@ -3047,22 +3123,33 @@ export default {
   async queue(batch: MessageBatch<RunTaskMessage>, env: Env): Promise<void> {
     for (const message of batch.messages) {
       try {
-        await processRunTask(env, message.body);
+        await processRunTask(env, {
+          ...message.body,
+          attempt: Math.max(0, message.attempts - 1),
+        });
         message.ack();
       } catch (error) {
         console.error(
           JSON.stringify({ taskId: message.body.taskId, error: String(error) }),
         );
-        if (message.attempts >= 3) {
-          const computeError = error instanceof ComputeRequestError ? error : null;
+        const computeError =
+          error instanceof ComputeRequestError ? error : null;
+        if (computeError && !computeError.retryable) {
+          await failRunTask(env, message.body.taskId, {
+            code: computeError.code,
+            message: computeError.message,
+          });
+          message.ack();
+        } else if (message.attempts >= 3) {
           await failRunTask(env, message.body.taskId, {
             code: computeError?.code ?? "compute_retries_exhausted",
-            message: computeError?.message ??
+            message:
+              computeError?.message ??
               "The compute service remained unavailable after the retry budget was exhausted.",
           });
           message.ack();
         } else {
-          await requeueRunTask(env, message.body.taskId);
+          await requeueRunTask(env, message.body.taskId, message.attempts);
           message.retry({ delaySeconds: Math.min(60, 2 ** message.attempts) });
         }
       }

@@ -100,7 +100,7 @@ At this checkpoint the application has 15 plugins:
 | `ancova` | physical and correlation-driven first-order variance contributions | dependent continuous inputs; validated PCE approximation |
 | `sobol` | Saltelli first/total/second-order indices | independent inputs only |
 | `fast` | Fourier amplitude sensitivity indices | independent inputs only |
-| `hsic` | kernel dependence and permutation evidence | dependence is not causality |
+| `hsic` | kernel dependence and permutation evidence | continuous inputs; quadratic work cap; dependence is not causality |
 | `target_hsic` | target-domain kernel association and permutation evidence | target association is not probability or causality |
 | `taylor` | local derivative variance decomposition | local linear approximation |
 | `morris` | elementary-effect screening | independent marginals; screening interpretation |
@@ -112,6 +112,30 @@ At this checkpoint the application has 15 plugins:
 
 The legacy Streamlit source is isolated under `Streamlit_Backup/` as a read-only historical reference. It is
 not part of the root dependency, test, package, or deployment graphs.
+
+### 2026-08-28 global HSIC resource and progress hardening
+
+The production damped-oscillator report exposed a resource-contract gap rather than a scientific applicability
+failure. Its eight continuous independent inputs are valid for global HSIC, but the former shared standard budget
+submitted 1,000 samples and 100 permutations. Inspection of the pinned OpenTURNS implementation shows nested
+all-variable, permutation, and quadratic-kernel work. Local measurement quantified the operational consequence:
+250 samples completed in about one second, 400 in about four seconds, and 1,000 used about 420 MB and about 70
+seconds. The retained production failure record identifies a Cloudflare Sandbox runtime-update interruption—not
+a scientific incompatibility or proven memory exhaustion—but the retry lifecycle exposed only a generic capacity
+message and the unbounded request made every retry unnecessarily expensive.
+
+Global `hsic` v2.1.0 now uses the same conservative resource unit as target HSIC,
+`n^2 * (d + 1) * (B + 4)`, with a 150,000,000-unit ceiling checked before sampling. For `d=8` and `B=100`,
+400 samples is the largest admitted request (149,760,000 units); 401 is rejected (150,509,736 units). Validation
+publishes this safe limit, the composer explains and applies it, and core independently rejects a bypass. The
+official fixed-seed Ishigami global-HSIC benchmark is retained in the evidence manifest.
+
+The same slice makes compute state observable without inventing false precision. Every task persists its own D1
+phase record from queue admission through model loading, applicability, OpenTURNS execution, evidence persistence,
+completion, failure, cancellation, or retry. The Sandbox protocol streams only bounded phase metadata on stderr;
+Python source and numerical samples remain excluded. HSIC publishes sampling, kernel construction, observed-index,
+permutation-inference, and ranking boundaries. OpenTURNS calls without incremental callbacks are labelled and
+animated as indeterminate until the next genuine boundary.
 
 ## 3. Upstream authority hierarchy
 

@@ -19,6 +19,14 @@ const TERMINAL = new Set([
   "cancelled",
 ]);
 
+function fallbackTaskMessage(
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled",
+) {
+  if (status === "queued") return "Waiting for compute capacity.";
+  if (status === "running") return "OpenTURNS computation is active.";
+  return "Analysis is complete.";
+}
+
 export function RunPage() {
   const { runId = "" } = useParams();
   const navigate = useNavigate();
@@ -47,20 +55,39 @@ export function RunPage() {
     <div className="page narrow-page">
       {run && (
         <nav className="breadcrumbs" aria-label="Breadcrumb">
-          <Link to="/studies">Studies</Link><span>/</span>
-          <Link to={`/studies/${run.projectId}`}>{run.projectName ?? "Study"}</Link><span>/</span>
-          <span>{run.modelDisplayName ?? "Model"} v{run.modelVersion}</span>
+          <Link to="/studies">Studies</Link>
+          <span>/</span>
+          <Link to={`/studies/${run.projectId}`}>
+            {run.projectName ?? "Study"}
+          </Link>
+          <span>/</span>
+          <span>
+            {run.modelDisplayName ?? "Model"} v{run.modelVersion}
+          </span>
         </nav>
       )}
       <div className="page-heading split">
         <div>
           <span className="section-kicker">Live run</span>
-          <h1>{run && TERMINAL.has(run.status) ? "Analysis record" : "Analysis in progress"}</h1>
+          <h1>
+            {run && TERMINAL.has(run.status)
+              ? "Analysis record"
+              : "Analysis in progress"}
+          </h1>
           <p>
             Each task is independently persisted. Successful evidence survives a
             partial failure.
           </p>
-          {run && <p className="evidence-source">Evidence source: <strong>{run.evidenceSource === "surrogate" ? `promoted surrogate ${run.surrogateModelId?.slice(0, 8)}` : "direct model"}</strong></p>}
+          {run && (
+            <p className="evidence-source">
+              Evidence source:{" "}
+              <strong>
+                {run.evidenceSource === "surrogate"
+                  ? `promoted surrogate ${run.surrogateModelId?.slice(0, 8)}`
+                  : "direct model"}
+              </strong>
+            </p>
+          )}
         </div>
         <div className="run-actions">
           {run && ["queued", "running"].includes(run.status) && (
@@ -85,11 +112,22 @@ export function RunPage() {
         </div>
       </div>
       {run && (
-        <div className="study-meta-strip run-meta-strip" aria-label="Run provenance">
-          <span>Created <strong>{new Date(run.createdAt).toLocaleString()}</strong></span>
-          <span>Source <strong>{run.sourceKind ?? "unknown"}</strong></span>
-          <span>Seed <strong>{run.seed}</strong></span>
-          <span>{run.tasks.length} analyses · <strong>{run.accuracyProfile}</strong></span>
+        <div
+          className="study-meta-strip run-meta-strip"
+          aria-label="Run provenance"
+        >
+          <span>
+            Created <strong>{new Date(run.createdAt).toLocaleString()}</strong>
+          </span>
+          <span>
+            Source <strong>{run.sourceKind ?? "unknown"}</strong>
+          </span>
+          <span>
+            Seed <strong>{run.seed}</strong>
+          </span>
+          <span>
+            {run.tasks.length} analyses · <strong>{run.accuracyProfile}</strong>
+          </span>
         </div>
       )}
       <section className="run-card">
@@ -115,28 +153,72 @@ export function RunPage() {
           <span style={{ width: `${progress * 100}%` }} />
         </div>
         <div className="task-list">
-          {run?.tasks.map((task) => (
-            <div className="task-row" key={task.id}>
-              <span className="task-icon">
-                {task.status === "succeeded" ? (
-                  <CircleCheck />
-                ) : task.status === "running" ? (
-                  <Cpu className="pulse" />
-                ) : (
-                  <TimerReset />
-                )}
-              </span>
-              <div>
-                <strong>{task.analysisKey.replaceAll("_", " ")}</strong>
-                <small>
-                  {task.result
-                    ? `${Math.round(task.result.runtime.duration_ms).toLocaleString()} ms · ${task.result.runtime.model_evaluations.toLocaleString()} evaluations`
-                    : (task.error?.message ?? "Waiting for compute capacity")}
-                </small>
+          {run?.tasks.map((task) => {
+            const active =
+              task.status === "queued" || task.status === "running";
+            const progress = task.progress;
+            return (
+              <div
+                className="task-row"
+                data-analysis-key={task.analysisKey}
+                key={task.id}
+              >
+                <span className="task-icon">
+                  {task.status === "succeeded" ? (
+                    <CircleCheck />
+                  ) : task.status === "running" ? (
+                    <Cpu className="pulse" />
+                  ) : (
+                    <TimerReset />
+                  )}
+                </span>
+                <div>
+                  <strong>{task.analysisKey.replaceAll("_", " ")}</strong>
+                  <small>
+                    {task.result
+                      ? `${Math.round(task.result.runtime.duration_ms).toLocaleString()} ms · ${task.result.runtime.model_evaluations.toLocaleString()} evaluations`
+                      : (task.error?.message ??
+                        progress?.message ??
+                        fallbackTaskMessage(task.status))}
+                  </small>
+                  {active && (
+                    <div className="task-progress-detail">
+                      <div className="task-progress-meta">
+                        <span>
+                          {progress?.phase.replaceAll("_", " ") ?? task.status}
+                        </span>
+                        <span>
+                          {progress?.indeterminate
+                            ? "Active"
+                            : `${progress?.percent ?? 0}%`}
+                          {progress && progress.attempt > 0
+                            ? ` · retry ${progress.attempt}`
+                            : ""}
+                        </span>
+                      </div>
+                      <div
+                        className={`task-progress-track ${progress?.indeterminate ? "indeterminate" : ""}`}
+                        role="progressbar"
+                        aria-label={`${task.analysisKey.replaceAll("_", " ")} progress`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        {...(!progress?.indeterminate
+                          ? { "aria-valuenow": progress?.percent ?? 0 }
+                          : {})}
+                      >
+                        <span
+                          style={{
+                            width: `${Math.max(4, progress?.percent ?? 0)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <StatusBadge status={task.status} />
               </div>
-              <StatusBadge status={task.status} />
-            </div>
-          ))}
+            );
+          })}
         </div>
         {run?.status === "cancelled" ? (
           <div className="run-cancelled">

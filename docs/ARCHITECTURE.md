@@ -99,11 +99,20 @@ surrogation as an ordinary analysis checkbox. Reduced models and promoted surrog
 analysis in their current project or be copied into a newly created project. Surrogate handoff copies both
 the exact source model and the immutable OpenTURNS XML artifact after checking their source hashes.
 
-Catalog applicability distinguishes methods that support dependent inputs from methods that require them.
-The composer disables incompatible choices after validation: classical Sobol and FAST require independent
-inputs, while ANCOVA is reserved for a dependent copula. ANCOVA fits an independent-marginal polynomial
+Catalog applicability is a versioned, deterministic assessment covering every registered plugin. It combines
+plugin-declared copula support with model-level dimension, marginal, output-variability, and bounded-resource
+constraints. The Worker repeats the incompatibility decision at run creation, so a hand-written request cannot
+bypass a greyed-out UI choice. The composer displays the exact first blocking reason after validation: classical
+Sobol, FAST, Morris, and PCE require independent inputs, while ANCOVA is reserved for a dependent copula.
+ANCOVA fits an independent-marginal polynomial
 decomposition, validates it against the declared dependent distribution, and persists separate physical and
 correlation-driven first-order variance contributions through the generic result envelope.
+
+Each queued analysis task owns a persisted D1 progress record. The compute CLI writes bounded, source-free phase
+events to stderr; Cloudflare Sandbox streams those events to the Worker while stdout remains the strict final JSON
+envelope. The Worker records phase, percentage, indeterminate status, retry attempt, and timestamp, and the run page
+renders a separate accessible progress bar per task. Plugins may publish real phase boundaries; opaque OpenTURNS
+calls remain explicitly animated and indeterminate instead of displaying a fabricated percentage.
 
 Target-domain HSIC remains a project-scoped direct analysis because it consumes the current model and one
 explicit scalar critical domain. Its custom composer controls select the threshold direction, threshold,

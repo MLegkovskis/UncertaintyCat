@@ -31,6 +31,22 @@ def _response(status: int, body: dict[str, Any] | list[dict[str, Any]]) -> None:
     print(json.dumps({"status": status, "body": body}, allow_nan=False, separators=(",", ":")))
 
 
+def _progress(phase: str, percent: int, message: str, indeterminate: bool) -> None:
+    """Stream bounded, source-free progress to the Worker on stderr."""
+
+    event = {
+        "phase": phase,
+        "percent": percent,
+        "message": message,
+        "indeterminate": indeterminate,
+    }
+    print(
+        "UNCERTAINTYCAT_PROGRESS " + json.dumps(event, allow_nan=False, separators=(",", ":")),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _payload(path: str | None) -> Any:
     if path is None:
         return {}
@@ -61,12 +77,14 @@ def main() -> int:
             return 0
         if operation == "execute":
             execute_request = ExecuteRequest.model_validate(_payload(path))
+            _progress("model_loading", 6, "Loading and validating the immutable model.", True)
             runtime = compile_model(execute_request.source, seed=execute_request.seed)
             result = run_analysis(
                 runtime,
                 execute_request.analysis,
                 seed=execute_request.seed,
                 run_id=execute_request.run_id,
+                progress_callback=_progress,
             )
             _response(200, {"result": result.model_dump(mode="json")})
             return 0
@@ -88,6 +106,7 @@ def main() -> int:
             return 0
         if operation == "execute-surrogate":
             execution_request = PromotedSurrogateExecutionRequest.model_validate(_payload(path))
+            _progress("surrogate_loading", 8, "Loading the promoted surrogate artifact.", True)
             _response(200, execute_promoted_surrogate(execution_request))
             return 0
         _response(

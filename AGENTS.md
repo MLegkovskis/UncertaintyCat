@@ -26,6 +26,8 @@
 - Extend numerical capability through `uncertaintycat_core.plugins.base.AnalysisPlugin`; do not put algorithms in React or the Worker.
 - Prefer OpenTURNS APIs over parallel SciPy, scikit-learn, or handwritten implementations when OpenTURNS provides the relevant method.
 - A plugin change requires strict JSON output, applicability checks, deterministic fixed-seed evidence, a scientific benchmark, catalog registration, safe UI defaults, documentation/version updates, and a refreshed `docs/openturns-sync/evidence/<plugin>.json` manifest. Complexity tests must use a test-side oracle independent of the production estimator and cover the first rejected resource boundary plus the UI default at the maximum supported dimension.
+- Validation must produce a recommendation for every registered plugin. Model-level incompatibilities and resource-safe configuration belong in the deterministic assessment, must disable the UI with an exact reason, and must be enforced again by core/Worker boundaries rather than trusted from React.
+- Long-running analyses must emit bounded, source-free progress phases. Persist progress per task; use indeterminate state for opaque OpenTURNS calls and never fabricate an exact percentage that the upstream algorithm does not expose.
 - Keep Python source and private artifacts out of logs, client bundles, AI prompts, and public routes. Never commit secrets or real `.dev.vars` files.
 - Use forward-only D1 migrations and immutable model/result provenance. Do not silently reinterpret an existing plugin key/version or stored result schema.
 - Do not add convenience shell launchers or CI pause/skip controls. Standard package-manager test/dev commands and Playwright-managed test servers are allowed.

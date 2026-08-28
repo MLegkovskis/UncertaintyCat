@@ -142,6 +142,60 @@ problem = ot.JointDistribution([ot.Normal(), ot.Normal()], ot.NormalCopula(corre
 
 
 @pytest.mark.scientific
+def test_hsic_matches_official_ishigami_global_sensitivity_benchmark() -> None:
+    source = """
+import math
+import openturns as ot
+model = ot.SymbolicFunction(
+    ["X1", "X2", "X3"],
+    ["sin(X1) + 5.0 * sin(X2)^2 + 0.1 * X3^4 * sin(X1)"],
+)
+model.setOutputDescription(["Y"])
+problem = ot.JointDistribution([ot.Uniform(-math.pi, math.pi)] * 3)
+problem.setDescription(["X1", "X2", "X3"])
+"""
+    result = run_analysis(
+        compile_model(source),
+        AnalysisRequest(
+            analysis_key="hsic",
+            config={"sample_size": 100, "permutations": 1000},
+            output_targets=[0],
+        ),
+        seed=0,
+    )
+    rows = result.payload.tables["indices"].rows
+
+    assert [float(row[1]) for row in rows] == pytest.approx(
+        [0.29807297, 0.00344498, 0.07726572], abs=1.0e-8
+    )
+    assert [float(row[2]) for row in rows] == pytest.approx(
+        [0.0, 0.29670330, 0.00199800], abs=1.0e-8
+    )
+    assert result.payload.facts["strongest_dependence_input"] == "X1"
+    assert result.payload.metrics["estimated_quadratic_work_units"] == 40_160_000
+
+
+def test_hsic_warns_that_dependent_inputs_confound_global_association() -> None:
+    source = """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.6
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+    result = run_analysis(
+        compile_model(source),
+        AnalysisRequest(
+            analysis_key="hsic",
+            config={"sample_size": 50, "permutations": 5},
+        ),
+        seed=17,
+    )
+
+    assert "transmitted through other inputs" in " ".join(result.warnings)
+
+
+@pytest.mark.scientific
 def test_target_hsic_matches_official_ishigami_benchmark_repeatably() -> None:
     source = """
 import math

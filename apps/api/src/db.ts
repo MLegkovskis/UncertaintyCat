@@ -45,6 +45,7 @@ interface TaskRow {
   config_json: string;
   output_targets_json: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  progress_json: string | null;
   result_json: string | null;
   error_json: string | null;
 }
@@ -69,7 +70,7 @@ export async function loadOwnedRun(
   if (!run) return null;
   const tasks = await env.DB.prepare(
     `SELECT id, analysis_key, plugin_version, config_json, output_targets_json,
-            status, result_json, error_json
+            status, progress_json, result_json, error_json
      FROM analysis_tasks WHERE run_id = ? ORDER BY created_at`,
   )
     .bind(runId)
@@ -96,6 +97,24 @@ export async function loadOwnedRun(
       config: parseJson<Record<string, unknown>>(task.config_json, {}),
       outputTargets: parseJson<number[]>(task.output_targets_json, []),
       status: task.status,
+      ...(task.progress_json
+        ? {
+            progress: parseJson<NonNullable<Run["tasks"][number]["progress"]>>(
+              task.progress_json,
+              {
+                phase: task.status,
+                percent: task.status === "succeeded" ? 100 : 0,
+                message:
+                  task.status === "queued"
+                    ? "Waiting for compute capacity."
+                    : "OpenTURNS computation is active.",
+                indeterminate: task.status !== "succeeded",
+                attempt: 0,
+                updatedAt: run.created_at,
+              },
+            ),
+          }
+        : {}),
       ...(task.result_json
         ? {
             result: parseJson<AnalysisResult>(
@@ -164,10 +183,16 @@ export async function loadModelDefinition(
       sourceKind: row.source_kind,
       displayName: row.display_name,
       sourceHash: row.source_hash,
-      metadata: parseJson<ModelMetadata>(row.metadata_json, {} as ModelMetadata),
+      metadata: parseJson<ModelMetadata>(
+        row.metadata_json,
+        {} as ModelMetadata,
+      ),
       assessment: parseJson<ModelAssessment | null>(row.assessment_json, null),
       parentVersionId: row.parent_version_id,
-      derivation: parseJson<Record<string, unknown> | null>(row.derivation_json, null),
+      derivation: parseJson<Record<string, unknown> | null>(
+        row.derivation_json,
+        null,
+      ),
       createdAt: row.created_at,
     },
     project: {
@@ -178,7 +203,10 @@ export async function loadModelDefinition(
       updatedAt: row.project_updated_at,
     },
     source: await sourceObject.text(),
-    builderSpec: parseJson<Record<string, unknown> | null>(row.builder_spec_json, null),
+    builderSpec: parseJson<Record<string, unknown> | null>(
+      row.builder_spec_json,
+      null,
+    ),
     visibility,
   };
 }

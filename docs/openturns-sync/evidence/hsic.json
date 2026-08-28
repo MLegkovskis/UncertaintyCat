@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0.0",
+  "pluginKey": "hsic",
+  "pluginVersion": "2.1.0",
+  "resultSchemaVersion": "1.0.0",
+  "openturnsVersion": "1.27.post1",
+  "upstreamEvidence": [
+    {
+      "kind": "implementation",
+      "url": "https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/lib/src/Uncertainty/Algorithm/Sensitivity/HSICEstimatorImplementation.cxx"
+    },
+    {
+      "kind": "benchmark",
+      "url": "https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/python/test/t_HSICEstimatorGlobalSensitivity_std.py"
+    }
+  ],
+  "benchmarkTests": [
+    "tests/core/test_plugins.py::test_hsic_matches_official_ishigami_global_sensitivity_benchmark"
+  ],
+  "applicabilityTests": [
+    "tests/core/test_plugins.py::test_hsic_warns_that_dependent_inputs_confound_global_association",
+    "tests/core/test_models.py::test_discrete_input_assessment_preserves_sampling_but_disables_kernel_metamodels",
+    "tests/core/test_resource_envelopes.py::test_oversized_hsic_is_rejected_before_any_model_sampling"
+  ],
+  "resourceModel": {
+    "bounded": true,
+    "complexity": "O(n^2 * (d + 1) * (B + 4))",
+    "formula": "sample_size^2 * (input_dimension + 1) * (permutations + 4)",
+    "unit": "estimated quadratic kernel-operation units",
+    "upstreamDerivation": "The pinned OpenTURNS implementation performs all-variable quadratic kernel work and recomputes the statistic for each output permutation, so dimensions and permutations multiply rather than add.",
+    "independentOracleTest": "tests/core/test_resource_envelopes.py::test_hsic_resource_estimator_matches_independent_loop_oracle",
+    "boundaryTests": [
+      "tests/core/test_resource_envelopes.py::test_damped_oscillator_hsic_boundary_admits_400_and_rejects_401_samples",
+      "tests/core/test_resource_envelopes.py::test_oversized_hsic_is_rejected_before_any_model_sampling"
+    ],
+    "auditAnswers": {
+      "hiddenLoopNesting": "Yes. OpenTURNS computes quadratic kernel statistics across every input and repeats the permutation statistic B times, so n squared, dimension, and permutations are multiplicative.",
+      "maximumConfiguration": "The schema maximum n=2000, d=8, B=2000 estimates 72,144,000,000 units and is rejected before model sampling because it exceeds the 150,000,000-unit cap.",
+      "uiMaximumDimension": "For the eight-input damped oscillator at B=100, n=400 estimates 149,760,000 units and is admitted while n=401 estimates 150,509,736 and is rejected; the browser contract clamps the shared sample budget to 400."
+    }
+  },
+  "browserTests": [
+    "apps/web/e2e/ui-flows.spec.ts#caps damped-oscillator HSIC at the validated resource limit and explains the bound",
+    "apps/web/e2e/full-stack/journey.spec.ts#retained-user journey persists a project, executes every plugin, and produces a durable report"
+  ],
+  "interpretationBoundaries": [
+    "Global HSIC is a sample- and bandwidth-dependent association measure; it does not establish causal influence.",
+    "Permutation p-values test sampled independence under the declared distribution and do not allocate output variance or prove predictive validity outside that distribution."
+  ]
+}

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from uncertaintycat_core.catalog import analysis_catalog
 from uncertaintycat_core.errors import InvalidModelError, UnsafeModelError
 from uncertaintycat_core.model import compile_model, recommend_workflow
 
@@ -67,6 +68,60 @@ def test_reference_models_receive_expected_workflow_routes() -> None:
     morris = compile_model(
         Path("examples/Morris_Function.py").read_text(), validation_sample_size=3
     )
-    assert ishigami.assessment.version == "1.3.0"
+    assert ishigami.assessment.version == "1.4.0"
     assert ishigami.assessment.workflow.path == "direct"
     assert morris.assessment.workflow.path == "dimensionality_reduction"
+
+
+def test_assessment_covers_every_plugin_with_model_specific_safe_configuration() -> None:
+    runtime = compile_model(Path("examples/Ishigami.py").read_text())
+    recommendations = {item.capability: item for item in runtime.assessment.recommendations}
+
+    assert set(recommendations) == {
+        *(entry.key for entry in analysis_catalog()),
+        "distribution_fitting",
+    }
+    assert recommendations["hsic"].status == "available"
+    assert recommendations["hsic"].safe_config == {
+        "maximum_sample_size": 600,
+        "permutations": 100,
+    }
+    assert recommendations["ancova"].status == "incompatible"
+    assert "dependent input copula" in recommendations["ancova"].compatibility_warnings[0]
+
+
+def test_dependent_input_assessment_disables_independence_methods_with_exact_reasons() -> None:
+    source = """
+import openturns as ot
+model = ot.SymbolicFunction(["x1", "x2"], ["x1 + x2"])
+correlation = ot.CorrelationMatrix(2)
+correlation[0, 1] = 0.5
+problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
+"""
+    recommendations = {
+        item.capability: item for item in compile_model(source).assessment.recommendations
+    }
+
+    for key in ("sobol", "fast", "morris", "pce"):
+        assert recommendations[key].status == "incompatible"
+        assert recommendations[key].rationale_codes == ["INDEPENDENT_INPUTS_REQUIRED"]
+        assert "dependent copula" in recommendations[key].compatibility_warnings[0]
+    assert recommendations["ancova"].status == "recommended"
+    assert recommendations["hsic"].status == "available"
+
+
+def test_discrete_input_assessment_preserves_sampling_but_disables_kernel_metamodels() -> None:
+    source = """
+import openturns as ot
+model = ot.SymbolicFunction(["x"], ["x * x"])
+problem = ot.Poisson(3.0)
+"""
+    recommendations = {
+        item.capability: item for item in compile_model(source).assessment.recommendations
+    }
+
+    assert recommendations["monte_carlo"].status == "recommended"
+    assert recommendations["reliability"].status == "available"
+    for key in ("hsic", "target_hsic", "gpr", "pce"):
+        assert recommendations[key].status == "incompatible"
+        assert "continuous" in recommendations[key].compatibility_warnings[0].lower()

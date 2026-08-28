@@ -102,6 +102,7 @@ class AnalysisRecommendation(StrictModel):
     projected_evaluations: int | None = Field(default=None, ge=0)
     projected_runtime_ms: float | None = Field(default=None, ge=0)
     compatibility_warnings: list[str] = Field(default_factory=list)
+    safe_config: dict[str, JsonScalar] = Field(default_factory=dict)
 
 
 class WorkflowRecommendation(StrictModel):
@@ -110,7 +111,7 @@ class WorkflowRecommendation(StrictModel):
 
 
 class ModelAssessment(StrictModel):
-    version: str = "1.3.0"
+    version: str = "1.4.0"
     profile: ModelProfile
     workflow: WorkflowRecommendation
     recommendations: list[AnalysisRecommendation]
