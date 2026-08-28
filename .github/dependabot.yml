@@ -58,3 +58,24 @@ updates:
       actions-routine:
         patterns: ["*"]
         update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /services/compute
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:45"
+      timezone: Etc/UTC
+    rebase-strategy: auto
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      container-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      container-routine:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]

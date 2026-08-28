@@ -89,6 +89,9 @@ jobs:
               dependabot/github_actions/*)
                 [[ "$file" =~ ^\.github/(workflows/[^/]+\.(yml|yaml)|actions/.+/action\.(yml|yaml))$ ]]
                 ;;
+              dependabot/docker/*)
+                [[ "$file" == "services/compute/Dockerfile" || "$file" == "services/compute/Dockerfile.sandbox" ]]
+                ;;
               *)
                 echo "Unsupported Dependabot ecosystem in $head_ref."
                 exit 1

@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim@sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN groupadd --system uncertaintycat \
     && useradd --system --gid uncertaintycat --create-home uncertaintycat
 
-COPY --from=ghcr.io/astral-sh/uv:0.9.9 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9.9@sha256:f6e3549ed287fee0ddde2460a2a74a2d74366f84b04aaa34c1f19fec40da8652 /uv /uvx /bin/
 WORKDIR /app
 
 COPY pyproject.toml uv.lock LICENSE ./

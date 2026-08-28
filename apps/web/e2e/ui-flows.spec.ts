@@ -150,9 +150,30 @@ test.describe("model studio", () => {
     await page.locator(".validated-studio").evaluate((element) => {
       window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 86, behavior: "auto" });
     });
-    const pane = await page.locator(".understanding-pane").boundingBox();
-    const authoring = await page.locator(".studio-authoring").boundingBox();
-    const header = await page.locator(".understanding-pane > header").boundingBox();
+    const workspaceBoxes = () => page.locator(".validated-studio").evaluate((studio) => {
+      const rectangle = (selector: string) => {
+        const element = studio.querySelector(selector);
+        if (!element) return null;
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      return {
+        pane: rectangle(".understanding-pane"),
+        authoring: rectangle(".studio-authoring"),
+        header: rectangle(".understanding-pane > header"),
+      };
+    });
+    await expect.poll(async () => {
+      const { pane, authoring } = await workspaceBoxes();
+      if (!pane || !authoring) return Number.POSITIVE_INFINITY;
+      const topDelta = Math.abs(pane.y - authoring.y);
+      const bottomDelta = Math.abs(pane.y + pane.height - (authoring.y + authoring.height));
+      return Math.max(topDelta, bottomDelta);
+    }, {
+      message: "wait for fonts and the validated workspace grid to finish laying out",
+      timeout: 5_000,
+    }).toBeLessThanOrEqual(2);
+    const { pane, authoring, header } = await workspaceBoxes();
     expect(pane).not.toBeNull();
     expect(authoring).not.toBeNull();
     expect(header).not.toBeNull();

@@ -19,7 +19,8 @@ Before approval, `.github/workflows/dependabot-automerge.yml` independently veri
    repository, and still points at that SHA;
 3. every commit is authored by Dependabot and has a valid GitHub verification signature;
 4. the branch identifies a configured ecosystem and changes only its dependency surfaces:
-   npm manifests/lockfiles, the root uv manifest/lockfile, or GitHub workflow/action definitions;
+   npm manifests/lockfiles, the root uv manifest/lockfile, GitHub workflow/action definitions, or the
+   two compute Dockerfiles;
 5. the change contains no more than 30 files and GitHub reports it as merge-ready; and
 6. the approval and squash merge are bound to the tested head SHA.
 
@@ -29,7 +30,8 @@ rebase its dependency-only branch so the complete suite tests the combined resul
 
 ## Update policy
 
-`.github/dependabot.yml` scans npm, uv, and GitHub Actions every Monday in staggered UTC slots.
+`.github/dependabot.yml` scans npm, uv, GitHub Actions, and compute-container bases every Monday in
+staggered UTC slots.
 Security updates are grouped per ecosystem; routine patch/minor updates are grouped to reduce churn;
 major updates remain isolated because they often need migration work. Dependabot rebases automatically,
 targets the default `main` branch, and may keep up to five version-update pull requests open per ecosystem.
@@ -40,6 +42,12 @@ the version-update limit.
 All external GitHub Actions are pinned to immutable commit SHAs. The readable version comment remains so
 Dependabot can raise signed SHA updates. Repository Actions policy also requires SHA pinning, making a
 floating tag a platform-level rejection rather than a review convention.
+
+The Python, uv, and Cloudflare Sandbox image references are likewise pinned to registry digests while
+retaining readable tags. Docker updates may change only `services/compute/Dockerfile` and
+`services/compute/Dockerfile.sandbox`; CI rebuilds both images, imports OpenTURNS and the compute adapter
+inside each resulting runtime, and exercises the full-stack compute boundary before the privileged
+workflow may merge them.
 
 ## Test and release state machine
 
@@ -66,6 +74,10 @@ therefore dispatches CI with `expected_sha`; CI rejects the dispatch if GitHub r
 revision. Any authorized maintainer or bot may initiate that exact-SHA dispatch, but an empty dispatch can
 never release. Successful exact-SHA CI dispatches deployment explicitly. Deployment independently accepts
 only a 40-character commit that belongs to `main` and has successful CI for that exact SHA.
+
+The shell integrity check emits the release-authorization output consumed by the final job. The final job
+does not re-evaluate raw event-input expressions, preventing event-context coercion from silently skipping
+an otherwise valid bot release.
 
 ## Failed-update lifecycle
 
@@ -100,6 +112,18 @@ Use this diagnosis order for any failure:
 | #60                | Major npm migration plus explicit source/test repairs.                                                                           | All five gates passed; exact-head workflow approved and auto-merged it.                                                                                                                          |
 | #61                | Dependency-only GitHub Actions group.                                                                                            | All five gates passed; exact-head workflow approved and auto-merged it.                                                                                                                          |
 | #62, #63           | Four gates passed; full-stack startup assumed Wrangler existed under `apps/api/node_modules`, while npm legitimately hoisted it. | The harness now resolves Wrangler through the npm workspace contract. Dependabot replaced them with #64, which passed every strengthened gate, auto-merged, and entered exact-SHA post-merge CI. |
+| #64                | Grouped routine npm update replacing the two false-negative proposals.                                                           | Passed the strengthened Python, TypeScript, browser, full-stack, image, dependency-review, and aggregate gates; auto-merged.                                                                     |
+| #65, #68           | uv updates passed CI, but the first merger revision did not yet recognize native `dependabot/uv/*` branches.                     | Replaced by #69 after the ecosystem/file allowlist was corrected. This was automation-policy coupling, not dependency incompatibility.                                                           |
+| #66                | Pygments security update passed CI on a stale branch created before the pip-to-uv configuration correction.                      | Pygments was upgraded in the root uv lock under the complete main-branch suite; the obsolete branch was closed without adding an ignore rule.                                                    |
+| #67                | Black security update targeted a development formatter the repository did not run or enforce.                                    | Removed the unused Black dependency; Ruff remains the single enforced Python formatter.                                                                                                          |
+| #69                | Grouped routine Pydantic, Pytest, and Ruff uv update.                                                                            | Passed every gate and auto-merged. Its exact-SHA post-merge CI exposed a release-dispatch expression bug, which is corrected by a validated job output.                                          |
+| #70, #72           | Security proposals affected only the read-only `Streamlit_Backup` archive, outside the package graph and deployment.             | Closed as not used; corresponding archive alerts were dismissed with that explicit scope rather than changing the historical snapshot.                                                           |
+| #71, #73           | The first grouped idna security branch conflicted after #69 merged; replacement #73 was generated from current `main`.           | #73 passed every gate and auto-merged; no compatibility repair or waiver was required.                                                                                                           |
+
+The alert audit found 196 findings attached only to the excluded Streamlit archive (including its old
+path before the directory rename). Those findings were dismissed as `not_used` with an auditable reason.
+Active root-runtime findings were resolved through the dependency lifecycle or an exact lock update; the
+historical archive itself remains unchanged.
 
 This baseline is evidence for why failed CI must be diagnosed rather than automatically labelled an
 incompatible library. It is not an allowlist for future versions.

@@ -21,8 +21,11 @@ concurrency:
 jobs:
   dispatch-integrity:
     runs-on: ubuntu-latest
+    outputs:
+      release_requested: ${{ steps.bind.outputs.release_requested }}
     steps:
       - name: Bind trusted dispatches to the intended revision
+        id: bind
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           ACTUAL_SHA: ${{ github.sha }}
@@ -31,11 +34,13 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "$EXPECTED_SHA" ]]; then
+            echo "release_requested=false" >>"$GITHUB_OUTPUT"
             exit 0
           fi
           [[ "$EVENT_NAME" == "workflow_dispatch" ]]
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]]
+          echo "release_requested=true" >>"$GITHUB_OUTPUT"
 
   python:
     needs: dispatch-integrity
@@ -136,6 +141,7 @@ jobs:
         with:
           context: .
           file: services/compute/Dockerfile
+          load: true
           push: false
           tags: uncertaintycat-compute:ci
           cache-from: type=gha,scope=compute-service
@@ -145,10 +151,15 @@ jobs:
         with:
           context: .
           file: services/compute/Dockerfile.sandbox
+          load: true
           push: false
           tags: uncertaintycat-sandbox:ci
           cache-from: type=gha,scope=cloudflare-sandbox
           cache-to: type=gha,mode=max,scope=cloudflare-sandbox
+      - name: Smoke-test both built compute runtimes
+        run: |
+          docker run --rm uncertaintycat-compute:ci python -c "import openturns; from services.compute.main import app; assert app"
+          docker run --rm --entrypoint python uncertaintycat-sandbox:ci -c "import openturns; from services.compute.main import app; assert app"
 
   dependency-review:
     needs: dispatch-integrity
@@ -197,13 +208,10 @@ jobs:
           fi
 
   dispatch-bot-release:
-    needs: required
+    needs: [dispatch-integrity, required]
     if: >-
       needs.required.result == 'success' &&
-      github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/main' &&
-      inputs.expected_sha != '' &&
-      inputs.expected_sha == github.sha
+      needs.dispatch-integrity.outputs.release_requested == 'true'
     runs-on: ubuntu-latest
     permissions:
       actions: write
