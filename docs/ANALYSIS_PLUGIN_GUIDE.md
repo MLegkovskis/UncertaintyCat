@@ -26,6 +26,9 @@ Examples already enforced:
 - classical Sobol, FAST, and Morris reject dependent copulas;
 - ANCOVA rejects independent copulas and validates its polynomial decomposition on the actual dependent
   distribution before returning physical and correlation-driven contributions;
+- nonlinear least-squares calibration requires exact named explanatory/output columns, continuous selected
+  parameters, sufficient varying observations, full-rank local parameter Jacobians, and a successful bounded
+  OpenTURNS optimizer result;
 - scalar algorithms reject missing output indices;
 - Sobol rejects constant selected outputs;
 - PCE reports construction incompatibilities instead of returning a misleading surrogate.
@@ -57,8 +60,10 @@ Record OpenTURNS and plugin versions with any accepted numerical drift.
 
 The catalog exposes JSON Schema, descriptions, assumptions, output support, and resource class. The
 current run composer has a small default-config mapping in `apps/web/src/pages/Workspace.tsx`; add a safe
-default there for a new key. The next evolution is a constrained JSON-schema form renderer, after which
-most plugins will require no frontend code.
+default there for ordinary plugins. Methods that require a multi-step scientific workflow, such as
+calibration, screening, and surrogate construction, belong in a project-scoped studio and must be excluded
+from the generic checklist. The next evolution is a constrained JSON-schema form renderer, after which
+most ordinary plugins will require no frontend code.
 
 ## OpenTURNS release intake
 

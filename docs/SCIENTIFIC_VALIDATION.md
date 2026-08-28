@@ -9,13 +9,13 @@ version, timestamps, warnings, assumptions, runtime, and model-evaluation count.
 
 The migration baseline is OpenTURNS `1.27.post1`. Moving from the inherited `1.25` pin exposed the
 removal of `ComposedDistribution`; legacy construction and validation paths were migrated to
-`JointDistribution`, then both the scientific suite and all 23 example smoke runs were repeated.
+`JointDistribution`, then both the scientific suite and all 24 example smoke runs were repeated.
 
 ## Current automated evidence
 
 The test suite covers:
 
-- compilation and sample evaluation for all 23 bundled Python reference models;
+- compilation and sample evaluation for all 24 bundled Python reference models;
 - consistent input/output dimensions, descriptions, finite values, and batch behavior;
 - strict contracts that reject extra fields and serialize without NaN;
 - repeatable multi-output Monte Carlo and EDA at fixed seeds;
@@ -24,6 +24,10 @@ The test suite covers:
 - dependent-copula rejection for classical Sobol;
 - stable OpenTURNS ANCOVA physical/correlation decomposition for a correlated-normal linear benchmark,
   including dependent-holdout PCE validation and exact evaluation accounting;
+- stable OpenTURNS nonlinear least-squares calibration of the official exponential family
+  `y = a + b exp(c x)`: fixed-seed observations recover `[2.7731136593401917,
+  1.2035076055520555, 0.49974911285083384]` from truth `[2.8, 1.2, 0.5]` within absolute
+  tolerances `[0.05, 0.02, 0.005]`, repeat exactly, and report 360 atomic model evaluations;
 - OpenTURNS-authoritative execution and strict serialization for correlation, FAST, HSIC, Taylor, OTMorris, convergence,
   reliability, PCE, and Gaussian-process regression;
 - CSV/XLSX inspection, OpenTURNS marginal ranking/copula composition, and promoted PCE/GPR `ot.Study` XML round trips;
@@ -60,6 +64,12 @@ npm run test:e2e
 - GPR: independently sampled hold-out R2/RMSE/MAE and conditional-interval coverage are always reported;
   exact fitting is capped at 512 training points, inputs must be continuous, and the model-based conditional
   intervals are not guaranteed frequentist confidence intervals.
+- Calibration: one scalar output, 1–8 selected continuous parameters, at most 250 finite named observations,
+  at least two residual degrees of freedom, full-rank start/optimum Jacobians, and at most 500 optimizer calls.
+  The serialized analysis payload has a final hard cap of 1 MB in addition to its structural row/dimension caps.
+  Bootstrap is fixed to zero. The parameter SDs, intervals, and correlation are OpenTURNS' local linear
+  Gaussian approximation at the optimum—not exact confidence guarantees. Fit does not establish global
+  identifiability, causality, or predictive validity outside the observed domain.
 - FORM: local design-point approximation; Monte Carlo is available when nonlinear event geometry makes
   FORM unsuitable.
 - Correlation: linear and monotonic coefficients are reported side by side rather than conflated.
@@ -67,7 +77,7 @@ npm run test:e2e
 ## Acceptance policy for dependency or algorithm changes
 
 1. Pin the new dependency in a branch and regenerate `uv.lock`.
-2. Run all unit, service, and 23-model tests in the current and candidate environments.
+2. Run all unit, service, and 24-model tests in the current and candidate environments.
 3. Add upstream benchmark cases for changed/new methods.
 4. Compare indices, moments, probabilities, convergence, warnings, failures, and runtime.
 5. Explain every material drift; do not widen tolerances solely to make CI pass.
@@ -83,6 +93,8 @@ npm run test:e2e
 - PCE basis/sparsity/degree sweeps and correlated-input transformations;
 - repeated-design GPR calibration/coverage studies, anisotropic kernel diagnostics, and high-dimensional
   scaling evidence beyond the current exact-GPR cap;
+- calibration benchmarks with correlated/heteroscedastic observation errors, multi-output responses,
+  independently designed identifiability diagnostics, and out-of-domain predictive validation;
 - cross-platform reproducibility and numerical-drift envelopes;
 - performance/load budgets at preview, standard, and high profiles;
 - independent review of formulas, labels, and assumptions by UQ practitioners.

@@ -11,7 +11,7 @@ EXAMPLES = sorted(Path("examples").glob("*.py"))
 
 
 def test_public_example_inventory_contains_all_approved_models() -> None:
-    assert len(EXAMPLES) == 23
+    assert len(EXAMPLES) == 24
 
 
 @pytest.mark.scientific

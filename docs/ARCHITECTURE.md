@@ -82,16 +82,17 @@ editable Python are one authoring mode; the guided builder emits the same Python
 OpenTURNS `SymbolicFunction`.
 
 Every scientific workspace is scoped beneath `/studies/:projectId`; global navigation exposes the project
-index rather than duplicating dashboard, project, and new-analysis destinations. Within a project, five
+index rather than duplicating dashboard, project, and new-analysis destinations. Within a project, six
 deliberately distinct views share one contextual navigation surface:
 
 - project overview and retained results;
 - model authoring and direct analysis;
 - OTMorris dimensionality screening;
+- deterministic parameter calibration against named observations;
 - validated PCE/GPR surrogate construction from a model or Gaussian-process regression from paired data; and
 - empirical distribution fitting.
 
-The direct run composer is catalog-driven but filters Morris, PCE, and GPR because those capabilities need
+The direct run composer is catalog-driven but filters calibration, Morris, PCE, and GPR because those capabilities need
 their own scientific sequence and controls. A promoted surrogate is passed back to direct analysis only by
 an explicit Surrogate Studio handoff, which preserves evidence-source provenance without presenting
 surrogation as an ordinary analysis checkbox. Reduced models and promoted surrogates can either start a new
@@ -103,6 +104,16 @@ The composer disables incompatible choices after validation: classical Sobol and
 inputs, while ANCOVA is reserved for a dependent copula. ANCOVA fits an independent-marginal polynomial
 decomposition, validates it against the declared dependent distribution, and persists separate physical and
 correlation-driven first-order variance contributions through the generic result envelope.
+
+Calibration Studio retains the current project model and uses stable OpenTURNS `ParametricFunction`,
+`NonLinearLeastSquaresCalibration`, and `CalibrationResult` APIs inside the same Sandbox boundary. Selected
+continuous inputs become constant unknown parameters; all remaining inputs and the scalar output must be
+supplied as exact named observation columns. The plugin caps parameter count, observation rows, optimizer
+work, stored predictions, and model dimension; validates the residual Jacobian at the start and optimum; and
+persists exact atomic model-evaluation accounting separately from optimizer calls. Its parameter distribution
+is labelled as OpenTURNS' local linear Gaussian approximation with bootstrap disabled, never as an exact
+confidence guarantee. A successful fit is explicitly not evidence of global identifiability, causality, or
+validity outside the observed domain.
 
 Model validation records a versioned workflow recommendation. Its validation outcome, deterministic facts,
 AI brief, and recommended route are rendered together so an assessment does not fragment across the

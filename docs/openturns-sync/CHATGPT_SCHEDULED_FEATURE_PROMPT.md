@@ -339,7 +339,7 @@ For a required OpenTURNS upgrade:
 
 - keep the pin exact and regenerate `uv.lock` deliberately;
 - inspect every removed/deprecated OpenTURNS name used by modern core, services, tests, and examples;
-- run the full 23-model smoke suite and all scientific benchmarks;
+- run the full 24-model smoke suite and all scientific benchmarks;
 - explain numerical and runtime drift; and
 - do not bundle unrelated dependency upgrades.
 
@@ -480,7 +480,7 @@ diagnostics, persisted evidence, prohibited interpretations, benchmark, and tole
 ## Verification
 
 - [x] exact commands with concise results
-- [x] 23 reference-model smoke evidence
+- [x] 24 reference-model smoke evidence
 - [x] Python/type/static/unit/scientific/integration evidence
 - [x] TypeScript/build/browser/full-stack evidence
 - [x] both compute images when applicable

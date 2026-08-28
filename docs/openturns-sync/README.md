@@ -88,7 +88,7 @@ Queueing, persistence, exports, sharing, and report chat already consume the gen
 
 ### Current capability inventory
 
-At this checkpoint the application has 13 plugins:
+At this checkpoint the application has 14 plugins:
 
 | Key | Capability | Important boundary |
 | --- | --- | --- |
@@ -105,6 +105,7 @@ At this checkpoint the application has 13 plugins:
 | `reliability` | FORM or Monte Carlo threshold probability | method-specific event geometry |
 | `pce` | polynomial-chaos surrogate and hold-out validation | validation Q2 controls trust |
 | `gpr` | GP surrogate, hold-out accuracy, and conditional intervals | continuous inputs; bounded exact GPR |
+| `calibration_nlls` | nonlinear least-squares parameter calibration | named observations; local uncertainty approximation |
 
 The legacy Streamlit source is isolated under `Streamlit_Backup/` as a read-only historical reference. It is
 not part of the root dependency, test, package, or deployment graphs.
@@ -471,6 +472,44 @@ The reusable evidence pattern is:
 - FastAPI, mocked UI, local full stack, and production verification.
 
 This rehearsal is a process pattern, not a reason to prefer GPR-shaped features later.
+
+### 2026-08-28 calibration intake
+
+This cycle started from UncertaintyCat `a83608c208d2426030164b25363ff80c99b1ef31` after the ANCOVA merge.
+The frozen pin and latest stable PyPI release both remained `1.27.post1`; the installed build reports source
+revision `772da39`. The upstream default branch also remained exactly
+`2301120b56f5d879d31c7bdaf73219835e8a118a` (2026-08-23), so there was no checkpoint-to-HEAD source delta.
+The systematic documentation-category review and pinned-API prototype produced this admission record:
+
+| Candidate | Admission | Weighted score | Decision |
+| --- | --- | ---: | --- |
+| deterministic nonlinear least-squares calibration | pass | 97/100 | implemented as `calibration_nlls` |
+| `RankSobolSensitivityAlgorithm` | pass | 76/100 | deferred because it overlaps the existing first-order Sobol question |
+| `GaussianProcessRegressionCrossValidation` | reject | — | installed API remains experimental |
+| `LineSampling` / `QuantileConfidence` | reject | — | stable only on the unreleased 1.28 development line |
+
+The admitted slice uses stable
+[`ParametricFunction`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.ParametricFunction.html),
+[`NonLinearLeastSquaresCalibration`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.NonLinearLeastSquaresCalibration.html),
+and [`CalibrationResult`](https://openturns.github.io/openturns/latest/user_manual/_generated/openturns.CalibrationResult.html)
+APIs. The review included the official
+[`y = a + b exp(c x)` example](https://openturns.github.io/openturns/latest/auto_calibration/least_squares_and_gaussian_calibration/plot_calibration_quickstart.html),
+the [calibration theory](https://openturns.github.io/openturns/latest/theory/data_analysis/code_calibration.html),
+the [pinned implementation](https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/lib/src/Uncertainty/Bayesian/NonLinearLeastSquaresCalibration.cxx),
+and its [upstream Python test](https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/python/test/t_NonLinearLeastSquaresCalibration_std.py).
+The pinned constructor contains a row-count guard defect later corrected upstream; the plugin therefore
+checks all row counts, dimensions, and names before construction instead of relying on that guard.
+
+With fixed seed 0, 10 noisy observations, truth `[2.8, 1.2, 0.5]`, and start `[1, 1, 1]`, the pinned API
+returned `[2.7731136593401917, 1.2035076055520555, 0.49974911285083384]` twice, with local-linear approximate
+SDs `[0.037160718790851095, 0.006244761064512535, 0.0005431118055327854]`, 33 optimizer calls, 19
+iterations, and 360 exact atomic model evaluations. Bootstrap is fixed to zero; the parameter distribution is
+labelled as a local linear Gaussian approximation rather than an exact confidence guarantee. The serialized
+result is capped at 1 MB in addition to 250 rows, 32 model inputs, eight parameters, and 500 optimizer calls. Gaussian-prior
+calibration, weighted/correlated residuals, multi-output calibration, MCMC, bootstrap uncertainty, and
+competing optimizer selection remain explicit follow-ups rather than hidden scope expansion.
+An exact-response run at the 250-row storage bound produced 250 complete prediction rows in a 50,904-byte
+payload, used 3,250 atomic model evaluations, and completed in 11.77 ms on the review host.
 
 ## 10. Copy-paste scheduled-agent prompt
 

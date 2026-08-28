@@ -6,6 +6,7 @@ from uncertaintycat_core.contracts import AnalysisCatalogEntry
 from uncertaintycat_core.errors import UnknownAnalysisError
 from uncertaintycat_core.plugins.ancova import plugin as ancova_plugin
 from uncertaintycat_core.plugins.base import AnalysisPlugin
+from uncertaintycat_core.plugins.calibration_nlls import plugin as calibration_nlls_plugin
 from uncertaintycat_core.plugins.convergence import plugin as convergence_plugin
 from uncertaintycat_core.plugins.correlation import plugin as correlation_plugin
 from uncertaintycat_core.plugins.eda import plugin as eda_plugin
@@ -35,6 +36,7 @@ _PLUGINS: dict[str, AnalysisPlugin] = {
         reliability_plugin,
         pce_plugin,
         gpr_plugin,
+        calibration_nlls_plugin,
     )
 }
 

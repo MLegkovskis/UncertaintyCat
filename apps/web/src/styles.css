@@ -1646,7 +1646,7 @@ tbody tr:hover td {
 }
 .inline-error {
   margin: 0 14px;
-  color: #ff9da3;
+  color: var(--danger);
   font-size: 9px;
 }
 .report-loading,
@@ -3516,6 +3516,7 @@ tbody tr:hover td {
 }
 .studio-model-picker,
 .method-workbench,
+.calibration-workbench,
 .surrogate-workbench {
   margin-top: 18px;
   padding: 20px;
@@ -3592,6 +3593,105 @@ tbody tr:hover td {
   display: grid;
   gap: 16px;
 }
+.calibration-workbench {
+  display: grid;
+  gap: 18px;
+}
+.calibration-parameters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+  gap: 9px;
+  margin: 0;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.calibration-parameters legend {
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.calibration-parameters legend small {
+  margin-left: 8px;
+  color: var(--muted);
+  font: 8px var(--font-mono);
+}
+.calibration-parameters > div {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+.calibration-parameters > div.selected { border-color: color-mix(in srgb, var(--cyan) 55%, var(--line)); }
+.calibration-parameters > div > label:first-child { display: flex; gap: 9px; align-items: center; }
+.calibration-parameters > div > label:first-child span { display: grid; gap: 3px; }
+.calibration-parameters small { color: var(--muted); font-size: 8px; }
+.starting-value { display: grid; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 700; }
+.starting-value input,
+.calibration-observation-heading select,
+.calibration-run-controls input {
+  min-height: 40px;
+  padding: 0 10px;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.calibration-observation-heading {
+  display: grid;
+  grid-template-columns: 1fr minmax(230px, 0.35fr);
+  gap: 24px;
+  align-items: end;
+}
+.calibration-observation-heading h3 { margin: 0 0 7px; }
+.calibration-observation-heading p { margin: 0; color: var(--muted); font-size: 10px; }
+.calibration-observation-heading label,
+.calibration-data-entry > label,
+.calibration-run-controls label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.calibration-example-note {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.45fr) 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px;
+  border-left: 4px solid var(--cyan);
+  background: var(--panel-2);
+}
+.calibration-example-note span { color: var(--muted); font-size: 10px; line-height: 1.55; }
+.calibration-data-entry { display: grid; gap: 10px; }
+.calibration-data-entry textarea {
+  width: 100%;
+  padding: 12px;
+  resize: vertical;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  font: 10px/1.55 var(--font-mono);
+}
+.calibration-upload { display: flex; gap: 12px; align-items: center; }
+.calibration-upload label { cursor: pointer; }
+.calibration-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.calibration-upload small { color: var(--muted); font-size: 9px; }
+.calibration-run-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+}
+.calibration-run-controls > div {
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.calibration-run-controls > div span { color: var(--muted); font-size: 9px; }
+.calibration-workbench > .inline-error { margin: 0; }
+.calibration-workbench > .button { justify-self: start; }
 .method-controls > div {
   display: grid;
   gap: 5px;
@@ -4079,6 +4179,9 @@ tbody tr:hover td {
   .data-surrogate-columns {
     grid-template-columns: 1fr;
   }
+  .calibration-observation-heading,
+  .calibration-example-note,
+  .calibration-run-controls { grid-template-columns: 1fr; }
   .landing-hero { min-height: 0; }
   .workflow-story .section-copy,
   .workflow-layers article { position: static; }

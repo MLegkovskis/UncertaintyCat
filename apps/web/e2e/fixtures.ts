@@ -4,6 +4,7 @@ import type {
   Dataset,
   ModelAssessment,
   ModelMetadata,
+  ModelVersion,
   Project,
   Report,
   Run,
@@ -25,16 +26,17 @@ export const catalog: AnalysisCatalogEntry[] = [
   ["reliability", "Reliability Analysis", "Reliability", "heavy"],
   ["pce", "Polynomial Chaos Expansion", "Metamodel", "heavy"],
   ["gpr", "Gaussian Process Surrogate", "Surrogate", "heavy"],
+  ["calibration_nlls", "Nonlinear Least-Squares Calibration", "Calibration", "heavy"],
 ].map(([key, name, category, resourceClass]) => ({
   key,
-  version: key === "ancova" ? "1.0.0" : "2.0.0",
+  version: ["ancova", "calibration_nlls"].includes(key) ? "1.0.0" : "2.0.0",
   name,
   category,
   description: `${name} produces versioned numerical evidence.`,
   assumptions: [`${name} test assumption`],
   supports_dependent_inputs: !["sobol", "fast", "morris", "pce"].includes(key),
   requires_dependent_inputs: key === "ancova",
-  supports_multi_output: true,
+  supports_multi_output: key !== "calibration_nlls",
   resource_class: resourceClass as AnalysisCatalogEntry["resource_class"],
   config_schema: {},
 }));
@@ -44,9 +46,9 @@ const modelMetadata: ModelMetadata = {
   input_dimension: 3,
   output_dimension: 1,
   inputs: [
-    { index: 0, name: "x1", distribution: "Uniform", parameters: [-3.14, 3.14], mean: 0, standard_deviation: 1.81 },
-    { index: 1, name: "x2", distribution: "Uniform", parameters: [-3.14, 3.14], mean: 0, standard_deviation: 1.81 },
-    { index: 2, name: "x3", distribution: "Uniform", parameters: [-3.14, 3.14], mean: 0, standard_deviation: 1.81 },
+    { index: 0, name: "x1", distribution: "Uniform", parameters: [-3.14, 3.14], kind: "continuous", mean: 0, standard_deviation: 1.81 },
+    { index: 1, name: "x2", distribution: "Uniform", parameters: [-3.14, 3.14], kind: "continuous", mean: 0, standard_deviation: 1.81 },
+    { index: 2, name: "x3", distribution: "Uniform", parameters: [-3.14, 3.14], kind: "continuous", mean: 0, standard_deviation: 1.81 },
   ],
   outputs: [{ index: 0, name: "Y" }],
   openturns_version: "1.25",
@@ -89,6 +91,35 @@ const savedModel = {
   metadata: modelMetadata,
   assessment: modelAssessment,
   createdAt: "2026-08-19T12:00:00Z",
+};
+
+export const calibrationSavedModel: ModelVersion = {
+  ...savedModel,
+  id: "model-calibration",
+  displayName: "Exponential calibration benchmark",
+  sourceHash: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  metadata: {
+    ...modelMetadata,
+    source_hash: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    input_dimension: 4,
+    inputs: [
+      { index: 0, name: "a", distribution: "Uniform", parameters: [0, 5], kind: "continuous", mean: 2.5, standard_deviation: 1.44 },
+      { index: 1, name: "b", distribution: "Uniform", parameters: [0.5, 2], kind: "continuous", mean: 1.25, standard_deviation: 0.43 },
+      { index: 2, name: "c", distribution: "Uniform", parameters: [0.1, 0.6], kind: "continuous", mean: 0.35, standard_deviation: 0.14 },
+      { index: 3, name: "x", distribution: "Uniform", parameters: [0.5, 9.5], kind: "continuous", mean: 5, standard_deviation: 2.6 },
+    ],
+    outputs: [{ index: 0, name: "y" }],
+    openturns_version: "1.27.post1",
+  },
+  assessment: {
+    ...modelAssessment,
+    profile: {
+      ...modelAssessment.profile,
+      input_dimension: 4,
+      continuous_marginals: 4,
+      pilot_outputs: [{ ...modelAssessment.profile.pilot_outputs[0]!, output_name: "y" }],
+    },
+  },
 };
 
 const dataset: Dataset = {
@@ -243,12 +274,13 @@ export interface MockApiOptions {
   runs?: Run[];
   report?: Report;
   modelUnderstanding?: (route: Route) => Promise<void>;
+  models?: ModelVersion[];
 }
 
 export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   let projects = options.projects ?? [];
   let runs = options.runs ?? [];
-  let models = options.authenticated && projects.length ? [savedModel] : [];
+  let models = options.models ?? (options.authenticated && projects.length ? [savedModel] : []);
   let surrogates: Array<Record<string, unknown>> = [];
   let dataSurrogates: Array<Record<string, unknown>> = [];
   const report = options.report ?? makeReport();

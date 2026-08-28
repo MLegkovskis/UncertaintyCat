@@ -3,6 +3,7 @@ import {
   Database,
   FolderKanban,
   ScanSearch,
+  Target,
   Waves,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -33,6 +34,9 @@ export function ProjectNav({
         </NavLink>
         <NavLink to={`${root}/dimension-reduction`}>
           <ScanSearch /> Dimensionality reduction
+        </NavLink>
+        <NavLink to={`${root}/calibration`}>
+          <Target /> Calibration Studio
         </NavLink>
         <NavLink to={`${root}/surrogates`}>
           <Waves /> Surrogate Studio

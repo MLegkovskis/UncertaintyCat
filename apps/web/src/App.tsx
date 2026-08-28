@@ -18,6 +18,11 @@ const DimensionalityReduction = lazy(() =>
     default: module.DimensionalityReduction,
   })),
 );
+const CalibrationStudio = lazy(() =>
+  import("./pages/CalibrationStudio").then((module) => ({
+    default: module.CalibrationStudio,
+  })),
+);
 const SurrogateStudio = lazy(() =>
   import("./pages/SurrogateStudio").then((module) => ({
     default: module.SurrogateStudio,
@@ -55,6 +60,7 @@ export function App() {
           <Route path="/studies/:projectId" element={privatePage(<StudyDetail />)} />
           <Route path="/studies/:projectId/workspace" element={privatePage(<Workspace />)} />
           <Route path="/studies/:projectId/dimension-reduction" element={privatePage(<DimensionalityReduction />)} />
+          <Route path="/studies/:projectId/calibration" element={privatePage(<CalibrationStudio />)} />
           <Route path="/studies/:projectId/surrogates" element={privatePage(<SurrogateStudio />)} />
           <Route path="/studies/:projectId/data-lab" element={privatePage(<DataLab />)} />
           <Route path="/activity" element={privatePage(<Navigate to="/studies" replace />)} />

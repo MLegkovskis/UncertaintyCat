@@ -4,6 +4,10 @@ export default defineConfig({
   testDir: "./e2e",
   testIgnore: ["full-stack/**", "production/**"],
   fullyParallel: true,
+  workers: 4,
+  // Cold Vite transforms now span six lazy project studios. Keep every
+  // assertion, but allow concurrent route chunks to finish loading in CI.
+  expect: { timeout: 10_000 },
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]

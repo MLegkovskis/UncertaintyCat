@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   analysisResult,
+  calibrationSavedModel,
   catalog,
   installMockApi,
   makeReport,
@@ -26,6 +27,9 @@ test.describe("application shell and identity", () => {
     await page.goto("/studies/project-1/workspace");
     await expect(page.getByRole("heading", { name: "Sign in before starting an analysis." })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue with Cloudflare" })).toBeVisible();
+    await page.goto("/studies/project-1/calibration");
+    await expect(page.getByRole("heading", { name: "Sign in before starting an analysis." })).toBeVisible();
+    await expect(page.getByText("Official OpenTURNS exponential example loaded")).toHaveCount(0);
     await page.goto("/");
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -95,10 +99,10 @@ test.describe("application shell and identity", () => {
 });
 
 test.describe("model studio", () => {
-  test("unifies all 23 examples with an editable Python model", async ({ page }) => {
+  test("unifies all 24 examples with an editable Python model", async ({ page }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
     await page.goto("/studies/project-1/workspace");
-    await expect(page.locator(".example-card")).toHaveCount(23);
+    await expect(page.locator(".example-card")).toHaveCount(24);
     await expect(page.getByLabel("Model name")).toHaveValue("");
     await expect(page.getByRole("textbox", { name: "Python model source" })).toBeVisible();
     await page.getByLabel("Search reference models").fill("rocket");
@@ -306,7 +310,7 @@ test.describe("model studio", () => {
     await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
 
     const checkboxes = page.locator(".analysis-option input[type=checkbox]");
-    const directCatalog = catalog.filter((item) => !["morris", "pce", "gpr"].includes(item.key));
+    const directCatalog = catalog.filter((item) => !["calibration_nlls", "morris", "pce", "gpr"].includes(item.key));
     await expect(checkboxes).toHaveCount(directCatalog.length);
     const incompatibleAncova = page.locator(".analysis-option", { hasText: "ANCOVA Dependent-Input Sensitivity" });
     await expect(incompatibleAncova.locator("input")).toBeDisabled();
@@ -338,7 +342,7 @@ test.describe("model studio", () => {
       operator: "<",
       threshold: -2.5,
     });
-    expect(analyses.some((item) => ["morris", "pce", "gpr"].includes(item.analysisKey))).toBe(false);
+    expect(analyses.some((item) => ["calibration_nlls", "morris", "pce", "gpr"].includes(item.analysisKey))).toBe(false);
   });
 
   test("surfaces model validation and catalog failures without enabling a run", async ({ page }) => {
@@ -411,6 +415,44 @@ test.describe("model studio", () => {
     await page.getByRole("button", { name: "Run Morris screening" }).click();
     await expect(page).toHaveURL(/\/runs\/run-1$/);
     expect((runBody?.analyses as Array<{ analysisKey: string }>)[0]?.analysisKey).toBe("morris");
+  });
+
+  test("runs the official named calibration setup from its project studio", async ({ page }) => {
+    await installMockApi(page, {
+      authenticated: true,
+      projects: [project],
+      models: [calibrationSavedModel],
+    });
+    let runBody: Record<string, unknown> | undefined;
+    page.on("request", (request) => {
+      if (request.url().endsWith("/api/v1/runs") && request.method() === "POST") {
+        runBody = request.postDataJSON() as Record<string, unknown>;
+      }
+    });
+
+    await page.goto("/studies/project-1/calibration");
+    await expect(page.getByRole("heading", { name: "Estimate model parameters from observations." })).toBeVisible();
+    await expect(page.getByText("Official OpenTURNS exponential example loaded")).toBeVisible();
+    await expect(page.getByLabel("Starting value for a")).toHaveValue("1");
+    await expect(page.getByLabel("Starting value for b")).toHaveValue("1");
+    await expect(page.getByLabel("Starting value for c")).toHaveValue("1");
+    await expect(page.getByLabel("Calibration observation CSV")).toHaveValue(/^x,y/);
+    await expect(page.getByText("10 / 250")).toBeVisible();
+    await page.getByRole("button", { name: "Run nonlinear least-squares calibration" }).click();
+    await expect(page).toHaveURL(/\/runs\/run-1$/);
+
+    const analysis = (runBody?.analyses as Array<{ analysisKey: string; config: Record<string, unknown>; outputTargets: number[] }>)[0]!;
+    expect(analysis.analysisKey).toBe("calibration_nlls");
+    expect(analysis.outputTargets).toEqual([0]);
+    expect(analysis.config).toMatchObject({
+      parameter_indices: [0, 1, 2],
+      starting_values: [1, 1, 1],
+      observed_input_names: ["x"],
+      observed_output_name: "y",
+      maximum_calls: 250,
+    });
+    expect(analysis.config.observed_inputs).toHaveLength(10);
+    expect(analysis.config.observed_outputs).toHaveLength(10);
   });
 });
 

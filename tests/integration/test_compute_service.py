@@ -85,6 +85,47 @@ problem = ot.Normal([0.0, 0.0], [1.0, 1.0], correlation)
     assert ancova_result["runtime"]["model_evaluations"] == 192
     assert ancova_result["payload"]["metrics"]["validation_q2"] > 0.99
 
+    calibration_execution = client.post(
+        "/v1/execute",
+        json={
+            "source": Path("examples/Calibration_Exponential.py").read_text(),
+            "analysis": {
+                "analysis_key": "calibration_nlls",
+                "config": {
+                    "parameter_indices": [0, 1, 2],
+                    "starting_values": [1.0, 1.0, 1.0],
+                    "observed_input_names": ["x"],
+                    "observed_output_name": "y",
+                    "observed_inputs": [[0.5 + index] for index in range(10)],
+                    "observed_outputs": [
+                        4.3712405825862275,
+                        5.2770913648243774,
+                        6.9664982679561884,
+                        9.765797121248307,
+                        14.076213741899407,
+                        21.588660365352318,
+                        33.73065754817239,
+                        53.89716086558238,
+                        86.9670282151489,
+                        141.5407992331982,
+                    ],
+                    "maximum_calls": 250,
+                },
+                "output_targets": [0],
+            },
+            "seed": 0,
+        },
+    )
+    assert calibration_execution.status_code == 200
+    calibration_result = calibration_execution.json()["result"]
+    assert calibration_result["analysis_key"] == "calibration_nlls"
+    assert calibration_result["runtime"]["model_evaluations"] > 0
+    assert calibration_result["payload"]["metrics"]["observations"] == 10
+    assert calibration_result["payload"]["metrics"]["rmse_after"] < 0.05
+    assert (
+        calibration_result["payload"]["tables"]["observations_and_predictions"]["row_count"] == 10
+    )
+
 
 def test_public_error_is_structured() -> None:
     response = client.post(
@@ -191,4 +232,5 @@ def test_one_shot_sandbox_protocol() -> None:
         "monte_carlo",
         "sobol",
         "gpr",
+        "calibration_nlls",
     }

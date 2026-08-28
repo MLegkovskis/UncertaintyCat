@@ -10,6 +10,7 @@ const EVIDENCE_LINK_PREFIX = "#evidence-";
 
 const ANALYSIS_LABELS: Record<string, string> = {
   ancova: "ANCOVA",
+  calibration_nlls: "Nonlinear Least-Squares Calibration",
   eda: "EDA",
   fast: "FAST",
   hsic: "HSIC",

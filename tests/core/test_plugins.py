@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from uncertaintycat_core.contracts import AnalysisRequest
 from uncertaintycat_core.errors import IncompatibleAnalysisError
@@ -17,6 +18,47 @@ model.setOutputDescription(["sum", "product"])
 problem = ot.JointDistribution([ot.Normal(), ot.Uniform(-1.0, 1.0)])
 problem.setDescription(["normal_input", "uniform_input"])
 """
+
+CALIBRATION_SOURCE = """
+import openturns as ot
+model = ot.SymbolicFunction(["a", "b", "c", "x"], ["a + b * exp(c * x)"])
+model.setOutputDescription(["y"])
+problem = ot.JointDistribution([
+    ot.Uniform(0.0, 5.0),
+    ot.Uniform(0.5, 2.0),
+    ot.Uniform(0.1, 0.6),
+    ot.Uniform(0.5, 9.5),
+])
+problem.setDescription(["a", "b", "c", "x"])
+"""
+
+CALIBRATION_INPUTS = [[0.5 + index] for index in range(10)]
+CALIBRATION_OUTPUTS = [
+    4.3712405825862275,
+    5.2770913648243774,
+    6.9664982679561884,
+    9.765797121248307,
+    14.076213741899407,
+    21.588660365352318,
+    33.73065754817239,
+    53.89716086558238,
+    86.9670282151489,
+    141.5407992331982,
+]
+
+
+def calibration_request(**overrides: object) -> AnalysisRequest:
+    config: dict[str, object] = {
+        "parameter_indices": [0, 1, 2],
+        "starting_values": [1.0, 1.0, 1.0],
+        "observed_input_names": ["x"],
+        "observed_output_name": "y",
+        "observed_inputs": CALIBRATION_INPUTS,
+        "observed_outputs": CALIBRATION_OUTPUTS,
+        "maximum_calls": 250,
+    }
+    config.update(overrides)
+    return AnalysisRequest(analysis_key="calibration_nlls", config=config, output_targets=[0])
 
 
 def test_monte_carlo_is_reproducible_and_multi_output() -> None:
@@ -258,6 +300,179 @@ problem = ot.Normal([0.0] * 10, [1.0] * 10, correlation)
         run_analysis(
             runtime,
             AnalysisRequest(analysis_key="ancova", config={"degree": 6}),
+        )
+
+
+@pytest.mark.scientific
+def test_calibration_recovers_official_exponential_parameters_repeatably() -> None:
+    runtime_a = compile_model(CALIBRATION_SOURCE)
+    runtime_b = compile_model(CALIBRATION_SOURCE)
+    calls_before = runtime_a.model.getEvaluationCallsNumber()
+    result_a = run_analysis(runtime_a, calibration_request(), seed=0)
+    calls_after = runtime_a.model.getEvaluationCallsNumber()
+    result_b = run_analysis(runtime_b, calibration_request(), seed=0)
+
+    rows = result_a.payload.tables["calibrated_parameters"].rows
+    calibrated = [float(row[2]) for row in rows]
+    for obtained, expected, tolerance in zip(
+        calibrated, [2.8, 1.2, 0.5], [0.05, 0.02, 0.005], strict=True
+    ):
+        assert obtained == pytest.approx(expected, abs=tolerance)
+    assert calibrated == pytest.approx(
+        [2.7731136593401917, 1.2035076055520555, 0.49974911285083384],
+        abs=1.0e-12,
+    )
+    assert result_a.payload.metrics == result_b.payload.metrics
+    assert result_a.payload.tables == result_b.payload.tables
+    assert result_a.payload.series == result_b.payload.series
+    assert result_a.payload.matrices == result_b.payload.matrices
+    assert result_a.runtime.model_evaluations == calls_after - calls_before
+    assert result_a.payload.metrics["model_evaluations"] == (result_a.runtime.model_evaluations)
+    assert result_a.payload.metrics["observations"] == 10
+    assert result_a.payload.tables["observations_and_predictions"].row_count == 10
+    assert result_a.payload.tables["observations_and_predictions"].truncated is False
+    assert result_a.payload.metrics["rmse_after"] < 0.05
+    assert result_a.payload.facts["bootstrap_size"] == 0
+    assert result_a.payload.facts["report_payload_limit_bytes"] == 1_000_000
+    assert "not an exact confidence guarantee" in str(
+        result_a.payload.facts["parameter_uncertainty"]
+    )
+    assert "identifiability" in " ".join(result_a.warnings)
+    serialized = result_a.model_dump_json()
+    assert "NaN" not in serialized
+    assert "Infinity" not in serialized
+    assert len(serialized.encode()) < 100_000
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"parameter_indices": []}, "at least 1 item"),
+        ({"parameter_indices": [0, 0, 2]}, "must be unique"),
+        ({"starting_values": [1.0, 1.0]}, "one starting value"),
+        ({"starting_values": [1.0, float("inf"), 1.0]}, "finite number"),
+        ({"observed_input_names": ["wrong"]}, "exactly match"),
+        ({"observed_output_name": "wrong"}, "must be named 'y'"),
+        ({"observed_inputs": [[0.5, 1.0]] * 10}, "named input columns"),
+        ({"observed_outputs": CALIBRATION_OUTPUTS[:-1]}, "row counts must match"),
+        ({"observed_outputs": [float("nan")] * 10}, "finite number"),
+        ({"observed_outputs": [4.0] * 10}, "must vary"),
+        ({"maximum_calls": 501}, "less than or equal to 500"),
+    ],
+)
+def test_calibration_rejects_invalid_observation_contracts(
+    overrides: dict[str, object], message: str
+) -> None:
+    with pytest.raises((ValidationError, IncompatibleAnalysisError), match=message):
+        run_analysis(compile_model(CALIBRATION_SOURCE), calibration_request(**overrides))
+
+
+def test_calibration_rejects_too_few_observations_and_excessive_bounds() -> None:
+    five_parameter_source = """
+import openturns as ot
+model = ot.SymbolicFunction(
+    ["a", "b", "c", "d", "x"],
+    ["a + b*x + c*x^2 + d*x^3"],
+)
+model.setOutputDescription(["y"])
+problem = ot.Normal(5)
+problem.setDescription(["a", "b", "c", "d", "x"])
+"""
+    with pytest.raises(IncompatibleAnalysisError, match="At least 6 observations"):
+        run_analysis(
+            compile_model(five_parameter_source),
+            calibration_request(
+                parameter_indices=[0, 1, 2, 3],
+                starting_values=[0.0, 0.0, 0.0, 0.0],
+                observed_inputs=CALIBRATION_INPUTS[:5],
+                observed_outputs=CALIBRATION_OUTPUTS[:5],
+            ),
+        )
+
+    with pytest.raises(ValidationError, match="at most 250 items"):
+        run_analysis(
+            compile_model(CALIBRATION_SOURCE),
+            calibration_request(
+                observed_inputs=[[float(index)] for index in range(251)],
+                observed_outputs=[float(index) for index in range(251)],
+            ),
+        )
+
+    excessive_parameters = list(range(9))
+    with pytest.raises(ValidationError, match="at most 8 items"):
+        run_analysis(
+            compile_model(CALIBRATION_SOURCE),
+            calibration_request(
+                parameter_indices=excessive_parameters,
+                starting_values=[0.0] * len(excessive_parameters),
+            ),
+        )
+
+
+def test_calibration_retains_complete_predictions_within_the_report_byte_cap() -> None:
+    inputs = [[0.5 + 9.0 * index / 249] for index in range(250)]
+    outputs = [2.8 + 1.2 * math.exp(0.5 * row[0]) for row in inputs]
+    runtime = compile_model(CALIBRATION_SOURCE)
+    calls_before = runtime.model.getEvaluationCallsNumber()
+    result = run_analysis(
+        runtime,
+        calibration_request(
+            starting_values=[2.5, 1.1, 0.45],
+            observed_inputs=inputs,
+            observed_outputs=outputs,
+        ),
+        seed=0,
+    )
+    calls_after = runtime.model.getEvaluationCallsNumber()
+
+    table = result.payload.tables["observations_and_predictions"]
+    assert table.row_count == 250
+    assert len(table.rows) == 250
+    assert table.truncated is False
+    assert len(result.payload.model_dump_json().encode()) < 1_000_000
+    assert result.runtime.model_evaluations == calls_after - calls_before
+    assert [
+        float(row[2]) for row in result.payload.tables["calibrated_parameters"].rows
+    ] == pytest.approx([2.8, 1.2, 0.5], abs=1.0e-6)
+
+
+def test_calibration_rejects_discrete_and_locally_non_identifiable_parameters() -> None:
+    discrete = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["a", "x"], ["a + x"])
+model.setOutputDescription(["y"])
+problem = ot.JointDistribution([ot.Poisson(2.0), ot.Normal()])
+problem.setDescription(["a", "x"])
+"""
+    )
+    with pytest.raises(IncompatibleAnalysisError, match="continuous model inputs"):
+        run_analysis(
+            discrete,
+            calibration_request(
+                parameter_indices=[0],
+                starting_values=[1.0],
+                observed_input_names=["x"],
+            ),
+        )
+
+    non_identifiable = compile_model(
+        """
+import openturns as ot
+model = ot.SymbolicFunction(["a", "b", "x"], ["a + b + x"])
+model.setOutputDescription(["y"])
+problem = ot.Normal(3)
+problem.setDescription(["a", "b", "x"])
+"""
+    )
+    with pytest.raises(IncompatibleAnalysisError, match="rank-deficient"):
+        run_analysis(
+            non_identifiable,
+            calibration_request(
+                parameter_indices=[0, 1],
+                starting_values=[1.0, 1.0],
+                observed_input_names=["x"],
+            ),
         )
 
 
