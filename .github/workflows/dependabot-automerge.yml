@@ -21,6 +21,7 @@ jobs:
     permissions:
       actions: write
       contents: write
+      issues: write
       pull-requests: write
     steps:
       - name: Approve and squash the exact tested Dependabot revision
@@ -107,6 +108,11 @@ jobs:
             gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/commits" \
               --jq '.[] | [.sha, .author.login, .commit.verification.verified] | @tsv'
           )
+
+          if jq -e 'any(.labels[]; .name == "dependencies:ci-failed")' <<<"$pr" >/dev/null; then
+            gh api --method DELETE \
+              "repos/$REPOSITORY/issues/$PR_NUMBER/labels/dependencies%3Aci-failed"
+          fi
 
           approved="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" | jq \
             --arg sha "$TESTED_SHA" \

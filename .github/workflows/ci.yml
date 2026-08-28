@@ -21,11 +21,8 @@ concurrency:
 jobs:
   dispatch-integrity:
     runs-on: ubuntu-latest
-    outputs:
-      release_requested: ${{ steps.bind.outputs.release_requested }}
     steps:
       - name: Bind trusted dispatches to the intended revision
-        id: bind
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           ACTUAL_SHA: ${{ github.sha }}
@@ -34,13 +31,11 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "$EXPECTED_SHA" ]]; then
-            echo "release_requested=false" >>"$GITHUB_OUTPUT"
             exit 0
           fi
           [[ "$EVENT_NAME" == "workflow_dispatch" ]]
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]]
-          echo "release_requested=true" >>"$GITHUB_OUTPUT"
 
   python:
     needs: dispatch-integrity
@@ -209,9 +204,7 @@ jobs:
 
   dispatch-bot-release:
     needs: [dispatch-integrity, required]
-    if: >-
-      needs.required.result == 'success' &&
-      needs.dispatch-integrity.outputs.release_requested == 'true'
+    if: github.event_name == 'workflow_dispatch' && needs.required.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -221,5 +214,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
           TESTED_SHA: ${{ github.sha }}
-        run: gh workflow run deploy.yml --repo "$REPOSITORY" --ref main -f sha="$TESTED_SHA"
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$EXPECTED_SHA" ]]; then
+            echo "No exact release revision was requested; CI only."
+            exit 0
+          fi
+          [[ "$EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TESTED_SHA" == "$EXPECTED_SHA" ]]
+          gh workflow run deploy.yml --repo "$REPOSITORY" --ref main -f sha="$TESTED_SHA"
