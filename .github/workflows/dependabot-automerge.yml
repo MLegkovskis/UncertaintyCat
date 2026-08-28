@@ -83,7 +83,7 @@ jobs:
               dependabot/npm_and_yarn/*)
                 [[ "$file" =~ (^|/)(package\.json|package-lock\.json|npm-shrinkwrap\.json)$ ]]
                 ;;
-              dependabot/pip/*)
+              dependabot/uv/*)
                 [[ "$file" == "pyproject.toml" || "$file" == "uv.lock" ]]
                 ;;
               dependabot/github_actions/*)

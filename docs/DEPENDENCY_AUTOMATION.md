@@ -19,7 +19,7 @@ Before approval, `.github/workflows/dependabot-automerge.yml` independently veri
    repository, and still points at that SHA;
 3. every commit is authored by Dependabot and has a valid GitHub verification signature;
 4. the branch identifies a configured ecosystem and changes only its dependency surfaces:
-   npm manifests/lockfiles, the root Python manifest/lockfile, or GitHub workflow/action definitions;
+   npm manifests/lockfiles, the root uv manifest/lockfile, or GitHub workflow/action definitions;
 5. the change contains no more than 30 files and GitHub reports it as merge-ready; and
 6. the approval and squash merge are bound to the tested head SHA.
 
@@ -29,11 +29,13 @@ rebase its dependency-only branch so the complete suite tests the combined resul
 
 ## Update policy
 
-`.github/dependabot.yml` scans npm, Python, and GitHub Actions every Monday in staggered UTC slots.
+`.github/dependabot.yml` scans npm, uv, and GitHub Actions every Monday in staggered UTC slots.
 Security updates are grouped per ecosystem; routine patch/minor updates are grouped to reduce churn;
 major updates remain isolated because they often need migration work. Dependabot rebases automatically,
-targets `main`, and may keep up to five version-update pull requests open per ecosystem. GitHub security
-updates are enabled at repository level and are not subject to that version-update limit.
+targets the default `main` branch, and may keep up to five version-update pull requests open per ecosystem.
+The redundant explicit `target-branch` setting is deliberately omitted so these same group rules also
+govern security updates. GitHub security updates are enabled at repository level and are not subject to
+the version-update limit.
 
 All external GitHub Actions are pinned to immutable commit SHAs. The readable version comment remains so
 Dependabot can raise signed SHA updates. Repository Actions policy also requires SHA pinning, making a
@@ -89,14 +91,14 @@ Use this diagnosis order for any failure:
 
 ## 2026-08-28 audit baseline
 
-| Pull requests | Finding | Resolution |
-| --- | --- | --- |
-| #51, #52, #53, #55 | Individual GitHub Action updates passed; grouping later superseded them. | Grouped #61 passed all gates and auto-merged. |
-| #54, #59 | Python proposals became obsolete after dependency/configuration cleanup. | Dependabot closed them as superseded; neither merged. |
-| #56 | Major frontend upgrades exposed genuine TypeScript/Vite/Lucide API breaks and the UI could not mount. | Superseded by #60, where the required compatibility migration was made and tested. |
-| #60 | Major npm migration plus explicit source/test repairs. | All five gates passed; exact-head workflow approved and auto-merged it. |
-| #61 | Dependency-only GitHub Actions group. | All five gates passed; exact-head workflow approved and auto-merged it. |
-| #62, #63 | Four gates passed; full-stack startup assumed Wrangler existed under `apps/api/node_modules`, while npm legitimately hoisted it. | The harness now resolves Wrangler through the npm workspace contract; the dependency update must rebase and pass the strengthened suite. |
+| Pull requests      | Finding                                                                                                                          | Resolution                                                                                                                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #51, #52, #53, #55 | Individual GitHub Action updates passed; grouping later superseded them.                                                         | Grouped #61 passed all gates and auto-merged.                                                                                                                                                    |
+| #54, #59           | Python proposals became obsolete after dependency/configuration cleanup.                                                         | Dependabot closed them as superseded; neither merged.                                                                                                                                            |
+| #56                | Major frontend upgrades exposed genuine TypeScript/Vite/Lucide API breaks and the UI could not mount.                            | Superseded by #60, where the required compatibility migration was made and tested.                                                                                                               |
+| #60                | Major npm migration plus explicit source/test repairs.                                                                           | All five gates passed; exact-head workflow approved and auto-merged it.                                                                                                                          |
+| #61                | Dependency-only GitHub Actions group.                                                                                            | All five gates passed; exact-head workflow approved and auto-merged it.                                                                                                                          |
+| #62, #63           | Four gates passed; full-stack startup assumed Wrangler existed under `apps/api/node_modules`, while npm legitimately hoisted it. | The harness now resolves Wrangler through the npm workspace contract. Dependabot replaced them with #64, which passed every strengthened gate, auto-merged, and entered exact-SHA post-merge CI. |
 
 This baseline is evidence for why failed CI must be diagnosed rather than automatically labelled an
 incompatible library. It is not an allowlist for future versions.

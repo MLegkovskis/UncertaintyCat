@@ -7,7 +7,6 @@ updates:
       day: monday
       time: "04:00"
       timezone: Etc/UTC
-    target-branch: main
     rebase-strategy: auto
     open-pull-requests-limit: 5
     commit-message:
@@ -22,14 +21,13 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
       day: monday
       time: "04:15"
       timezone: Etc/UTC
-    target-branch: main
     rebase-strategy: auto
     open-pull-requests-limit: 5
     commit-message:
@@ -51,7 +49,6 @@ updates:
       day: monday
       time: "04:30"
       timezone: Etc/UTC
-    target-branch: main
     rebase-strategy: auto
     open-pull-requests-limit: 5
     commit-message:

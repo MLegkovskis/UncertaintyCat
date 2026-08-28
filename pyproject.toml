@@ -21,7 +21,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black",
     "colorama>=0.4.6",
     "httpx>=0.27",
     "mypy>=1.13",
