@@ -24,6 +24,30 @@ def test_validate_and_execute() -> None:
     validation = client.post("/v1/validate", json={"source": source})
     assert validation.status_code == 200
     assert validation.json()["metadata"]["input_dimension"] == 3
+    assert validation.json()["metadata"]["equations"][0]["representation"] == "closed_form"
+    assert "=" in validation.json()["metadata"]["equations"][0]["latex"]
+
+    custom_validation = client.post(
+        "/v1/validate",
+        json={
+            "source": """
+import openturns as ot
+def response(X):
+    force, length, stiffness = X
+    return [force * length**3 / (3.0 * stiffness)]
+model = ot.PythonFunction(3, 1, response)
+model.setOutputDescription(["deflection"])
+problem = ot.JointDistribution([ot.Normal(10.0, 1.0), ot.Uniform(1.0, 2.0), ot.Uniform(2.0, 3.0)])
+problem.setDescription(["force", "length", "stiffness"])
+""",
+        },
+    )
+    assert custom_validation.status_code == 200
+    custom_equation = custom_validation.json()["metadata"]["equations"][0]
+    assert custom_equation["representation"] == "closed_form"
+    assert custom_equation["latex"].startswith("deflection=")
+    assert "force" in custom_equation["latex"]
+    assert "length" in custom_equation["latex"]
 
     execution = client.post(
         "/v1/execute",

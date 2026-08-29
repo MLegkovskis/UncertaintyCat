@@ -590,7 +590,7 @@ and [pinned upstream test](https://github.com/openturns/openturns/blob/772da39d3
 The vertical slice is scalar-output and continuous-input only. It transforms output through
 `exp(-distance_to_critical_domain / s)`, with `s = 0.1` times the sampled output standard deviation by
 default, and asks which inputs are associated with that smoothed target score. It caps inputs at 20,
-samples at 500, permutations at 200, and estimated quadratic work at 30 million units; requires at least
+samples at 500, permutations at 200, and estimated quadratic work at 150 million units; requires at least
 five sampled observations inside and outside the target; stores only one bounded input-index table; and
 accounts for exactly the sampled model evaluations. Dependent inputs remain allowed with an explicit
 confounding warning. Reports prohibit interpreting the result as failure probability, variance allocation,
@@ -602,6 +602,16 @@ Against the upstream fixed-seed Ishigami test (`a=5`, `b=0.1`, 100 observations,
 `[0.26863688, 0.00468423, 0.00339962]` within `1e-8`. Raw HSIC, asymptotic p-values, and permutation
 p-values also match their upstream vectors within `1e-8`. The run was exactly repeatable, used 100 model
 evaluations, took about 33 ms in the local prototype, and serialized to 2,784 bytes.
+
+### 2026-08-29 target-HSIC execution and presentation hardening
+
+Plugin `target_hsic` advanced to `1.1.0` without changing result schema `1.0.0` or the pinned OpenTURNS
+estimator. It now publishes monotonic, bounded, source-free phases for model sampling, empirical target
+coverage, kernel/filter construction, observed indices, permutation inference, and ranking. The two opaque
+OpenTURNS index/permutation calls are explicitly indeterminate. The benchmark still matches all pinned
+Ishigami vectors and now asserts this progress protocol. The browser contract distinguishes Global HSIC
+from Target-domain HSIC, verifies non-overlapping target controls and safe maximum-dimensional defaults,
+and reports plot exact retained HSIC table values rather than recomputing scientific evidence in React.
 
 ## 10. Copy-paste scheduled-agent prompt
 

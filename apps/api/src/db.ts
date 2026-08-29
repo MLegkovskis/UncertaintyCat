@@ -22,6 +22,17 @@ export function parseJson<T>(value: string | null, fallback: T): T {
   }
 }
 
+export function withDerivedEquations(
+  metadata: ModelMetadata,
+  equationsJson: string | null,
+): ModelMetadata {
+  const equations = parseJson<NonNullable<ModelMetadata["equations"]>>(
+    equationsJson,
+    metadata.equations ?? [],
+  );
+  return equations.length ? { ...metadata, equations } : metadata;
+}
+
 interface RunRow {
   id: string;
   project_id: string;
@@ -143,7 +154,8 @@ export async function loadModelDefinition(
 ): Promise<ModelDefinition | null> {
   const row = await env.DB.prepare(
     `SELECT m.id, m.project_id, m.version, m.source_kind, m.display_name,
-            m.source_key, m.source_hash, m.metadata_json, m.assessment_json,
+            m.source_key, m.source_hash, m.metadata_json, m.equations_json,
+            m.assessment_json,
             m.builder_spec_json,
             m.parent_version_id, m.derivation_json, m.created_at,
             p.name AS project_name, p.description AS project_description,
@@ -162,6 +174,7 @@ export async function loadModelDefinition(
       source_key: string;
       source_hash: string;
       metadata_json: string;
+      equations_json: string | null;
       assessment_json: string | null;
       builder_spec_json: string | null;
       parent_version_id: string | null;
@@ -183,9 +196,9 @@ export async function loadModelDefinition(
       sourceKind: row.source_kind,
       displayName: row.display_name,
       sourceHash: row.source_hash,
-      metadata: parseJson<ModelMetadata>(
-        row.metadata_json,
-        {} as ModelMetadata,
+      metadata: withDerivedEquations(
+        parseJson<ModelMetadata>(row.metadata_json, {} as ModelMetadata),
+        row.equations_json,
       ),
       assessment: parseJson<ModelAssessment | null>(row.assessment_json, null),
       parentVersionId: row.parent_version_id,
@@ -216,11 +229,14 @@ export async function modelMetadata(
   modelVersionId: string,
 ): Promise<ModelMetadata | null> {
   const row = await env.DB.prepare(
-    "SELECT metadata_json FROM model_versions WHERE id = ?",
+    "SELECT metadata_json, equations_json FROM model_versions WHERE id = ?",
   )
     .bind(modelVersionId)
-    .first<{ metadata_json: string }>();
+    .first<{ metadata_json: string; equations_json: string | null }>();
   return row
-    ? parseJson<ModelMetadata>(row.metadata_json, {} as ModelMetadata)
+    ? withDerivedEquations(
+        parseJson<ModelMetadata>(row.metadata_json, {} as ModelMetadata),
+        row.equations_json,
+      )
     : null;
 }

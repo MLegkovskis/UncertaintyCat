@@ -35,9 +35,11 @@ export const catalog: AnalysisCatalogEntry[] = [
   ],
 ].map(([key, name, category, resourceClass]) => ({
   key,
-  version: ["ancova", "calibration_nlls", "target_hsic"].includes(key)
+  version: ["ancova", "calibration_nlls"].includes(key)
     ? "1.0.0"
-    : ["hsic", "morris"].includes(key)
+    : key === "target_hsic"
+      ? "1.1.0"
+      : ["hsic", "morris"].includes(key)
       ? "2.1.0"
       : "2.0.0",
   name,
@@ -86,6 +88,13 @@ const modelMetadata: ModelMetadata = {
     },
   ],
   outputs: [{ index: 0, name: "Y" }],
+  equations: [
+    {
+      output_name: "Ishigami response",
+      latex: String.raw`Y=\sin(x_1)+7\sin^2(x_2)+0.1x_3^4\sin(x_1)`,
+      representation: "closed_form",
+    },
+  ],
   openturns_version: "1.25",
   batch_evaluation_supported: true,
   validation_runtime_ms: 12,
@@ -811,7 +820,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       }
       await route.fulfill({
         contentType: "text/markdown; charset=utf-8",
-        body: "### Model equation\n\n$$y = x_1 + x_2^2$$\n\n### Model overview\n\nThe validated fixture has **three inputs**.\n\n### Questions to confirm\n\n- Which units apply?",
+        body: "### Interpreted model equation\n\n$$Y = \\sin(x_1) + 7\\sin^2(x_2) + 0.1x_3^4\\sin(x_1)$$\n\n_AI-interpreted from the authenticated Python definition; verify against the source before engineering use._\n\n### Model overview\n\nThe validated fixture has **three inputs**.\n\n### Input uncertainty\n\nThree bounded inputs.\n\n### Dependence and propagation\n\nThe inputs are independent.\n\n### Validated pilot behaviour\n\nThe bounded pilot executed successfully.\n\n### Questions to confirm\n\n- Which units apply?",
       });
     },
   );

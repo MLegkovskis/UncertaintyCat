@@ -219,7 +219,15 @@ problem.setDescription(["X1", "X2", "X3"])
         },
         output_targets=[0],
     )
-    result_a = run_analysis(compile_model(source), request, seed=0)
+    progress: list[tuple[str, int, str, bool]] = []
+    result_a = run_analysis(
+        compile_model(source),
+        request,
+        seed=0,
+        progress_callback=lambda phase, percent, message, indeterminate: progress.append(
+            (phase, percent, message, indeterminate)
+        ),
+    )
     result_b = run_analysis(compile_model(source), request, seed=0)
     rows = {str(row[0]): row for row in result_a.payload.tables["target_indices"].rows}
 
@@ -248,6 +256,21 @@ problem.setDescription(["X1", "X2", "X3"])
     assert "NaN" not in serialized
     assert "Infinity" not in serialized
     assert len(serialized.encode()) < 10_000
+    phases = [item[0] for item in progress]
+    assert phases == [
+        "applicability",
+        "openturns",
+        "sampling",
+        "target_domain",
+        "kernel_construction",
+        "observed_indices",
+        "permutation_inference",
+        "ranking",
+        "serializing",
+    ]
+    assert [item[1] for item in progress] == sorted(item[1] for item in progress)
+    assert next(item for item in progress if item[0] == "permutation_inference")[3]
+    assert all("X1" not in item[2] for item in progress)
 
 
 @pytest.mark.parametrize(

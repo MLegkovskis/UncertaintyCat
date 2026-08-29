@@ -12,6 +12,7 @@ from uncertaintycat_core.contracts import AnalysisPayload, StrictModel, TableDat
 from uncertaintycat_core.errors import IncompatibleAnalysisError
 from uncertaintycat_core.model import ModelRuntime
 from uncertaintycat_core.plugins.base import AnalysisPlugin
+from uncertaintycat_core.progress import report_progress
 
 MAXIMUM_INPUT_DIMENSION = 20
 MAXIMUM_HSIC_WORK_UNITS = 150_000_000
@@ -42,7 +43,7 @@ class TargetHsicConfig(StrictModel):
 
 class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
     key = "target_hsic"
-    version = "1.0.0"
+    version = "1.1.0"
     name = "Target-Domain HSIC Sensitivity"
     category = "Sensitivity"
     description = (
@@ -104,6 +105,7 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
         self.applicability_warnings(runtime, config)
         target = config.output_targets[0] if config.output_targets else 0
         calls_before = runtime.model.getEvaluationCallsNumber()
+        report_progress("sampling", 22, f"Evaluating {config.sample_size} model samples.")
         inputs, outputs = runtime.sample_and_evaluate(config.sample_size, config.seed)
         model_evaluations = int(runtime.model.getEvaluationCallsNumber() - calls_before)
         if model_evaluations < 0:
@@ -142,6 +144,11 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
                 f"domain; this run found {outside_count}. Adjust the threshold or sample size."
             )
 
+        report_progress(
+            "target_domain",
+            34,
+            "Checking sampled coverage on both sides of the critical-domain threshold.",
+        )
         kernels = ot.CovarianceModelCollection()
         for index in range(runtime.metadata.input_dimension):
             standard_deviation = float(
@@ -181,6 +188,11 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
         )
 
         try:
+            report_progress(
+                "kernel_construction",
+                46,
+                "Constructing Gaussian kernels and the smoothed critical-domain filter.",
+            )
             estimator = ot.HSICEstimatorTargetSensitivity(
                 kernels,
                 input_sample,
@@ -189,14 +201,27 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
                 filter_function,
             )
             estimator.setPermutationSize(config.permutations)
+            report_progress(
+                "observed_indices",
+                56,
+                "OpenTURNS is computing observed target-domain HSIC indices.",
+                indeterminate=True,
+            )
             hsic_indices = [float(value) for value in estimator.getHSICIndices()]
             normalized_indices = [float(value) for value in estimator.getR2HSICIndices()]
             asymptotic_p_values = [float(value) for value in estimator.getPValuesAsymptotic()]
-            permutation_p_values: list[float | None] = (
-                [float(value) for value in estimator.getPValuesPermutation()]
-                if config.permutations
-                else [None] * runtime.metadata.input_dimension
-            )
+            if config.permutations:
+                report_progress(
+                    "permutation_inference",
+                    66,
+                    f"OpenTURNS is evaluating {config.permutations} permutation replicates.",
+                    indeterminate=True,
+                )
+                permutation_p_values: list[float | None] = [
+                    float(value) for value in estimator.getPValuesPermutation()
+                ]
+            else:
+                permutation_p_values = [None] * runtime.metadata.input_dimension
         except Exception as exc:
             raise IncompatibleAnalysisError(
                 f"OpenTURNS could not compute target-domain HSIC for this sample: {exc}"
@@ -213,6 +238,7 @@ class TargetHsicPlugin(AnalysisPlugin[TargetHsicConfig]):
                 "OpenTURNS produced a non-finite target-domain HSIC diagnostic."
             )
 
+        report_progress("ranking", 90, "Ranking critical-domain association evidence.")
         names = [item.name for item in runtime.metadata.inputs]
         order = sorted(range(len(names)), key=lambda index: normalized_indices[index], reverse=True)
         rank_by_index = {input_index: rank for rank, input_index in enumerate(order, start=1)}

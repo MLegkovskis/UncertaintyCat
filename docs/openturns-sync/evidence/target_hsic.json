@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "pluginKey": "target_hsic",
-  "pluginVersion": "1.0.0",
+  "pluginVersion": "1.1.0",
   "resultSchemaVersion": "1.0.0",
   "openturnsVersion": "1.27.post1",
   "upstreamEvidence": [

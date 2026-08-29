@@ -88,6 +88,23 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(page.locator(".report-section .status-succeeded")).toHaveCount(
     10,
   );
+  for (const analysisKey of [
+    "monte_carlo",
+    "eda",
+    "convergence",
+    "correlation",
+    "sobol",
+    "fast",
+    "hsic",
+    "target_hsic",
+    "taylor",
+    "reliability",
+  ]) {
+    await expect(
+      page.locator(`#section-${analysisKey} .echart`).first(),
+      `${analysisKey} should retain a meaningful report visualization`,
+    ).toBeVisible();
+  }
   const targetHsicSection = page.locator("#section-target_hsic");
   await expect(targetHsicSection).toBeVisible();
   await expect(
@@ -251,6 +268,7 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(
     calibrationSection.getByText("Observed versus predicted"),
   ).toBeVisible();
+  await expect(calibrationSection.locator(".echart").first()).toBeVisible();
   await expect(
     calibrationSection.getByText(/not exact confidence guarantees/i),
   ).toBeVisible();
@@ -344,6 +362,7 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await expect(
     page.getByRole("columnheader", { name: "Correlation Contribution" }),
   ).toBeVisible();
+  await expect(page.locator("#section-ancova .echart").first()).toBeVisible();
 
   await page.goto("/studies");
   await expect(page.getByText(studyName)).toBeVisible();

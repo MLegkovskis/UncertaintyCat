@@ -31,7 +31,7 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - authenticated desktop/mobile navigation, account identity, immediate sign-out without a hard refresh, and theme persistence;
 - discovery of all 24 reference models in the unified, immediately editable Python authoring view;
 - blank/manual model naming, resizable Python authoring, project creation from the project index, project-scoped studio navigation, and the multi-output symbolic OpenTURNS builder;
-- model validation success/failure, immediate in-flight Model Understanding feedback, analysis controls locked until validation succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
+- model validation success/failure, immediate deterministic equation fallback, Groq-compatible display-math interpretation for arbitrary authenticated Python, in-flight Model Understanding feedback, analysis controls locked until the complete AI brief succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
 - integrated validation/Model Understanding, primary/fallback model policy, single-flight polling, explicit uncharged timeout/failure states, named-observation Calibration Studio, model- and data-driven surrogate fitting, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
 - desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
 - queued/running/terminal run states, separate accessible progress bars and named phase messages for every
@@ -39,6 +39,10 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - catalog-wide post-validation applicability, including explicit dependent-copula disablement and the
   model-specific damped-oscillator HSIC sample cap in both displayed guidance and submitted request JSON;
 - metrics, tables, truncation notices, series, heatmaps, facts, equations, assumptions, provenance, partial failures, sharing, bundle export, and direct PDF-download wiring;
+- catalog-wide visualization strategy coverage: table-only FAST, Sobol, HSIC, target-HSIC, Taylor, Morris,
+  ANCOVA, PCE, reliability, and calibration results receive semantic charts; Monte Carlo samples receive
+  histograms; convergence/validation series and correlation matrices retain line/scatter/heatmap views;
+  every chart keeps its exact table, series, or matrix evidence available;
 - stored report chat, streaming Markdown, human-readable evidence badges, section-aware sensitivity discovery, suggestions, and quota failures;
 - equal-height scroll-bounded Model Understanding, unclipped exact-data disclosure controls, and syntax-highlighted immutable Python source;
 - authenticated read-only shared reports; and

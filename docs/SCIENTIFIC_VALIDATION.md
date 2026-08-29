@@ -78,7 +78,10 @@ npm run test:e2e
   make this a sample-dependent association screen—not event probability, variance allocation, causal
   influence, or evidence beyond the sampled input distribution. Slightly negative finite-sample unbiased
   U-statistic estimates are retained rather than clipped. Dependent-input results retain an explicit
-  confounding warning.
+  confounding warning. Plugin version `1.1.0` leaves this numerical and result-schema contract unchanged,
+  but emits monotonic sampling, target-coverage, kernel, observed-index, permutation, and ranking phases.
+  Opaque observed/permutation calls remain indeterminate rather than claiming fabricated completion
+  percentages. Reports plot the exact retained target R2-HSIC rows and retain the underlying table.
 - Taylor: local gradients at the mean; the independently sampled linear-surrogate Q2 exposes when a local
   approximation is poor globally.
 - PCE: independent validation Q2/RMSE is always reported; a fitted surrogate is not automatically an

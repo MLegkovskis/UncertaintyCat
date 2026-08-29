@@ -239,7 +239,7 @@ test.describe("model studio", () => {
       page.getByRole("heading", { name: "Model Understanding" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Model equation" }),
+      page.getByRole("heading", { name: /model equation/i }),
     ).toBeVisible();
     await expect(page.locator(".understanding-pane .katex")).toBeVisible();
     await page.locator(".validated-studio").evaluate((element) => {
@@ -363,7 +363,17 @@ test.describe("model studio", () => {
       page.getByText("An existing AI generation is finishing…"),
     ).toBeVisible();
     await expect(
+      page.getByRole("heading", { name: /model equation/i }),
+    ).toBeVisible();
+    await expect(page.locator(".validation-equations .katex")).toBeVisible();
+    await expect(
+      page.getByText("This model is practical to evaluate directly."),
+    ).toHaveCount(0);
+    await expect(
       page.getByText("The existing generation completed once."),
+    ).toBeVisible();
+    await expect(
+      page.getByText("This model is practical to evaluate directly."),
     ).toBeVisible();
     expect(reads).toBeGreaterThanOrEqual(3);
     expect(writes).toBe(0);
@@ -454,7 +464,7 @@ test.describe("model studio", () => {
 
   test("keeps target HSIC UI defaults within the maximum-dimensional core resource envelope", async ({
     page,
-  }) => {
+  }, testInfo) => {
     const maximumDimensionalModel = {
       ...savedModel,
       id: "model-20d",
@@ -506,6 +516,43 @@ test.describe("model studio", () => {
       })
       .locator("input")
       .check();
+    await expect(
+      page.getByRole("region", { name: "HSIC method comparison" }),
+    ).toContainText("Two complementary HSIC questions");
+    await expect(page.getByText("Whole response", { exact: true })).toBeVisible();
+    await expect(page.getByText("Critical region", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Region direction")).toBeVisible();
+    await expect(page.getByLabel("Output threshold")).toBeVisible();
+    await expect(page.getByLabel("Permutation replicates")).toHaveValue("100");
+    const targetBoxes = await page.locator(".target-hsic-studio").evaluate((studio) => {
+      const bounds = (selector: string) => {
+        const element = studio.querySelector(selector);
+        if (!element) return null;
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      const { x, y, width, height } = studio.getBoundingClientRect();
+      return {
+        studio: { x, y, width, height },
+        direction: bounds(".target-domain-fields label:first-child"),
+        threshold: bounds(".target-domain-fields label:last-child"),
+        permutations: bounds(".target-permutation-card label"),
+      };
+    });
+    expect(targetBoxes.studio).not.toBeNull();
+    expect(targetBoxes.direction).not.toBeNull();
+    expect(targetBoxes.threshold).not.toBeNull();
+    expect(targetBoxes.permutations).not.toBeNull();
+    expect(targetBoxes.direction!.width).toBeGreaterThan(250);
+    expect(targetBoxes.threshold!.width).toBeGreaterThan(200);
+    expect(targetBoxes.direction!.x + targetBoxes.direction!.width).toBeLessThanOrEqual(
+      targetBoxes.threshold!.x,
+    );
+    expect(targetBoxes.permutations!.width).toBeGreaterThan(180);
+    await testInfo.attach("target-hsic-composer", {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: "image/png",
+    });
     await page.getByRole("button", { name: "Run analyses" }).click();
 
     await expect.poll(() => runBody).toBeTruthy();
@@ -727,9 +774,9 @@ test.describe("model studio", () => {
     await page
       .getByRole("spinbutton", { name: "Threshold", exact: true })
       .fill("-2.5");
-    await page.getByLabel("Target domain").selectOption("<=");
-    await page.getByLabel("Target HSIC threshold").fill("4.5");
-    await page.getByLabel("Target HSIC permutations").fill("40");
+    await page.getByLabel("Region direction").selectOption("<=");
+    await page.getByLabel("Output threshold").fill("4.5");
+    await page.getByLabel("Permutation replicates").fill("40");
     await page.getByRole("button", { name: "Run analyses" }).click();
 
     await expect(page).toHaveURL(/\/runs\/run-1$/);
@@ -988,7 +1035,7 @@ test.describe("run lifecycle", () => {
       "OpenTURNS is evaluating 100 permutation replicates.",
     );
     await expect(
-      activeHsic.getByRole("progressbar", { name: "hsic progress" }),
+      activeHsic.getByRole("progressbar", { name: "Global HSIC progress" }),
     ).not.toHaveAttribute("aria-valuenow");
     const queuedCorrelation = page.locator('[data-analysis-key="correlation"]');
     await expect(queuedCorrelation).toContainText(
@@ -1019,6 +1066,75 @@ test.describe("run lifecycle", () => {
 });
 
 test.describe("reports and grounded chat", () => {
+  test("renders equation metadata retained from an authenticated custom Python model", async ({
+    page,
+  }) => {
+    const report = makeReport();
+    report.modelVersion.sourceKind = "python";
+    report.model.equations = [
+      {
+        output_name: "User-defined deflection",
+        latex: "y=\\frac{F L^3}{3 E I}",
+        representation: "closed_form",
+      },
+    ];
+    await installMockApi(page, {
+      authenticated: true,
+      projects: [project],
+      report,
+    });
+
+    await page.goto("/reports/report-1");
+    await expect(page.getByText("User-defined deflection")).toBeVisible();
+    await expect(page.locator(".model-definition-section .katex")).toBeVisible();
+    await expect(page.locator(".model-definition-section")).not.toContainText(
+      "response = x1 + x2^2",
+    );
+  });
+
+  test("renders table-only FAST evidence as sensitivity visuals with exact rows retained", async ({
+    page,
+  }) => {
+    const fast = analysisResult("fast");
+    fast.payload.metrics = {
+      sample_size: 1000,
+      model_evaluations: 7000,
+    };
+    fast.payload.tables = {
+      indices: {
+        columns: ["Variable", "First Order", "Total Order", "Interaction"],
+        rows: [
+          ["x1", 0.31, 0.55, 0.24],
+          ["x2", 0.44, 0.46, 0.02],
+          ["x3", 0.01, 0.18, 0.17],
+        ],
+        row_count: 3,
+        truncated: false,
+      },
+    };
+    fast.payload.series = {};
+    fast.payload.matrices = {};
+    const report = makeReport();
+    report.status = "succeeded";
+    report.sections = [{ key: "fast", status: "succeeded", result: fast }];
+    await installMockApi(page, {
+      authenticated: true,
+      projects: [project],
+      report,
+    });
+
+    await page.goto("/reports/report-1");
+    await expect(
+      page.getByRole("img", {
+        name: /FAST first-order and total-order indices/,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("img", { name: /FAST total-order decomposition/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("table").filter({ hasText: "x3" })).toBeVisible();
+  });
+
   test("renders every evidence type and operates export, share, print, and streaming chat", async ({
     page,
   }, testInfo) => {

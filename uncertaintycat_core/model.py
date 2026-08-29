@@ -20,6 +20,7 @@ from uncertaintycat_core.contracts import (
     VariableMetadata,
     WorkflowRecommendation,
 )
+from uncertaintycat_core.equations import extract_model_equations
 from uncertaintycat_core.errors import InvalidModelError, UnsafeModelError
 
 MAX_SOURCE_BYTES = 256 * 1024
@@ -236,6 +237,11 @@ def compile_model(source: str, *, validation_sample_size: int = 8, seed: int = 4
         output_dimension=output_dimension,
         inputs=inputs,
         outputs=[OutputMetadata(index=i, name=name) for i, name in enumerate(output_names)],
+        equations=extract_model_equations(
+            source,
+            input_names=input_names,
+            output_names=output_names,
+        ),
         openturns_version=ot.__version__,
         batch_evaluation_supported=batch_supported,
         validation_sample_size=validation_sample_size,

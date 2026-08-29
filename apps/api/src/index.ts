@@ -48,11 +48,10 @@ import {
   modelUnderstandingCacheVersion,
 } from "./ai-provider";
 import {
-  composeModelUnderstanding,
-  deterministicEquationMarkdown,
   MODEL_UNDERSTANDING_SYSTEM_PROMPT,
-  referenceModelContext,
+  modelUnderstandingPrompt,
   reportChatSystemPrompt,
+  validModelUnderstanding,
 } from "./ai-prompts";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
 import {
@@ -67,6 +66,7 @@ import {
   modelMetadata,
   now,
   parseJson,
+  withDerivedEquations,
 } from "./db";
 import type { Env, Identity, RunTaskMessage } from "./env";
 import { createReportBundle } from "./exports";
@@ -1062,7 +1062,8 @@ app.get("/api/v1/projects/:projectId/models", async (c) => {
     return jsonError(c, 404, "project_not_found", "Project not found.");
   const rows = await c.env.DB.prepare(
     `SELECT id, project_id, version, source_kind, display_name, source_hash,
-            metadata_json, assessment_json, parent_version_id, derivation_json, created_at
+            metadata_json, equations_json, assessment_json, parent_version_id,
+            derivation_json, created_at
      FROM model_versions WHERE project_id = ? ORDER BY version DESC`,
   )
     .bind(c.req.param("projectId"))
@@ -1074,6 +1075,7 @@ app.get("/api/v1/projects/:projectId/models", async (c) => {
       display_name: string;
       source_hash: string;
       metadata_json: string;
+      equations_json: string | null;
       assessment_json: string | null;
       parent_version_id: string | null;
       derivation_json: string | null;
@@ -1087,9 +1089,9 @@ app.get("/api/v1/projects/:projectId/models", async (c) => {
       sourceKind: row.source_kind,
       displayName: row.display_name,
       sourceHash: row.source_hash,
-      metadata: parseJson<ModelMetadata>(
-        row.metadata_json,
-        {} as ModelMetadata,
+      metadata: withDerivedEquations(
+        parseJson<ModelMetadata>(row.metadata_json, {} as ModelMetadata),
+        row.equations_json,
       ),
       assessment: parseJson<ModelAssessment | null>(row.assessment_json, null),
       parentVersionId: row.parent_version_id,
@@ -1144,7 +1146,22 @@ app.post(
         validationBody.error?.message ?? "Model validation failed.",
       );
     }
-    const metadata = validationBody.metadata;
+    const referenceEquations =
+      input.sourceKind === "example"
+        ? EXAMPLE_CATALOG.find(
+            (example) => example.sha256 === validationBody.metadata?.source_hash,
+          )?.equations
+        : undefined;
+    const metadata: ModelMetadata = referenceEquations?.length
+      ? {
+          ...validationBody.metadata,
+          equations: referenceEquations.map((equation) => ({
+            output_name: equation.outputName,
+            latex: equation.latex,
+            representation: "closed_form" as const,
+          })),
+        }
+      : validationBody.metadata;
     const assessment = validationBody.assessment;
     if (assessment) {
       const attached = await c.env.DB.prepare(
@@ -1182,7 +1199,7 @@ app.post(
     }
     const existing = await c.env.DB.prepare(
       `SELECT id, version, source_kind, display_name, source_hash, metadata_json,
-              assessment_json, parent_version_id, derivation_json, created_at
+              equations_json, assessment_json, parent_version_id, derivation_json, created_at
        FROM model_versions WHERE project_id = ? AND source_hash = ?`,
     )
       .bind(projectId, metadata.source_hash)
@@ -1193,19 +1210,22 @@ app.post(
         display_name: string;
         source_hash: string;
         metadata_json: string;
+        equations_json: string | null;
         assessment_json: string | null;
         parent_version_id: string | null;
         derivation_json: string | null;
         created_at: string;
-      }>();
+    }>();
     if (existing) {
-      if (assessment) {
-        await c.env.DB.prepare(
-          "UPDATE model_versions SET assessment_json = ? WHERE id = ?",
+      await c.env.DB.prepare(
+        "UPDATE model_versions SET assessment_json = ?, equations_json = ? WHERE id = ?",
+      )
+        .bind(
+          assessment ? JSON.stringify(assessment) : existing.assessment_json,
+          JSON.stringify(metadata.equations ?? []),
+          existing.id,
         )
-          .bind(JSON.stringify(assessment), existing.id)
-          .run();
-      }
+        .run();
       return c.json({
         modelVersion: {
           id: existing.id,
@@ -1214,7 +1234,10 @@ app.post(
           sourceKind: existing.source_kind,
           displayName: existing.display_name,
           sourceHash: existing.source_hash,
-          metadata: parseJson<ModelMetadata>(existing.metadata_json, metadata),
+          metadata: withDerivedEquations(
+            parseJson<ModelMetadata>(existing.metadata_json, metadata),
+            JSON.stringify(metadata.equations ?? []),
+          ),
           assessment:
             assessment ??
             parseJson<ModelAssessment | null>(existing.assessment_json, null),
@@ -1246,9 +1269,9 @@ app.post(
         c.env.DB.prepare(
           `INSERT INTO model_versions
            (id, project_id, version, source_kind, display_name, source_key,
-            source_hash, metadata_json, assessment_json, builder_spec_json,
+            source_hash, metadata_json, equations_json, assessment_json, builder_spec_json,
             parent_version_id, derivation_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           id,
           projectId,
@@ -1258,6 +1281,7 @@ app.post(
           sourceKey,
           metadata.source_hash,
           JSON.stringify(metadata),
+          JSON.stringify(metadata.equations ?? []),
           assessment ? JSON.stringify(assessment) : null,
           input.builderSpec ? JSON.stringify(input.builderSpec) : null,
           input.parentVersionId ?? null,
@@ -2144,36 +2168,17 @@ app.post(
               timeout: attempt.timeoutMs,
               temperature: 0.1,
               system: MODEL_UNDERSTANDING_SYSTEM_PROMPT,
-              prompt: JSON.stringify({
-                facts: {
-                  sourceKind: definition.modelVersion.sourceKind,
-                  inputDimension:
-                    definition.modelVersion.metadata.input_dimension,
-                  outputDimension:
-                    definition.modelVersion.metadata.output_dimension,
-                  inputs: definition.modelVersion.metadata.inputs,
-                  outputs: definition.modelVersion.metadata.outputs,
-                  functionType: definition.modelVersion.metadata.function_type,
-                  copula: definition.modelVersion.metadata.copula,
-                  dependentInputs:
-                    definition.modelVersion.metadata.dependent_inputs,
-                  validationSampleSize:
-                    definition.modelVersion.metadata.validation_sample_size,
-                  pilotOutputs:
-                    definition.modelVersion.assessment?.profile.pilot_outputs,
-                  publicReferenceModel: referenceModelContext(definition),
-                },
-              }),
+              prompt: modelUnderstandingPrompt(definition),
             });
             const narrative = result.text.trim();
             if (!narrative)
               throw new Error("The AI provider returned an empty explanation.");
-            const content = composeModelUnderstanding(
-              deterministicEquationMarkdown(definition),
-              narrative,
-            );
+            if (!validModelUnderstanding(narrative))
+              throw new Error(
+                "The AI provider returned an invalid Model Understanding structure.",
+              );
             return {
-              content,
+              content: narrative,
               modelId: attempt.modelId,
               attemptDurationMs: Date.now() - attemptStartedAt,
             };
@@ -2185,10 +2190,8 @@ app.post(
                 understandingId,
                 aiModelId: attempt.modelId,
                 durationMs: Date.now() - attemptStartedAt,
-                error: (error instanceof Error
-                  ? error.message
-                  : String(error)
-                ).slice(0, 2_000),
+                errorType:
+                  error instanceof Error ? error.name : "provider_error",
               }),
             );
             throw error;
@@ -2253,7 +2256,7 @@ app.post(
           fallbackAiModelId: runtime.models.modelUnderstanding.fallbackModelId,
           durationMs: Date.now() - generationStartedAt,
           code: failure.code,
-          error: failure.diagnostic,
+          errorType: failure.code,
         }),
       );
       return jsonError(c, failure.status, failure.code, failure.message);

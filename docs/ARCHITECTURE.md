@@ -118,9 +118,10 @@ Target-domain HSIC remains a project-scoped direct analysis because it consumes 
 explicit scalar critical domain. Its custom composer controls select the threshold direction, threshold,
 and bounded permutation count; `uncertaintycat_core` alone samples the declared distribution, constructs
 the OpenTURNS distance filter and kernels, validates empirical target coverage, and returns aggregate
-indices. No sampled input/output rows or Python source enter the stored report, browser bundle, logs, or AI
-prompt. The persisted `target_hsic` key and `1.0.0` result schema are separate from global `hsic`, so older
-reports retain their original meaning.
+indices. Target-HSIC execution adds no sampled input/output rows or Python source to the stored report,
+browser bundle, logs, or report-chat prompt. The persisted `target_hsic` key and `1.0.0` result schema are separate from global `hsic`, so older
+reports retain their original meaning. Plugin `1.1.0` adds source-free target-coverage, kernel,
+observed-index, permutation, and ranking progress phases without changing the numerical result schema.
 
 Calibration Studio retains the current project model and uses stable OpenTURNS `ParametricFunction`,
 `NonLinearLeastSquaresCalibration`, and `CalibrationResult` APIs inside the same Sandbox boundary. Selected
@@ -138,13 +139,17 @@ user-defined critical domain. Its validation outcome, deterministic facts,
 AI brief, and recommended route are rendered together so an assessment does not fragment across the
 authoring page. The deterministic rule prioritizes Morris at
 15 or more inputs, recommends an eligible surrogate above a measured five-second projection per 1,000
-evaluations, and otherwise recommends direct analysis. The selected AI provider explains validated metadata separately;
-it does not choose the route and does not receive Python source. Curated equations for bundled reference
-models and validated formulas from the guided OpenTURNS SymbolicFunction builder are rendered
-deterministically ahead of that explanation; the language model is never asked to reverse-engineer an
-equation from private Python. Reference models with a curated equation can carry multiple governing
-expressions (for example, the tube section's second moment of area and its resulting deflection), which
-keeps the displayed mathematics exact without weakening source isolation.
+evaluations, and otherwise recommends direct analysis. The selected AI provider explains validated metadata
+separately; it does not choose the route. The isolated validator produces
+bounded equation metadata for every Python model: closed-form LaTeX for reducible callbacks and symbolic
+formulas, or an exact formal `y=f(x)` mapping for procedural solvers and control flow. Authors may explicitly
+declare bounded governing LaTeX for procedural models. Curated reference equations take precedence. While
+that deterministic definition renders immediately, the authenticated Model Understanding request sends at
+most 32,000 model-source characters to the selected AI provider for a clearly labelled approximate LaTeX
+interpretation. It is explanatory rather than numerical evidence and falls back to the deterministic mapping.
+The deterministic workflow recommendation is gated on that same completed state, so it cannot appear ahead of
+Model Understanding. A forward-only D1 `equations_json` cache backfills existing immutable model versions
+without rewriting their historical `metadata_json` or R2 source.
 
 Routes are split so the Python editor is loaded only in the model workspace. Reports are responsive HTML,
 lazy-load the plotting runtime, retain exact table/text fallbacks, and lazy-load `html2canvas`/`jsPDF` only
@@ -210,7 +215,7 @@ conversation or changing inline code.
 The contract also prevents an EDA correlation screen from being presented as a global sensitivity ranking,
 prevents ANCOVA correlation contributions from being presented as causal or total-order effects, and
 requires all completed sensitivity sections to be inspected before declaring findings absent.
-Model Understanding is also source-isolated: it receives compact validated metadata, has a 220-to-320-word response contract and a bounded
+Model Understanding receives bounded model source plus compact validated metadata, has a 240-to-360-word response contract and a bounded
 output budget, and D1 caches it by model hash, prompt version, provider, and model ID. Groq defaults to
 `openai/gpt-oss-20b` for the short brief, with one bounded `openai/gpt-oss-120b` fallback, and uses
 `openai/gpt-oss-120b` for report chat. Low reasoning effort avoids unnecessary latency and parallel tool calls
@@ -224,7 +229,9 @@ numerical artifacts.
 
 ## Data ownership and retention
 
-- D1 holds authenticated identities, projects, model assessment/lineage, dataset and surrogate indexes, task state, report references, chat/understanding text, quotas, and share-link hashes.
+- D1 holds authenticated identities, projects, model assessment/lineage, bounded derived-equation caches,
+  dataset and surrogate indexes, task state, report references, chat/understanding text, quotas, and
+  share-link hashes.
 - R2 holds immutable model source, private original datasets, promoted model-based surrogate XML, and
   retained data-driven Gaussian-process XML. Raw share tokens are never persisted.
 - A report bundle contains its manifest, complete JSON, and normalized CSV views so it remains useful

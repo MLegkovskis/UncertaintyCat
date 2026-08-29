@@ -49,12 +49,19 @@ class OutputMetadata(StrictModel):
     name: str
 
 
+class ModelEquation(StrictModel):
+    output_name: str = Field(min_length=1, max_length=120)
+    latex: str = Field(min_length=1, max_length=4_000)
+    representation: Literal["closed_form", "declared", "formal_mapping"]
+
+
 class ModelMetadata(StrictModel):
     source_hash: str
     input_dimension: int = Field(gt=0)
     output_dimension: int = Field(gt=0)
     inputs: list[VariableMetadata]
     outputs: list[OutputMetadata]
+    equations: list[ModelEquation] = Field(default_factory=list, max_length=6)
     openturns_version: str
     batch_evaluation_supported: bool
     validation_sample_size: int = Field(ge=1)

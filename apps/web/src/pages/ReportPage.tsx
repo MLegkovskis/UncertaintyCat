@@ -26,6 +26,53 @@ function analysisTitle(key: string) {
   return key.replaceAll("_", " ");
 }
 
+function equationMarkdownText(value: string) {
+  return value.replace(/([\\`*_[\]{}()#+.!|>~-])/g, "\\$1");
+}
+
+function equationMathBody(value: string) {
+  return value.replaceAll("$", "\\$");
+}
+
+function ModelEquationSummary({
+  model,
+  spec,
+}: {
+  model: ModelMetadata;
+  spec: Record<string, unknown> | null | undefined;
+}) {
+  const symbolicOutputs = Array.isArray(spec?.outputs)
+    ? (spec.outputs as Array<{ name?: string; formula?: string }>).flatMap(
+        (output) =>
+          output.name && output.formula
+            ? [{ outputName: output.name, latex: `${output.name}=${output.formula}` }]
+            : [],
+      )
+    : [];
+  const equations = model.equations?.length
+    ? model.equations.map((equation) => ({
+        outputName: equation.output_name,
+        latex: equation.latex,
+      }))
+    : symbolicOutputs;
+  if (!equations.length) return null;
+  return (
+    <div className="symbolic-definition">
+      <div>
+        <strong>Rendered equations</strong>
+        <Markdown>
+          {equations
+            .map(
+              (equation) =>
+                `**${equationMarkdownText(equation.outputName)}**\n\n$$${equationMathBody(equation.latex)}$$`,
+            )
+            .join("\n\n")}
+        </Markdown>
+      </div>
+    </div>
+  );
+}
+
 function SymbolicDefinitionSummary({ spec }: { spec: Record<string, unknown> | null | undefined }) {
   if (!spec || !Array.isArray(spec.variables) || !Array.isArray(spec.outputs)) return null;
   const variables = spec.variables as Array<{
@@ -33,21 +80,11 @@ function SymbolicDefinitionSummary({ spec }: { spec: Record<string, unknown> | n
     distribution?: string;
     parameters?: unknown[];
   }>;
-  const outputs = spec.outputs as Array<{ name?: string; formula?: string }>;
   const copula = spec.copula as
     | { kind?: string; correlation?: unknown[][] }
     | undefined;
   return (
     <div className="symbolic-definition">
-      <div>
-        <strong>Rendered equations</strong>
-        <Markdown>
-          {outputs
-            .filter((output) => output.name && output.formula)
-            .map((output) => `$$\\mathrm{${output.name}} = ${output.formula}$$`)
-            .join("\n\n")}
-        </Markdown>
-      </div>
       <div>
         <strong>Inputs and marginals</strong>
         <div className="table-scroll" tabIndex={0}>
@@ -365,6 +402,10 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
               <h2>Exact immutable source</h2>
               <p>Created {new Date(report.modelVersion.createdAt).toLocaleString()} · seed {report.seed} · {report.accuracyProfile} accuracy</p>
             </div>
+            <ModelEquationSummary
+              model={report.model}
+              spec={(definitionQuery.data?.definition ?? report.modelDefinition)?.builderSpec}
+            />
             <SymbolicDefinitionSummary
               spec={(definitionQuery.data?.definition ?? report.modelDefinition)?.builderSpec}
             />

@@ -30,14 +30,14 @@ describe("AI runtime policy", () => {
     expect(generationLeaseIsActive("generating", "not-a-date", current)).toBe(false);
   });
 
-  it("returns a user-safe timeout while retaining a bounded diagnostic", () => {
+  it("returns a user-safe timeout without retaining provider prompt text", () => {
     const failure = generationFailure(new Error("request timeout at upstream"));
     expect(failure).toMatchObject({
       code: "model_understanding_timeout",
       status: 504,
     });
     expect(failure.message).toContain("failed requests are not charged");
-    expect(failure.diagnostic).toBe("request timeout at upstream");
+    expect(failure.diagnostic).toBe("upstream_timeout");
   });
 
   it("uses the first successful fallback attempt", async () => {

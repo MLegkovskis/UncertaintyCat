@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-28",
+  "reviewed_at": "2026-08-29",
   "uncertaintycat_openturns_pin": "1.27.post1",
   "latest_stable_pypi_release": "1.27.post1",
   "upstream_repository": "https://github.com/openturns/openturns",
@@ -14,9 +14,9 @@
   "last_delivered_candidate": {
     "key": "target_hsic",
     "name": "Target-Domain HSIC Sensitivity",
-    "plugin_version": "1.0.0",
+    "plugin_version": "1.1.0",
     "result_schema_version": "1.0.0",
-    "upstream_basis": "Stable OpenTURNS HSICEstimatorTargetSensitivity, DistanceToDomainFunction, ParametricFunction, SquaredExponential, and HSICUStat APIs close the retained critical-domain sensitivity gap; the checkpoint-to-HEAD development delta was empty",
+    "upstream_basis": "Stable OpenTURNS HSICEstimatorTargetSensitivity, DistanceToDomainFunction, ParametricFunction, SquaredExponential, and HSICUStat APIs close the retained critical-domain sensitivity gap; version 1.1.0 preserves the numerical contract and adds bounded source-free execution phases around opaque OpenTURNS work",
     "decision": "implemented"
   },
   "reviewed_candidates": [

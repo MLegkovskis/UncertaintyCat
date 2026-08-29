@@ -28,7 +28,7 @@
 - A plugin change requires strict JSON output, applicability checks, deterministic fixed-seed evidence, a scientific benchmark, catalog registration, safe UI defaults, documentation/version updates, and a refreshed `docs/openturns-sync/evidence/<plugin>.json` manifest. Complexity tests must use a test-side oracle independent of the production estimator and cover the first rejected resource boundary plus the UI default at the maximum supported dimension.
 - Validation must produce a recommendation for every registered plugin. Model-level incompatibilities and resource-safe configuration belong in the deterministic assessment, must disable the UI with an exact reason, and must be enforced again by core/Worker boundaries rather than trusted from React.
 - Long-running analyses must emit bounded, source-free progress phases. Persist progress per task; use indeterminate state for opaque OpenTURNS calls and never fabricate an exact percentage that the upstream algorithm does not expose.
-- Keep Python source and private artifacts out of logs, client bundles, AI prompts, and public routes. Never commit secrets or real `.dev.vars` files.
+- Keep Python source and private artifacts out of logs, client bundles, report-chat prompts, and public routes. The sole AI exception is a bounded authenticated Model Understanding request that sends model source to the selected provider to produce a clearly labelled approximate LaTeX interpretation. Never commit secrets or real `.dev.vars` files.
 - Use forward-only D1 migrations and immutable model/result provenance. Do not silently reinterpret an existing plugin key/version or stored result schema.
 - Do not add convenience shell launchers or CI pause/skip controls. Standard package-manager test/dev commands and Playwright-managed test servers are allowed.
 - Update the relevant README or `docs/` file whenever architecture, security boundaries, public behavior, operations, or scientific interpretation changes.
@@ -65,5 +65,5 @@ Run `npm run test:e2e:full-stack` for changes that cross the browser, Worker, D1
 - Flag any route or handler that permits unauthenticated access outside the explicit public allowlist.
 - Flag numerical behavior that bypasses OpenTURNS without a documented technical reason and benchmark evidence.
 - Flag plugin changes without refreshed pinned-source evidence, an independently derived complexity oracle, maximum-bound rejection, and UI/core resource-budget alignment.
-- Flag AI text presented as computed evidence, unbounded AI tools, or model source sent to any AI provider.
+- Flag AI text presented as computed evidence, unbounded AI tools, or model source sent anywhere except the bounded authenticated Model Understanding equation prompt.
 - Flag mutable provenance, destructive migration edits, non-finite JSON, missing ownership predicates, exposed secrets, or reduced CI coverage.

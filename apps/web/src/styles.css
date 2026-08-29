@@ -925,6 +925,169 @@ code {
 .composer-controls select {
   min-width: 150px;
 }
+.hsic-method-comparison {
+  display: grid;
+  gap: 12px;
+  margin: 0 28px 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.hsic-method-comparison > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: baseline;
+}
+.hsic-method-comparison > header strong {
+  font-size: 13px;
+}
+.hsic-method-comparison > header span,
+.hsic-method-comparison article p {
+  color: var(--muted);
+  font-size: 10px;
+}
+.hsic-method-comparison > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.hsic-method-comparison article {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.hsic-method-comparison article.selected {
+  border-color: var(--cyan);
+  box-shadow: inset 3px 0 0 var(--cyan);
+}
+.hsic-method-comparison article > span {
+  color: var(--cyan);
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.hsic-method-comparison article p {
+  margin: 0;
+  line-height: 1.55;
+}
+.target-hsic-settings {
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+.target-hsic-studio {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+.target-hsic-studio > header,
+.target-pilot-card,
+.target-permutation-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.target-hsic-studio > header p,
+.target-pilot-card p,
+.target-pilot-card small,
+.target-permutation-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.target-step-number {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: #fff;
+  border-radius: 50%;
+  background: var(--cyan-strong);
+  font: 800 10px var(--font-mono);
+}
+.target-domain-fields {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 0.7fr);
+  gap: 12px;
+  margin-left: 38px;
+}
+.target-domain-fields label,
+.target-permutation-card label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+}
+.target-domain-fields label > span,
+.target-permutation-card label > span {
+  color: var(--muted);
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.03em;
+}
+.target-domain-fields input,
+.target-domain-fields select,
+.target-permutation-card input {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  font: 600 12px var(--font-mono);
+}
+.target-pilot-card,
+.target-permutation-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--success);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.target-pilot-card.outside {
+  border-left-color: var(--orange);
+}
+.target-pilot-card small {
+  display: block;
+  margin-top: 7px;
+}
+.target-permutation-card {
+  grid-template-columns: auto minmax(0, 1fr) minmax(190px, 260px);
+  align-items: center;
+  border-left-color: var(--cyan);
+}
+.target-permutation-card label {
+  padding: 9px 11px;
+}
+.equation-authoring-note {
+  margin-top: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--panel-2);
+}
+.equation-authoring-note summary {
+  padding: 10px 0;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+.equation-authoring-note p {
+  margin: 0 0 12px;
+  font-size: 10px;
+  line-height: 1.6;
+}
 .sample-budget input {
   width: 180px;
 }
@@ -1434,6 +1597,9 @@ tbody tr:hover td {
 }
 .plot-panel h4 {
   display: block;
+}
+.evidence-visual {
+  background: var(--panel);
 }
 .matrix-scroll {
   overflow-x: auto;
@@ -2595,9 +2761,30 @@ tbody tr:hover td {
   }
 }
 .validation-facts,
+.validation-equations,
 .understanding-narrative {
   padding: 18px 20px;
   border-bottom: 1px solid var(--line);
+}
+.validation-equations {
+  background: color-mix(in srgb, var(--cyan) 3%, var(--panel-2));
+}
+.validation-equations h3 {
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+.validation-equations .markdown {
+  overflow-x: auto;
+}
+.validation-equations .katex-display {
+  margin: 12px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.validation-equations > small {
+  display: block;
+  color: var(--muted);
+  font: 8px/1.55 var(--font-mono);
 }
 .validation-facts dl {
   display: grid;
@@ -4488,6 +4675,14 @@ tbody tr:hover td {
   color: var(--muted);
   font: 8px var(--font-mono);
 }
+.ai-interpretation-notice {
+  margin: 0 0 14px;
+  padding: 9px 10px;
+  color: var(--muted);
+  border-left: 3px solid var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 5%, var(--panel));
+  font: 8px/1.55 var(--font-mono);
+}
 .workflow-assessment.compact {
   grid-template-columns: auto 1fr;
   margin: 0;
@@ -4819,6 +5014,23 @@ tbody tr:hover td {
   }
   .reliability-studio {
     grid-template-columns: 1fr;
+  }
+  .hsic-method-comparison > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .hsic-method-comparison > div,
+  .target-domain-fields {
+    grid-template-columns: 1fr;
+  }
+  .target-domain-fields {
+    margin-left: 0;
+  }
+  .target-permutation-card {
+    grid-template-columns: auto 1fr;
+  }
+  .target-permutation-card label {
+    grid-column: 1 / -1;
   }
   .surrogate-guidance,
   .surrogate-validation {

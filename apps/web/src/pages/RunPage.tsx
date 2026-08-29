@@ -27,6 +27,12 @@ function fallbackTaskMessage(
   return "Analysis is complete.";
 }
 
+function analysisDisplayName(key: string) {
+  if (key === "hsic") return "Global HSIC";
+  if (key === "target_hsic") return "Target-domain HSIC";
+  return key.replaceAll("_", " ");
+}
+
 export function RunPage() {
   const { runId = "" } = useParams();
   const navigate = useNavigate();
@@ -173,7 +179,7 @@ export function RunPage() {
                   )}
                 </span>
                 <div>
-                  <strong>{task.analysisKey.replaceAll("_", " ")}</strong>
+                  <strong>{analysisDisplayName(task.analysisKey)}</strong>
                   <small>
                     {task.result
                       ? `${Math.round(task.result.runtime.duration_ms).toLocaleString()} ms · ${task.result.runtime.model_evaluations.toLocaleString()} evaluations`
@@ -199,7 +205,7 @@ export function RunPage() {
                       <div
                         className={`task-progress-track ${progress?.indeterminate ? "indeterminate" : ""}`}
                         role="progressbar"
-                        aria-label={`${task.analysisKey.replaceAll("_", " ")} progress`}
+                        aria-label={`${analysisDisplayName(task.analysisKey)} progress`}
                         aria-valuemin={0}
                         aria-valuemax={100}
                         {...(!progress?.indeterminate

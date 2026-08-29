@@ -22,6 +22,8 @@ def test_all_bundled_examples_validate(example: Path) -> None:
     assert runtime.metadata.input_dimension == runtime.problem.getDimension()
     assert runtime.metadata.output_dimension == runtime.model.getOutputDimension()
     assert len(runtime.metadata.source_hash) == 64
+    assert runtime.metadata.equations
+    assert all(equation.latex for equation in runtime.metadata.equations)
 
 
 def test_rejects_unapproved_import() -> None:

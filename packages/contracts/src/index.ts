@@ -149,6 +149,11 @@ export interface ModelMetadata {
   output_dimension: number;
   inputs: VariableMetadata[];
   outputs: Array<{ index: number; name: string }>;
+  equations?: Array<{
+    output_name: string;
+    latex: string;
+    representation: "closed_form" | "declared" | "formal_mapping";
+  }>;
   openturns_version: string;
   batch_evaluation_supported: boolean;
   validation_runtime_ms: number;

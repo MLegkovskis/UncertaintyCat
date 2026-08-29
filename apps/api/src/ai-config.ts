@@ -1,4 +1,4 @@
-export const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.6.0";
+export const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.8.0";
 export const MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS = 12_000;
 export const MODEL_UNDERSTANDING_FALLBACK_TIMEOUT_MS = 15_000;
 export const REPORT_CHAT_TIMEOUT_MS = 45_000;
@@ -25,7 +25,7 @@ export function generationFailure(error: unknown) {
     message: timedOut
       ? "The AI provider did not answer in time. Please retry; failed requests are not charged."
       : "The AI provider could not create the explanation. Please retry; failed requests are not charged.",
-    diagnostic: raw.slice(0, 2_000),
+    diagnostic: timedOut ? "upstream_timeout" : "upstream_generation_failed",
     status: timedOut ? 504 : 502,
   } as const;
 }
