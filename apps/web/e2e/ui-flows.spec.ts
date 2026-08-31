@@ -12,6 +12,43 @@ import {
 } from "./fixtures";
 
 test.describe("application shell and identity", () => {
+  test("the public shell advertises a crawlable cat favicon", async ({
+    page,
+    request,
+  }) => {
+    await installMockApi(page);
+    await page.goto("/");
+
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+      "href",
+      "/favicon-96x96.png",
+    );
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+      "sizes",
+      "96x96",
+    );
+
+    const favicon = await request.get("/favicon-96x96.png");
+    expect(favicon.ok()).toBe(true);
+    expect(favicon.headers()["content-type"]).toContain("image/png");
+    expect((await favicon.body()).subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+
+    const legacyFavicon = await request.get("/favicon.ico");
+    expect(legacyFavicon.ok()).toBe(true);
+    expect(["image/x-icon", "image/vnd.microsoft.icon"]).toContain(
+      legacyFavicon.headers()["content-type"]?.split(";")[0],
+    );
+    expect((await legacyFavicon.body()).subarray(0, 4)).toEqual(
+      Buffer.from([0x00, 0x00, 0x01, 0x00]),
+    );
+
+    const robots = await request.get("/robots.txt");
+    expect(robots.ok()).toBe(true);
+    expect(await robots.text()).toContain("Allow: /");
+  });
+
   test("the public overview, private-route gate, mobile drawer, and Cloudflare sign-in are operable", async ({
     page,
   }) => {

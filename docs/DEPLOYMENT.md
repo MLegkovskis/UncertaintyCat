@@ -12,6 +12,13 @@ This is the production runbook for [uncertaintycat.com](https://uncertaintycat.c
 - Per-run Cloudflare Sandbox container: Python/OpenTURNS compute with egress disabled.
 - AI adapter: Groq by default for Model Understanding and report explanations, with the Workers AI binding retained as a deployment-selectable fallback.
 
+The public shell advertises the cat brand through a stable 96 x 96 PNG favicon, a multi-size ICO fallback,
+an Apple touch icon, and a web-app manifest. The PNG is deliberately the primary `rel="icon"` because it
+meets Google Search's square, crawlable, greater-than-48-pixel favicon guidance. Production browser checks
+verify that both primary favicon URLs return image bytes rather than the SPA HTML fallback, and that
+`robots.txt` permits the public shell and its assets to be crawled. Google controls the refresh schedule and
+may take days or weeks to replace an already indexed generic icon.
+
 Keeping one origin is intentional. If that changes, review `PUBLIC_WEB_ORIGIN`, `BETTER_AUTH_URL`, trusted origins, cookie policy, CORS, and the OIDC callback as one security change.
 
 ## Authentication boundary
@@ -107,7 +114,7 @@ future agent-authored code are in [DEPENDENCY_AUTOMATION.md](DEPENDENCY_AUTOMATI
 
 ## Release verification
 
-The automatic production suite verifies health, security headers, unauthenticated session discovery, absence of guest cookies, HTTP 401 across representative private APIs, the static overview, private-route login wall, accessibility, and the exact Cloudflare OIDC authorization request/callback/PKCE contract.
+The automatic production suite verifies health, security headers, crawlable favicon assets, unauthenticated session discovery, absence of guest cookies, HTTP 401 across representative private APIs, the static overview, private-route login wall, accessibility, and the exact Cloudflare OIDC authorization request/callback/PKCE contract.
 
 For an authenticated manual release audit:
 
