@@ -1,5 +1,12 @@
 # Browser and end-to-end testing
 
+The bounded subset-sampling correction is covered by `tests/core/test_subset_sampling.py`,
+`tests/integration/test_subset_service.py`, Worker contract tests, and
+`apps/web/e2e/subset-sampling.spec.ts` (including expanded-workflow accessibility).
+`apps/web/e2e/full-stack/subset-sampling.spec.ts` builds the official R–S analytical case
+through the authenticated guided builder, executes real compute, reloads the retained
+report and checks exported JSON/CSV. No numerical response is mocked in that journey.
+
 UncertaintyCat uses three complementary Playwright suites. Fast fixture-driven UI evidence is separated from real numerical infrastructure and deployed read-only checks.
 
 ## Scientific change policy

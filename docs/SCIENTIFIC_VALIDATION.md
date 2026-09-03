@@ -46,6 +46,13 @@ The test suite covers:
 - fixed-seed Gaussian-process regression accuracy on a smooth nonlinear response, plus a correlated-input
   linear-trend benchmark and discrete/constant-output rejection;
 - FORM probability near 0.5 for a standard normal response with threshold zero, plus stable Monte Carlo, SORM, directional, and subset method contracts;
+- bounded subset sampling against the official independent resistance–stress case:
+  `R~Normal(7,1)`, `S~Normal(2,1)`, `P(R-S<0)=0.00020347600872247946` analytically;
+  seed 42 with 2,000 samples per level obtains `0.000222` within absolute `8e-5`,
+  repeats exactly, matches direct OpenTURNS construction and uses exactly 8,000 point calls;
+- independent subset population/chain-correlation loop oracles, admission at the default
+  20-input maximum, rejection of budgets 50,001 and 2,000,000 before sampling, and a
+  callback-side count proving exhaustion at exactly 1,000 original-model invocations;
 - FastAPI health, catalog, validation, execution, Data Lab, and promoted-surrogate contracts;
 - worker ZIP export structure and CSV quoting;
 - frontend symbolic-model generation and a Chromium navigation smoke test.
@@ -61,6 +68,29 @@ npm run test:e2e
 ```
 
 ## Method-specific interpretation controls
+
+Subset sampling (`reliability` plugin `3.0.0`) uses stable OpenTURNS adaptive conditional
+populations with continuous inputs and one selected varying finite output. Population
+size is 100–5,000 in multiples of ten, default 2,000; total requested budget is at most
+50,000, default 20,000; at most ten populations are attempted with block size one.
+The effective cap reserves only complete populations. CoV is a diagnostic, not a stopping
+target. Budget/time interruption, missing final threshold or degenerate evidence fails
+without publishing an intermediate-domain probability. Point counts include rejected
+MCMC proposals and exclude source construction/validation and user-model internal work.
+The 60-second cooperative bound has the Sandbox deadline as backstop for an opaque call.
+
+Only the final retained level row estimates the requested event. The nominal 95% Normal
+interval comes from OpenTURNS' result distribution and is clipped to [0,1]; within-chain
+correlation is estimated but between-level dependence/finite-sample bias can make it
+optimistic. It is not an exact confidence guarantee, a mixing diagnostic, or causal or
+out-of-domain predictive validation. No resetting within-level confidence trace is shown.
+The generic result schema remains `1.0.0`; old results are not rewritten. Version-pinned
+old reruns reject an unavailable plugin version; unpinned old subset configurations may
+need correction (non-unit blocks and the ambiguous `sample_size` alias are rejected).
+Other reliability methods are unchanged, and this subset envelope does not certify their
+evaluation accounting. Full provenance, limitations and sources are in the
+[cycle record](openturns-sync/2026-09-03-subset-sampling.md) and
+[machine-readable evidence](openturns-sync/evidence/reliability.json).
 
 - Sobol and FAST: independent inputs and non-zero selected-output variance.
 - ANCOVA: two to ten continuous dependent inputs, a bounded polynomial basis, and dependent-holdout Q2 of

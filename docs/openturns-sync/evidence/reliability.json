@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0.0",
+  "pluginKey": "reliability",
+  "pluginVersion": "3.0.0",
+  "resultSchemaVersion": "1.0.0",
+  "openturnsVersion": "1.27.post1",
+  "scope": "Corrected SUBSET_SAMPLING path only; other reliability algorithms are unchanged and are not certified by this envelope.",
+  "upstreamEvidence": [
+    {"kind": "implementation", "url": "https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/lib/src/Uncertainty/Algorithm/Simulation/SubsetSampling.cxx"},
+    {"kind": "benchmark", "url": "https://github.com/openturns/openturns/blob/772da39d3324517acedd6068da1bff3bec9b0345/python/test/t_SubsetSampling_R-S.py"},
+    {"kind": "upstream-change", "url": "https://github.com/openturns/openturns/commit/d5448af72dbadf0cffff6194cad0feeec1861530"}
+  ],
+  "benchmarkTests": [
+    "tests/core/test_subset_sampling.py::test_subset_official_resistance_stress_benchmark_repeatably"
+  ],
+  "observedBenchmark": {
+    "reference": "Independent R~Normal(7,1), S~Normal(2,1), event R-S<0",
+    "seed": 42,
+    "analyticalProbability": 0.00020347600872247946,
+    "observedProbability": 0.00022199999999999987,
+    "absoluteTolerance": 0.00008,
+    "directPinnedRepeatabilityTolerance": 1e-12,
+    "modelEvaluations": 8000,
+    "completedLevels": 4,
+    "payloadBytes": 1718,
+    "localDurationMs": 131.44,
+    "httpImageDurationMs": 128.75,
+    "sandboxImageDurationMs": 122.97,
+    "timingScope": "Single measured analysis duration; excludes compilation, validation and container startup, not a performance guarantee."
+  },
+  "applicabilityTests": [
+    "tests/core/test_subset_sampling.py::test_subset_strict_contract_rejects_invalid_settings",
+    "tests/core/test_subset_sampling.py::test_subset_semantic_rejections_before_evaluation",
+    "tests/core/test_subset_sampling.py::test_subset_rejects_inapplicable_model",
+    "tests/core/test_subset_sampling.py::test_subset_degenerate_event_does_not_claim_certainty",
+    "tests/core/test_subset_sampling.py::test_subset_nonfinite_model_failure_and_timeout_are_source_free",
+    "tests/core/test_subset_sampling.py::test_subset_continuous_dependence_and_selected_output",
+    "tests/core/test_subset_sampling.py::test_subset_conflicting_targets_and_historical_version_are_explicit",
+    "tests/core/test_subset_sampling.py::test_subset_rejects_partial_threshold_and_oversized_report",
+    "tests/integration/test_subset_service.py::test_subset_service_auth_execution_and_bound_rejection"
+  ],
+  "resourceModel": {
+    "bounded": true,
+    "complexity": "L*N model calls; O(L*N*d) proposals, O(L*N*log(N)) threshold sorting, O(L*N/10*45) chain-correlation products; O(N*(d+1)) working sample storage",
+    "formula": "effective_evaluation_limit = N * min(10, floor(requested_budget / N)); 100 <= N <= 5000 in multiples of 10, requested_budget <= 50000, d <= 20",
+    "unit": "top-level original-model point invocations, excluding preflight validation and user-model internal subcomputations",
+    "upstreamDerivation": "SubsetSampling.run evaluates N points initially and generatePoints evaluates N per conditional population; maximumOuterSampling is per population, not global. The guard checks before each model invocation. At conditional probability 0.1, Nc=N/10 and chain length 10; computeVarianceGamma nests lag, seed and pair loops, performing Nc*(9+8+...+1)=45*Nc products per conditional population. KeepSample is disabled; an opaque model call is subject to the Sandbox hard deadline.",
+    "independentOracleTest": "tests/core/test_subset_sampling.py::test_subset_resource_limit_matches_independent_population_loop_oracle",
+    "boundaryTests": [
+      "tests/core/test_subset_sampling.py::test_subset_ui_default_at_maximum_dimension_is_admissible",
+      "tests/core/test_subset_sampling.py::test_subset_first_over_budget_and_schema_maximum_rejected_before_sampling",
+      "tests/core/test_subset_sampling.py::test_subset_budget_is_guarded_before_each_original_model_invocation",
+      "tests/core/test_subset_sampling.py::test_subset_maximum_budget_cannot_escape_guard"
+    ],
+    "auditAnswers": {
+      "hiddenLoopNesting": "Adaptive populations multiply the per-population sample count. The covariance diagnostic also nests lag, seed and paired positions, enumerated independently in the test. Target CoV does not control subset termination.",
+      "maximumConfiguration": "N=5000, total budget 50000, d=20 permit ten populations and 50000 calls, 105000 working sample values and 202500 indicator-pair products over nine conditional populations. Budgets 50001 and the legacy schema maximum 2000000 reject before sampling. Output is at most ten rows and 16384 payload bytes.",
+      "uiMaximumDimension": "At d=20 the UI default N=2000 and budget=20000 permit at most ten populations and 20000 calls. The fixed-seed four-sigma core benchmark completes five populations and exactly 10000 calls; the browser asserts the submitted configuration."
+    }
+  },
+  "browserTests": [
+    "apps/web/e2e/subset-sampling.spec.ts#bounded subset UI defaults at maximum dimension match the core resource envelope",
+    "apps/web/e2e/subset-sampling.spec.ts#subset method honors core assessment incompatibility without disabling Monte Carlo",
+    "apps/web/e2e/subset-sampling.spec.ts#subset report preserves exact level evidence and approximate uncertainty labels",
+    "apps/web/e2e/full-stack/subset-sampling.spec.ts#bounded subset sampling crosses the real compute boundary and exports retained levels"
+  ],
+  "interpretationBoundaries": [
+    "Only a completed final threshold estimates the requested event; intermediate-domain or interrupted estimates are not published as successful results.",
+    "The nominal 95% Normal interval is approximate and may be optimistic from between-level dependence and finite-sample bias; it is not an exact confidence guarantee.",
+    "Threshold completion does not prove mixing, causal validity or predictive validity beyond the specified input distribution."
+  ]
+}

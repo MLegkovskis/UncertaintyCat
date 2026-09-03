@@ -212,6 +212,41 @@ export interface ModelAssessment {
   recommendations: AnalysisRecommendation[];
 }
 
+// Admission/orchestration only: OpenTURNS and the core own all numerical behavior.
+export const boundedSubsetConfigSchema = z.object({
+  method: z.literal("SUBSET_SAMPLING"),
+  threshold: z.number().finite(),
+  operator: z.enum([">", ">=", "<", "<="]).default(">"),
+  maximum_evaluations: z.number().int().min(100).max(50_000).default(20_000),
+  subset_sample_size: z.number().int().min(100).max(5_000).multipleOf(10).default(2_000),
+  block_size: z.literal(1).default(1),
+  target_coefficient_of_variation: z.number().positive().max(1).optional(),
+  seed: z.number().int().nonnegative().optional(),
+  output_targets: z.array(z.number().int().nonnegative()).max(1).optional(),
+}).strict().refine(
+  (value) => value.subset_sample_size <= value.maximum_evaluations,
+  { message: "Subset samples per level must not exceed the total model-evaluation budget." },
+);
+
+export function subsetSamplingIncompatibility(
+  assessment: ModelAssessment | null | undefined,
+  outputTarget: number,
+): string | undefined {
+  if (!assessment) return "Revalidate the model before bounded subset sampling.";
+  const safe = assessment.recommendations.find((item) => item.capability === "reliability")?.safe_config;
+  if (safe?.subset_sampling_available === false)
+    return String(safe.subset_sampling_incompatibility ?? "Subset sampling is unavailable for this model.");
+  if (assessment.profile.input_dimension > 20)
+    return "Subset sampling is limited to 20 inputs in the bounded reliability workspace.";
+  if (assessment.profile.continuous_marginals !== assessment.profile.input_dimension)
+    return "Subset sampling requires continuous inputs for its standard-space transformation.";
+  const output = assessment.profile.pilot_outputs.find((item) => item.output_index === outputTarget);
+  if (!output) return "The requested output target does not exist.";
+  if (!output.variable)
+    return "Subset sampling requires a selected output that varies in the validation pilot.";
+  return undefined;
+}
+
 export interface TableData {
   columns: string[];
   rows: Array<Array<string | number | boolean | null>>;

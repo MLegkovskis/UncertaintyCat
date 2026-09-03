@@ -105,7 +105,7 @@ At this checkpoint the application has 15 plugins:
 | `taylor` | local derivative variance decomposition | local linear approximation |
 | `morris` | elementary-effect screening | independent marginals; screening interpretation |
 | `convergence` | running expectation evidence | finite-sample convergence evidence |
-| `reliability` | FORM or Monte Carlo threshold probability | method-specific event geometry |
+| `reliability` | FORM, SORM, Monte Carlo, directional and subset threshold probability | method-specific event geometry; bounded subset populations and approximate uncertainty |
 | `pce` | polynomial-chaos surrogate and hold-out validation | validation Q2 controls trust |
 | `gpr` | GP surrogate, hold-out accuracy, and conditional intervals | continuous inputs; bounded exact GPR |
 | `calibration_nlls` | nonlinear least-squares parameter calibration | named observations; local uncertainty approximation |
@@ -612,6 +612,23 @@ OpenTURNS index/permutation calls are explicitly indeterminate. The benchmark st
 Ishigami vectors and now asserts this progress protocol. The browser contract distinguishes Global HSIC
 from Target-domain HSIC, verifies non-overlapping target controls and safe maximum-dimensional defaults,
 and reports plot exact retained HSIC table values rather than recomputing scientific evidence in React.
+
+### 2026-09-03 subset-sampling safety and scientific correction
+
+The fresh scan selected correction of existing subset sampling (97/100) over retained
+LHS designs (87) and standard-space CEIS (84). Main's advertised 1,000-evaluation
+subset budget could consume 5,000 calls and misreport a precision target that OpenTURNS
+does not use. New upstream commit `d5448af72dbadf0cffff6194cad0feeec1861530`
+explicitly forbids that stopping control; the same behavior is verified in the installed
+`1.27.post1` implementation without upgrading the pin.
+
+Reliability plugin `3.0.0` separates subset population size from the global cap, guards
+each model point invocation, rejects incomplete results, and reports exact retained
+threshold/probability rows with honestly labelled approximate uncertainty. It preserves
+the generic result schema `1.0.0`, the 15-plugin count, and historical report readability.
+The scoped [evidence manifest](evidence/reliability.json) adds independent nested-loop,
+maximum-dimension, first-rejected-budget, API, browser and full-stack evidence. See the
+[complete scan, candidate table and scientific design](2026-09-03-subset-sampling.md).
 
 ## 10. Copy-paste scheduled-agent prompt
 

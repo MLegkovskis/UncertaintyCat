@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import {
+  boundedSubsetConfigSchema,
   copySurrogateSchema,
   createModelVersionSchema,
   createDataSurrogateSchema,
@@ -20,6 +21,7 @@ import {
   type Report,
   type SurrogateModel,
   promoteSurrogateSchema,
+  subsetSamplingIncompatibility,
   uploadDatasetSchema,
 } from "@uncertaintycat/contracts";
 import { generateText, stepCountIs, streamText, tool } from "ai";
@@ -2455,6 +2457,19 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
         recommendation.compatibility_warnings[0] ??
           `${analysis.analysisKey} is incompatible with this validated model.`,
       );
+    }
+    if (analysis.analysisKey === "reliability" && analysis.config.method === "SUBSET_SAMPLING") {
+      if (analysis.outputTargets.length > 1)
+        return jsonError(c, 422, "invalid_subset_config", "Subset sampling requires one scalar output target.");
+      const parsed = boundedSubsetConfigSchema.safeParse(analysis.config);
+      if (!parsed.success)
+        return jsonError(c, 422, "invalid_subset_config", "Subset sampling requires 100–5,000 samples per level (multiples of 10), block size 1, and a sufficient total budget of at most 50,000 evaluations.");
+      if (parsed.data.output_targets && analysis.outputTargets.length &&
+          JSON.stringify(parsed.data.output_targets) !== JSON.stringify(analysis.outputTargets))
+        return jsonError(c, 422, "invalid_subset_config", "Conflicting subset output targets are not allowed.");
+      const target = analysis.outputTargets[0] ?? parsed.data.output_targets?.[0] ?? 0;
+      const reason = subsetSamplingIncompatibility(assessment, target);
+      if (reason) return jsonError(c, 422, "analysis_incompatible", reason);
     }
   }
   if (input.surrogateModelId) {

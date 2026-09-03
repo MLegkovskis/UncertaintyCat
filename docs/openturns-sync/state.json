@@ -1,49 +1,74 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-29",
+  "reviewed_at": "2026-09-03",
   "uncertaintycat_openturns_pin": "1.27.post1",
   "latest_stable_pypi_release": "1.27.post1",
   "upstream_repository": "https://github.com/openturns/openturns",
-  "upstream_default_branch_commit_reviewed": "2301120b56f5d879d31c7bdaf73219835e8a118a",
-  "upstream_commit_date": "2026-08-23T09:33:57+02:00",
+  "upstream_default_branch_commit_reviewed": "763b0ac2e812809c92227f1a0cfd3f87ec9a612e",
+  "upstream_commit_date": "2026-09-03T16:25:03+02:00",
   "latest_stable_upstream_tag": "v1.27.3",
   "latest_stable_upstream_commit_reviewed": "26a63963fb71851b2d3d397a53ec1a5286ff8d62",
   "catalog_plugin_count": 15,
   "scientific_change_policy_version": 1,
-  "scientific_evidence_manifest_count": 2,
+  "scientific_evidence_manifest_count": 3,
+  "cycle_record": "docs/openturns-sync/2026-09-03-subset-sampling.md",
+  "starting_commit": "a6d855dd435e640db84c69cb1c0771e380edbb25",
   "last_delivered_candidate": {
-    "key": "target_hsic",
-    "name": "Target-Domain HSIC Sensitivity",
-    "plugin_version": "1.1.0",
+    "key": "reliability",
+    "name": "Bounded subset sampling and truthful termination evidence",
+    "plugin_version": "3.0.0",
     "result_schema_version": "1.0.0",
-    "upstream_basis": "Stable OpenTURNS HSICEstimatorTargetSensitivity, DistanceToDomainFunction, ParametricFunction, SquaredExponential, and HSICUStat APIs close the retained critical-domain sensitivity gap; version 1.1.0 preserves the numerical contract and adds bounded source-free execution phases around opaque OpenTURNS work",
+    "upstream_basis": "New upstream d5448af72 explicitly forbids unsupported subset CoV stopping. Pinned SubsetSampling source and R-S tests confirm per-level rather than global sampling limits. The existing subset path now guards exact point calls and rejects incomplete-domain results without a pin upgrade.",
     "decision": "implemented"
   },
   "reviewed_candidates": [
     {
-      "name": "HSICEstimatorTargetSensitivity",
+      "name": "SubsetSampling budget and termination correction",
       "decision": "implemented",
-      "reason": "Stable in the installed pin, scientifically distinct from global HSIC and reliability probability, bounded for kernel/permutation work and result size, and matched to the official fixed-seed Ishigami upstream test."
+      "score": 97,
+      "reason": "Reproduced a fivefold overrun and contradictory stopping claims on the fresh baseline. Stable bounded correction validates against the official R-S model and an independent analytical probability."
     },
     {
       "name": "StandardSpaceCrossEntropyImportanceSampling",
       "decision": "deferred",
-      "reason": "Stable and valuable for rare-event estimation, but a scientifically complete reliability extension requires additional stopping, auxiliary-distribution, and degeneracy diagnostics."
+      "score": 84,
+      "reason": "Stable and useful; fresh prototype confirmed adaptive population work. Repair existing reliability guarantees first, then add auxiliary-density/weight and degeneracy diagnostics."
     },
     {
       "name": "LHSExperiment and LowDiscrepancyExperiment",
       "decision": "deferred",
-      "reason": "Stable and useful for engineering design generation, but it needs a retained-design product journey rather than an analysis-only wrapper."
+      "score": 87,
+      "reason": "Stable independent-input design closes an engineering workflow gap; stratification verified against the pin. Needs retained design identity and consumption, not a duplicate propagation estimator."
     },
     {
       "name": "RankSobolSensitivityAlgorithm",
-      "decision": "deferred",
+      "decision": "rejected",
+      "score": 74,
       "reason": "Stable and sample-efficient for first-order indices, but it assumes independent scalar inputs, overlaps the existing Sobol question, and scored 74/100 below the normal admission threshold."
     },
     {
       "name": "HSICEstimatorConditionalSensitivity",
       "decision": "deferred",
-      "reason": "Stable but more specialized than target HSIC, restricted to the V-statistic, and below the current scoring threshold for a separate first slice."
+      "score": 69,
+      "reason": "Stable weighted V-statistic, but effective-weight coverage and an unambiguous within-domain interpretation are needed; below threshold compared with existing-method correction."
+    },
+    {
+      "name": "Bootstrap NLLS parameter uncertainty",
+      "decision": "deferred",
+      "score": 73,
+      "reason": "New documentation clarifies defaults, but current calibration already explicitly disables bootstrap. Needs bounded repeated fits and empirical uncertainty validation."
+    },
+    {
+      "name": "Tail fitting and return-level workflow",
+      "decision": "deferred",
+      "score": 70,
+      "reason": "Threshold/block selection, independence assumptions and bounded profile-likelihood diagnostics require a more coherent workflow than another marginal factory."
+    },
+    {
+      "name": "Field/process/Karhunen-Loeve workflow",
+      "decision": "rejected",
+      "score": 53,
+      "reason": "Mesh and process provenance/persistence are missing from the current scalar/vector model journey."
     },
     {
       "name": "Shapley effects",
@@ -51,9 +76,9 @@
       "reason": "No stable Shapley-effect API exists in the installed OpenTURNS pin."
     },
     {
-      "name": "LineSampling and QuantileConfidence",
+      "name": "LineSampling, QuantileConfidence, Kent and new distribution factories",
       "decision": "rejected",
-      "reason": "They moved out of experimental only on the unreleased 1.28 development branch and are not stable APIs in the installed pin."
+      "reason": "LineSampling and QuantileConfidence stabilized only on unreleased 1.28 development; Kent and new factories are new development functionality. None is a stable API in the installed pin."
     }
   ]
 }
