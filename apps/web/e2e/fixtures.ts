@@ -6,6 +6,7 @@ import type {
   ModelMetadata,
   ModelVersion,
   OperatorOverview,
+  OperatorProjectDetail,
   Project,
   Report,
   Run,
@@ -364,6 +365,255 @@ export function analysisResult(key = "monte_carlo"): AnalysisResult {
   };
 }
 
+const FLOOD_INPUTS = [
+  "Q (Flow Rate)",
+  "Ks (Strickler)",
+  "Zv (Downstream)",
+  "Zm (Upstream)",
+  "B (Width)",
+  "L (Length)",
+  "Zb (Bank Alt)",
+  "Hd (Dyke Height)",
+];
+
+export function visualizationAuditResult(key: string): AnalysisResult {
+  const result = analysisResult(key);
+  result.payload = {
+    metrics: {},
+    tables: {},
+    series: {},
+    matrices: {},
+    facts: {},
+  };
+  const rankedRows = FLOOD_INPUTS.map((name, index) => [
+    name,
+    Number((0.58 - index * 0.07).toFixed(3)),
+    Number((0.68 - index * 0.065).toFixed(3)),
+  ]);
+  switch (key) {
+    case "ancova":
+      result.payload.tables.indices = {
+        columns: [
+          "Input",
+          "ANCOVA Contribution",
+          "Physical Contribution",
+          "Correlation Contribution",
+        ],
+        rows: FLOOD_INPUTS.map((name, index) => [
+          name,
+          0.48 - index * 0.04,
+          0.39 - index * 0.03,
+          0.09 - index * 0.01,
+        ]),
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      break;
+    case "calibration_nlls":
+      result.payload.tables.calibrated_parameters = {
+        columns: ["Parameter", "Starting Value", "Calibrated Value"],
+        rows: [
+          ["Flow coefficient", 30, 31.2],
+          ["River width", 300, 298.7],
+          ["Dyke height", 3, 3.15],
+        ],
+        row_count: 3,
+        truncated: false,
+      };
+      result.payload.series.observed_vs_predicted = {
+        name: "Observed versus predicted",
+        x: [1, 2, 3, 4, 5, 6],
+        y: [1.1, 1.9, 3.15, 3.85, 5.1, 5.95],
+        x_label: "Observed",
+        y_label: "Predicted",
+      };
+      result.payload.matrices.parameter_correlation = {
+        row_labels: ["Flow coefficient", "River width", "Dyke height"],
+        column_labels: ["Flow coefficient", "River width", "Dyke height"],
+        values: [
+          [1, -0.32, 0.1],
+          [-0.32, 1, 0.26],
+          [0.1, 0.26, 1],
+        ],
+      };
+      break;
+    case "convergence": {
+      const x = Array.from({ length: 180 }, (_, index) => index + 20);
+      const mean = x.map((value) => -5.9 + 0.25 * Math.exp(-(value - 20) / 42));
+      const halfWidth = x.map((value) => 0.7 / Math.sqrt(value));
+      result.payload.series.running_mean = {
+        name: "Running expectation estimate",
+        x,
+        y: mean,
+        x_label: "Model evaluations",
+        y_label: "y0",
+      };
+      result.payload.series.confidence_lower = {
+        name: "95% confidence lower",
+        x,
+        y: mean.map((value, index) => value - halfWidth[index]!),
+        x_label: "Model evaluations",
+        y_label: "y0",
+      };
+      result.payload.series.confidence_upper = {
+        name: "95% confidence upper",
+        x,
+        y: mean.map((value, index) => value + halfWidth[index]!),
+        x_label: "Model evaluations",
+        y_label: "y0",
+      };
+      break;
+    }
+    case "correlation":
+    case "eda":
+      result.payload.matrices.pearson = {
+        row_labels: ["y0"],
+        column_labels: FLOOD_INPUTS,
+        values: [[0.584, -0.3, 0.516, -0.026, -0.026, -0.005, -0.174, -0.439]],
+      };
+      break;
+    case "fast":
+      result.payload.tables.indices = {
+        columns: ["Variable", "First Order", "Total Order", "Interaction"],
+        rows: rankedRows.map(([name, first, total]) => [
+          name,
+          first,
+          total,
+          Number(total) - Number(first),
+        ]),
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      break;
+    case "gpr":
+      result.payload.series.observed_vs_predicted = {
+        name: "Validation predictions",
+        x: Array.from({ length: 36 }, (_, index) => index / 3),
+        y: Array.from(
+          { length: 36 },
+          (_, index) => index / 3 + Math.sin(index) * 0.12,
+        ),
+        x_label: "Observed output",
+        y_label: "Predicted output",
+      };
+      break;
+    case "hsic":
+      result.payload.tables.indices = {
+        columns: ["Variable", "Normalized HSIC"],
+        rows: rankedRows.map(([name, value]) => [name, value]),
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      break;
+    case "monte_carlo":
+      result.payload.series.output_y0 = {
+        name: "y0",
+        x: Array.from({ length: 256 }, (_, index) => index + 1),
+        y: Array.from(
+          { length: 256 },
+          (_, index) => 42 + Math.sin(index / 9) * 8 + (index % 7) * 0.4,
+        ),
+        x_label: "Sample",
+        y_label: "y0",
+      };
+      break;
+    case "morris":
+      result.payload.tables.effects = {
+        columns: ["Variable", "Mean Absolute Effect", "Effect Dispersion"],
+        rows: FLOOD_INPUTS.map((name, index) => [
+          name,
+          0.9 - index * 0.08,
+          0.12 + index * 0.035,
+        ]),
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      break;
+    case "pce":
+      result.payload.tables.pce_sobol_indices = {
+        columns: ["Input", "First Order", "Total Order"],
+        rows: rankedRows,
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      result.payload.series.observed_vs_predicted = {
+        name: "PCE validation",
+        x: [1, 2, 3, 4, 5, 6],
+        y: [1.02, 2.06, 2.94, 4.03, 5.05, 5.97],
+        x_label: "Observed",
+        y_label: "Predicted",
+      };
+      break;
+    case "reliability":
+      result.payload.tables.design_point = {
+        columns: ["Variable", "Importance Factor"],
+        rows: FLOOD_INPUTS.map((name, index) => [name, 0.42 - index * 0.04]),
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      result.payload.series.probability_convergence = {
+        name: "Failure probability estimate",
+        x: Array.from({ length: 160 }, (_, index) => index + 1),
+        y: Array.from(
+          { length: 160 },
+          (_, index) => 0.025 + 0.02 * Math.exp(-index / 28),
+        ),
+        x_label: "Model evaluations",
+        y_label: "Probability",
+      };
+      break;
+    case "sobol":
+      result.payload.tables.indices = {
+        columns: ["Variable", "First Order", "Total Order"],
+        rows: rankedRows,
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      result.payload.matrices.second_order = {
+        row_labels: FLOOD_INPUTS,
+        column_labels: FLOOD_INPUTS,
+        values: FLOOD_INPUTS.map((_, row) =>
+          FLOOD_INPUTS.map((__, column) =>
+            row === column
+              ? 0
+              : Number((0.08 / (1 + Math.abs(row - column))).toFixed(3)),
+          ),
+        ),
+      };
+      break;
+    case "target_hsic":
+      result.payload.tables.target_indices = {
+        columns: ["Input", "Target R2-HSIC"],
+        rows: rankedRows.map(([name, value]) => [name, value]),
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      break;
+    case "taylor":
+      result.payload.tables.indices = {
+        columns: ["Variable", "Taylor Importance Factor"],
+        rows: rankedRows.map(([name, value]) => [name, value]),
+        row_count: FLOOD_INPUTS.length,
+        truncated: false,
+      };
+      break;
+  }
+  result.payload.metrics.sample_size = 1_000;
+  return result;
+}
+
+export function makeVisualizationAuditReport(): Report {
+  const report = makeReport();
+  report.title = "Visualization hardening audit";
+  report.status = "succeeded";
+  report.sections = catalog.map((entry) => ({
+    key: entry.key,
+    status: "succeeded" as const,
+    result: visualizationAuditResult(entry.key),
+  }));
+  return report;
+}
+
 export function makeRun(status: Run["status"] = "succeeded"): Run {
   return {
     id: "run-1",
@@ -482,6 +732,7 @@ export interface MockApiOptions {
   modelUnderstanding?: (route: Route) => Promise<void>;
   models?: ModelVersion[];
   operatorOverview?: OperatorOverview;
+  operatorProject?: OperatorProjectDetail;
 }
 
 export function makeOperatorOverview(): OperatorOverview {
@@ -575,6 +826,83 @@ export function makeOperatorOverview(): OperatorOverview {
   };
 }
 
+export function makeOperatorProject(): OperatorProjectDetail {
+  return {
+    generatedAt: "2026-09-03T09:30:00.000Z",
+    refreshAfterSeconds: 30,
+    runPage: {
+      page: 1,
+      pageSize: 50,
+      totalPages: 1,
+      totalRuns: 1,
+      start: 1,
+      end: 1,
+    },
+    project: {
+      id: "project-1",
+      name: "Beam study",
+      ownerName: "Another Engineer",
+      ownerEmail: "engineer@example.com",
+      createdAt: "2026-09-01T12:00:00.000Z",
+      updatedAt: "2026-09-03T09:20:00.000Z",
+      modelCount: 1,
+      runCount: 1,
+      taskCount: 2,
+      failedTaskCount: 1,
+      activeTaskCount: 0,
+    },
+    models: [
+      {
+        id: "model-1",
+        displayName: "Simply supported beam",
+        version: 1,
+        sourceKind: "example",
+        inputDimension: 4,
+        outputDimension: 1,
+        createdAt: "2026-09-01T12:00:00.000Z",
+      },
+    ],
+    runs: [
+      {
+        id: "run-1",
+        modelName: "Simply supported beam",
+        modelVersion: 1,
+        status: "partially_succeeded",
+        createdAt: "2026-09-03T09:10:00.000Z",
+        startedAt: "2026-09-03T09:10:01.000Z",
+        completedAt: "2026-09-03T09:20:00.000Z",
+        durationMs: 599_000,
+        tasks: [
+          {
+            id: "task-ok",
+            analysisKey: "monte_carlo",
+            pluginVersion: "2.0.0",
+            status: "succeeded",
+            createdAt: "2026-09-03T09:10:00.000Z",
+            startedAt: "2026-09-03T09:10:01.000Z",
+            completedAt: "2026-09-03T09:10:02.000Z",
+            durationMs: 1000,
+          },
+          {
+            id: "task-failed",
+            analysisKey: "hsic",
+            pluginVersion: "2.1.0",
+            status: "failed",
+            createdAt: "2026-09-03T09:10:00.000Z",
+            startedAt: "2026-09-03T09:10:02.000Z",
+            completedAt: "2026-09-03T09:20:00.000Z",
+            durationMs: 598_000,
+            error: {
+              code: "compute_failed",
+              message: "The bounded compute task did not complete.",
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   let projects = options.projects ?? [];
   let runs = options.runs ?? [];
@@ -626,7 +954,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
         configured: true,
         modelUnderstanding: {
           modelId: "openai/gpt-oss-20b",
-          label: "Groq · GPT-OSS 20B",
+          label: "Groq · GPT-OSS 20B + 120B equation review",
         },
         reportChat: {
           modelId: "openai/gpt-oss-120b",
@@ -638,6 +966,53 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   await page.route("**/api/v1/operator/overview?*", (route) =>
     options.operator
       ? json(route, options.operatorOverview ?? makeOperatorOverview())
+      : json(
+          route,
+          {
+            error: {
+              code: "operator_access_required",
+              message: "Operator access required.",
+            },
+          },
+          403,
+        ),
+  );
+  await page.route("**/api/v1/operator/projects/*", (route) => {
+    if (!options.operator) {
+      return json(
+        route,
+        {
+          error: {
+            code: "operator_access_required",
+            message: "Operator access required.",
+          },
+        },
+        403,
+      );
+    }
+    const detail = structuredClone(
+      options.operatorProject ?? makeOperatorProject(),
+    );
+    const requestedPage = Number(
+      new URL(route.request().url()).searchParams.get("page") ?? 1,
+    );
+    detail.runPage.page = Math.min(
+      detail.runPage.totalPages,
+      Math.max(1, requestedPage),
+    );
+    detail.runPage.start =
+      detail.runPage.totalRuns === 0
+        ? 0
+        : (detail.runPage.page - 1) * detail.runPage.pageSize + 1;
+    detail.runPage.end = Math.min(
+      detail.runPage.page * detail.runPage.pageSize,
+      detail.runPage.totalRuns,
+    );
+    return json(route, detail);
+  });
+  await page.route("**/api/v1/operator/reports/*", (route) =>
+    options.operator
+      ? json(route, { report })
       : json(
           route,
           {

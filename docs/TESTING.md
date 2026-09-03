@@ -42,8 +42,10 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - metrics, tables, truncation notices, series, heatmaps, facts, equations, assumptions, provenance, partial failures, sharing, bundle export, and direct PDF-download wiring;
 - catalog-wide visualization strategy coverage: table-only FAST, Sobol, HSIC, target-HSIC, Taylor, Morris,
   ANCOVA, PCE, reliability, and calibration results receive semantic charts; Monte Carlo samples receive
-  histograms; convergence/validation series and correlation matrices retain line/scatter/heatmap views;
-  every chart keeps its exact table, series, or matrix evidence available;
+  histograms; convergence intervals use a shaded confidence band; validation series and correlation matrices
+  retain scatter/heatmap views; every heatmap category is forced visible with non-overlapping legend space;
+  every chart keeps its exact table, series, or matrix evidence available. A 15-analysis Chromium audit captures
+  each result section and checks that chart canvases stay within their panels;
 - stored report chat, streaming Markdown, human-readable evidence badges, section-aware sensitivity discovery, suggestions, and quota failures;
 - equal-height scroll-bounded Model Understanding, unclipped exact-data disclosure controls, and syntax-highlighted immutable Python source;
 - authenticated read-only shared reports; and

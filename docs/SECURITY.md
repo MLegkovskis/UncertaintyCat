@@ -64,11 +64,13 @@ misinterpretation risk; AI prose must remain visibly separate from numerical out
 
 Model Understanding is the sole AI boundary permitted to receive model source. For an authenticated owner,
 the Worker sends at most 32,000 characters of that model's private definition to the selected provider so it
-can render an explicitly labelled, approximate LaTeX interpretation. The prompt treats source, comments,
-strings, and identifiers as untrusted data; forbids reproducing code or secrets; and separates the result from
-OpenTURNS evidence. Source is never logged, returned by the session endpoint, sent to report chat, or exposed
-on a public route. Authors must therefore avoid embedding credentials in model files, just as they would for
-any source stored in R2.
+can render an explicitly labelled, approximate LaTeX interpretation. A separate bounded reviewer call then
+checks the candidate equation against the same source and validated facts, repairs semantic or KaTeX defects,
+and must pass deterministic heading, display-math, brace, spacing, length, and unsafe-content checks before the
+brief is persisted. Both prompts treat source, comments, strings, and identifiers as untrusted data; forbid
+reproducing code or secrets; and separate the result from OpenTURNS evidence. Source is never logged, returned
+by the session endpoint, sent to report chat, or exposed on a public route. Authors must therefore avoid
+embedding credentials in model files, just as they would for any source stored in R2.
 
 Inside the isolated validation boundary, a bounded AST projection also derives LaTeX from straight-line
 Python callbacks and OpenTURNS `SymbolicFunction` formulas. Procedural callbacks that cannot be reduced
@@ -84,7 +86,7 @@ but all numerical and ranking claims still require a bounded read-only tool resu
 The orchestration is provided by the MIT-licensed Vercel AI SDK with Zod schemas. Groq is the default through
 the official `@ai-sdk/groq` provider and `https://api.groq.com/openai/v1`; Cloudflare remains selectable through
 the pinned `workers-ai-provider` and an account binding. `AI_PROVIDER` is validated at deployment, only the
-selected adapter executes, and provider/model identity is included in the Model Understanding cache key.
+selected adapter executes, and provider/generator/reviewer identity is included in the Model Understanding cache key.
 Only the bounded Model Understanding request receives Python source; neither adapter receives unrelated R2
 objects. Groq's key is a Worker secret and is never returned
 by session discovery, written to logs, or included in browser assets.

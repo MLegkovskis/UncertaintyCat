@@ -46,6 +46,8 @@ describe("authenticated application boundary", () => {
     "/api/v1/examples",
     "/api/v1/projects",
     "/api/v1/operator/overview",
+    "/api/v1/operator/projects/project-id",
+    "/api/v1/operator/reports/run-id",
     "/api/v1/runs",
     "/api/v1/reports/report-id",
     "/api/v1/shared-reports/share-token",
@@ -64,15 +66,17 @@ describe("authenticated application boundary", () => {
       DEV_AUTH_BYPASS: "true",
       OPERATOR_EMAILS: "someone-else@example.com",
     } as unknown as Env;
-    const denied = await app.request(
+    for (const path of [
       "/api/v1/operator/overview",
-      undefined,
-      ordinaryUserEnv,
-    );
-    expect(denied.status).toBe(403);
-    await expect(denied.json()).resolves.toMatchObject({
-      error: { code: "operator_access_required" },
-    });
+      "/api/v1/operator/projects/project-id",
+      "/api/v1/operator/reports/run-id",
+    ]) {
+      const denied = await app.request(path, undefined, ordinaryUserEnv);
+      expect(denied.status).toBe(403);
+      await expect(denied.json()).resolves.toMatchObject({
+        error: { code: "operator_access_required" },
+      });
+    }
 
     const operatorSession = await app.request("/api/v1/session", undefined, {
       ...ordinaryUserEnv,

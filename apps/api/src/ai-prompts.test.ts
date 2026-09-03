@@ -6,8 +6,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   MODEL_UNDERSTANDING_SYSTEM_PROMPT,
+  MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT,
   MAX_MODEL_EQUATION_SOURCE_CHARACTERS,
   modelUnderstandingPrompt,
+  modelUnderstandingReviewPrompt,
+  modelUnderstandingValidationIssues,
   referenceModelContext,
   reportChatSystemPrompt,
   REPORT_CHAT_SYSTEM_PROMPT,
@@ -87,6 +90,9 @@ describe("AI response contracts", () => {
     expect(MODEL_UNDERSTANDING_SYSTEM_PROMPT).toContain(
       "AI-interpreted from the authenticated Python definition",
     );
+    expect(MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT).toContain(
+      "independent second-pass reviewer",
+    );
     expect(referenceModelContext(target, catalog)).not.toHaveProperty(
       "equations",
     );
@@ -127,7 +133,36 @@ Questions.`;
           "",
         ),
       ),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("rejects structurally unsafe equation output before persistence", () => {
+    const template = (equation: string) => `### Interpreted model equation
+
+$$${equation}$$
+
+_AI-interpreted from the authenticated Python definition; verify against the source before engineering use._
+
+### Model overview
+Overview.
+### Input uncertainty
+Inputs.
+### Dependence and propagation
+Dependence.
+### Validated pilot behaviour
+Pilot.
+### Questions to confirm
+Questions.`;
+    expect(modelUnderstandingValidationIssues(template("y=x^{2"))).toContain(
+      "unbalanced_equation_braces",
+    );
+    expect(modelUnderstandingValidationIssues(template("y=x,\\qquadH=x"))).toContain(
+      "joined_latex_control_word",
+    );
+    expect(modelUnderstandingValidationIssues(`\`\`\`markdown\n${template("y=x")}\n\`\`\``)).toContain(
+      "code_fence_not_allowed",
+    );
+    expect(validModelUnderstanding(template("y=x,\\qquad H=x"))).toBe(true);
   });
 
   it("bounds authenticated source in the equation prompt without adding report data", () => {
@@ -152,6 +187,13 @@ Questions.`;
     expect(prompt.pythonModelSourceTruncated).toBe(true);
     expect(prompt).not.toHaveProperty("report");
     expect(prompt).not.toHaveProperty("conversation");
+
+    const reviewPrompt = JSON.parse(
+      modelUnderstandingReviewPrompt(target, "candidate"),
+    ) as Record<string, unknown>;
+    expect(reviewPrompt.pythonModelSource).toBe(prompt.pythonModelSource);
+    expect(reviewPrompt.candidateBrief).toBe("candidate");
+    expect(reviewPrompt).toHaveProperty("validatedFacts");
   });
 
   it("requires report chat to answer with values rather than field paths", () => {

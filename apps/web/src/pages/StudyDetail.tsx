@@ -9,11 +9,45 @@ import { EmptyState, StatusBadge } from "../components/Status";
 export function StudyDetail() {
   const { projectId = "" } = useParams();
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
-  const modelsQuery = useQuery({ queryKey: ["models", projectId], queryFn: () => api.listModels(projectId), enabled: Boolean(projectId) });
-  const runsQuery = useQuery({ queryKey: ["runs"], queryFn: api.listRuns, refetchInterval: 5_000 });
   const project = projectsQuery.data?.projects.find((item) => item.id === projectId);
+  const projectIsAvailable = Boolean(projectId && project);
+  const modelsQuery = useQuery({ queryKey: ["models", projectId], queryFn: () => api.listModels(projectId), enabled: projectIsAvailable });
+  const runsQuery = useQuery({ queryKey: ["runs"], queryFn: api.listRuns, enabled: projectIsAvailable, refetchInterval: 5_000 });
   const models = modelsQuery.data?.modelVersions ?? [];
   const runs = (runsQuery.data?.runs ?? []).filter((run) => run.projectId === projectId);
+
+  if (projectsQuery.isPending) {
+    return <div className="route-loading">Loading project…</div>;
+  }
+  if (projectsQuery.isError || !project) {
+    return (
+      <div className="page auth-required-page">
+        <section className="auth-required-card">
+          <span className="section-kicker">Project unavailable</span>
+          <h1>This project is not in your workspace.</h1>
+          <p>
+            It may have been deleted or it may belong to another account. If
+            you are investigating application activity, open it from the
+            operator dashboard instead.
+          </p>
+          <Link className="button secondary" to="/studies">Back to Projects</Link>
+        </section>
+      </div>
+    );
+  }
+  if (modelsQuery.isPending || runsQuery.isPending) {
+    return <div className="route-loading">Loading retained project data…</div>;
+  }
+  if (modelsQuery.isError || runsQuery.isError) {
+    return (
+      <div className="page">
+        <div className="error-banner" role="alert">
+          This project’s retained models or runs could not be loaded. Return to
+          Projects and retry.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

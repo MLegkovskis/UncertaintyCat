@@ -64,6 +64,12 @@ export function formatEvidenceCitations(markdown: string) {
   );
 }
 
+export function normalizeLatexControlWordSpacing(markdown: string) {
+  return markdown.replace(/\$\$([\s\S]*?)\$\$/g, (block) =>
+    block.replace(/\\(qquad|quad)(?=[A-Za-z])/g, "\\$1 "),
+  );
+}
+
 export function Markdown({
   children,
   className,
@@ -73,7 +79,10 @@ export function Markdown({
   className?: string;
   evidenceCitations?: boolean;
 }) {
-  const content = evidenceCitations ? formatEvidenceCitations(children) : children;
+  const normalized = normalizeLatexControlWordSpacing(children);
+  const content = evidenceCitations
+    ? formatEvidenceCitations(normalized)
+    : normalized;
   const plugins = evidenceCitations
     ? [remarkGfm, remarkMath, remarkHumanizeSchemaKeys]
     : [remarkGfm, remarkMath];

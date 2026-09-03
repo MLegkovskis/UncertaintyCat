@@ -6,6 +6,7 @@ import {
   catalog,
   installMockApi,
   makeOperatorOverview,
+  makeOperatorProject,
   makeReport,
   makeRun,
   project,
@@ -32,6 +33,7 @@ test.describe("operator telemetry", () => {
       authenticated: true,
       operator: true,
       operatorOverview: makeOperatorOverview(),
+      operatorProject: makeOperatorProject(),
       runs: [makeRun()],
     });
     await page.goto("/operator");
@@ -46,12 +48,77 @@ test.describe("operator telemetry", () => {
     await expect(
       page.getByText("The bounded compute task did not complete."),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open run" })).toHaveAttribute(
-      "href",
-      "/runs/run-1",
-    );
+    await expect(
+      page.getByRole("link", { name: "Inspect run" }),
+    ).toHaveAttribute("href", "/operator/projects/project-1?run=run-1");
     await page.getByLabel("Reporting window").selectOption("24");
     await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
+
+    await page
+      .getByRole("region", { name: "Projects table" })
+      .getByRole("link", { name: /Beam study/ })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Beam study" }),
+    ).toBeVisible();
+    await expect(page.getByText("engineer@example.com")).toBeVisible();
+    await expect(page.getByText("hsic", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(/compute_failed: The bounded compute task/),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "Open numerical report" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Verification report" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Operator inspection · read only"),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Rerun exact/ })).toHaveCount(
+      0,
+    );
+  });
+
+  test("shows a terminal state instead of hanging on a project outside the user workspace", async ({
+    page,
+  }) => {
+    await installMockApi(page, { authenticated: true });
+    await page.goto("/studies/project-owned-by-someone-else");
+    await expect(
+      page.getByRole("heading", {
+        name: "This project is not in your workspace.",
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("Loading project…")).toHaveCount(0);
+  });
+
+  test("pages through every retained run in an operator project", async ({
+    page,
+  }) => {
+    const operatorProject = makeOperatorProject();
+    operatorProject.runPage = {
+      page: 1,
+      pageSize: 50,
+      totalPages: 2,
+      totalRuns: 51,
+      start: 1,
+      end: 50,
+    };
+    await installMockApi(page, {
+      authenticated: true,
+      operator: true,
+      operatorProject,
+    });
+
+    await page.goto("/operator/projects/project-1");
+    await expect(page.getByText("Page 1 of 2")).toBeVisible();
+    await expect(page.getByText("1–50 of 51")).toBeVisible();
+
+    await page.getByRole("button", { name: "Next 50" }).click();
+    await expect(page).toHaveURL(/\/operator\/projects\/project-1\?page=2$/);
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+    await expect(page.getByText("51–51 of 51")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next 50" })).toBeDisabled();
   });
 });
 

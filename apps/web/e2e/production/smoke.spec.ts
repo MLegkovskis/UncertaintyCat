@@ -69,6 +69,8 @@ test("production serves the static overview and rejects every private API surfac
     "/api/v1/examples",
     "/api/v1/projects",
     "/api/v1/operator/overview",
+    "/api/v1/operator/projects/not-a-project",
+    "/api/v1/operator/reports/not-a-run",
     "/api/v1/runs",
     "/api/v1/shared-reports/not-a-token",
   ]) {

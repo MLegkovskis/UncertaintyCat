@@ -220,7 +220,13 @@ function MorrisReduction({
   );
 }
 
-export function ReportPage({ shared = false }: { shared?: boolean }) {
+export function ReportPage({
+  shared = false,
+  operator = false,
+}: {
+  shared?: boolean;
+  operator?: boolean;
+}) {
   const { reportId = "" } = useParams();
   const { token = "" } = useParams();
   const navigate = useNavigate();
@@ -230,15 +236,22 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
   const [includeModelDefinition, setIncludeModelDefinition] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const query = useQuery({
-    queryKey: [shared ? "shared-report" : "report", shared ? token : reportId],
+    queryKey: [
+      shared ? "shared-report" : operator ? "operator-report" : "report",
+      shared ? token : reportId,
+    ],
     queryFn: () =>
-      shared ? api.getSharedReport(token) : api.getReport(reportId),
+      shared
+        ? api.getSharedReport(token)
+        : operator
+          ? api.operatorReport(reportId)
+          : api.getReport(reportId),
   });
   const report = query.data?.report;
   const definitionQuery = useQuery({
     queryKey: ["model-definition", report?.modelVersion.id],
     queryFn: () => api.getModelDefinition(report?.modelVersion.id ?? ""),
-    enabled: !shared && Boolean(report?.modelVersion.id),
+    enabled: !shared && !operator && Boolean(report?.modelVersion.id),
   });
   const share = useMutation({
     mutationFn: () =>
@@ -307,8 +320,8 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
     <div className="report-layout">
       <article className="report-document" ref={reportDocument}>
         <nav className="breadcrumbs" aria-label="Breadcrumb">
-          <Link to="/studies">Studies</Link><span>/</span>
-          <Link to={`/studies/${report.project.id}`}>{report.project.name}</Link><span>/</span>
+          <Link to={operator ? "/operator" : "/studies"}>{operator ? "Operations" : "Projects"}</Link><span>/</span>
+          <Link to={operator ? `/operator/projects/${report.project.id}` : `/studies/${report.project.id}`}>{report.project.name}</Link><span>/</span>
           <span>{report.modelVersion.displayName} v{report.modelVersion.version}</span>
         </nav>
         <header className="report-header">
@@ -326,7 +339,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
             )}
           </div>
           <div className="report-actions">
-            {!shared && (
+            {!shared && !operator && (
               <>
                 <a
                   className="button secondary small"
@@ -359,7 +372,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
             </button>
           </div>
         </header>
-        {shareOpen && !shared && (
+        {shareOpen && !shared && !operator && (
           <section className="share-dialog" role="dialog" aria-label="Share report">
             <div>
               <strong>Create a read-only report link</strong>
@@ -395,6 +408,27 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
           </div>
           <StatusBadge status={report.status} />
         </section>
+        {operator && (
+          <section className="operator-readonly-note report-operator-note">
+            <ShieldCheck />
+            <div>
+              <strong>Operator inspection · read only</strong>
+              <span>
+                This is the user’s retained numerical evidence. Rerun, sharing,
+                source download, derived-model actions, and chat are disabled.
+              </span>
+            </div>
+          </section>
+        )}
+        {operator && report.model.equations?.length ? (
+          <section className="model-definition-section">
+            <div className="section-copy">
+              <span className="section-kicker">Validated model</span>
+              <h2>Model equations</h2>
+            </div>
+            <ModelEquationSummary model={report.model} spec={null} />
+          </section>
+        ) : null}
         {(definitionQuery.data?.definition ?? report.modelDefinition) && (
           <section className="model-definition-section">
             <div className="section-copy">
@@ -413,7 +447,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
               source={(definitionQuery.data?.definition ?? report.modelDefinition)?.source ?? ""}
               label="Exact immutable Python model source"
             />
-            {!shared && (
+            {!shared && !operator && (
               <div className="model-source-actions">
                 <a className="button secondary small" href={`/api/v1/model-versions/${report.modelVersion.id}/source`} download><Download /> Source</a>
                 <Link className="button secondary small" to={`/studies/${report.project.id}/workspace?sourceModel=${report.modelVersion.id}`}><Code2 /> Open as new version</Link>
@@ -449,7 +483,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
             {section.result ? (
               <>
                 <ResultView result={section.result} />
-                {!shared && section.key === "morris" && (
+                {!shared && !operator && section.key === "morris" && (
                   <MorrisReduction
                     result={section.result}
                     model={report.model}
@@ -471,7 +505,7 @@ export function ReportPage({ shared = false }: { shared?: boolean }) {
           </section>
         ))}
       </article>
-      {!shared && <ChatPanel reportId={report.id} />}
+      {!shared && !operator && <ChatPanel reportId={report.id} />}
     </div>
   );
 }

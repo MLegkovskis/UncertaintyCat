@@ -133,7 +133,7 @@ export const TABLE_CHART_DEFINITIONS: Readonly<
 export const ANALYSIS_VISUALIZATION_STRATEGY = {
   ancova: "table chart and validation scatter",
   calibration_nlls: "parameter chart, validation scatter, and correlation heatmap",
-  convergence: "convergence series",
+  convergence: "estimate line with shaded confidence band",
   correlation: "coefficient heatmaps",
   eda: "correlation heatmaps",
   fast: "sensitivity bar charts",

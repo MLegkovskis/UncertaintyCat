@@ -52,7 +52,7 @@ Read [Architecture](docs/ARCHITECTURE.md), [operations](docs/OPERATIONS.md), [pl
 
 ## Quality gates
 
-Prerequisites are Python 3.12, [uv](https://docs.astral.sh/uv/), Node.js 22, and npm. There is intentionally no repository launcher script; package commands and Playwright own the test processes they need.
+Prerequisites are Python 3.12, [uv](https://docs.astral.sh/uv/), Node.js 22, and npm. Node 22 is pinned in both `.nvmrc` and `.node-version` so compatible version managers and agent environments resolve the same runtime. There is intentionally no repository launcher script; package commands and Playwright own the test processes they need.
 
 ```bash
 uv sync --frozen --extra dev

@@ -4,6 +4,7 @@ import {
   ANALYSIS_VISUALIZATION_STRATEGY,
   TABLE_CHART_DEFINITIONS,
 } from "./analysisVisuals";
+import { wrapChartLabel } from "./ResultView";
 
 const CATALOG_ANALYSES = [
   "ancova",
@@ -53,5 +54,12 @@ describe("analysis visualization strategy", () => {
         }
       }
     }
+  });
+
+  it("wraps long engineering labels without dropping any variable text", () => {
+    expect(wrapChartLabel("Zv (Downstream)"))
+      .toBe("Zv (Downstream)");
+    expect(wrapChartLabel("Long calibrated engineering parameter"))
+      .toBe("Long calibrated\nengineering\nparameter");
   });
 });

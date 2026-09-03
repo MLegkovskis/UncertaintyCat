@@ -19,6 +19,9 @@ describe("deployment-selectable AI provider", () => {
     expect(AI_PROVIDER_DEFINITIONS.groq.modelUnderstanding.modelId).toBe(
       "openai/gpt-oss-20b",
     );
+    expect(AI_PROVIDER_DEFINITIONS.groq.modelUnderstanding.reviewerModelId).toBe(
+      "openai/gpt-oss-120b",
+    );
     expect(AI_PROVIDER_DEFINITIONS.groq.reportChat.modelId).toBe(
       "openai/gpt-oss-120b",
     );
@@ -44,7 +47,9 @@ describe("deployment-selectable AI provider", () => {
         env({ AI_PROVIDER: "groq", GROQ_API_KEY: "gsk_test" }),
         "1.4.0",
       ),
-    ).toBe("1.4.0:groq:openai/gpt-oss-20b");
+    ).toBe(
+      "1.4.0:groq:openai/gpt-oss-20b:openai/gpt-oss-120b",
+    );
     expect(
       modelUnderstandingCacheVersion(
         env({ AI_PROVIDER: "cloudflare", AI: {} as Ai }),

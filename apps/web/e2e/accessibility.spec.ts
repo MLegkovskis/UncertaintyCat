@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import {
   installMockApi,
   makeOperatorOverview,
+  makeOperatorProject,
   makeReport,
   makeRun,
   project,
@@ -121,6 +122,28 @@ test("operator dashboard has no serious accessibility violations", async ({
     page.getByRole("heading", { name: "Application health." }),
   ).toBeVisible();
   await expect(page.locator(".echart canvas")).toHaveCount(2);
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    results.violations
+      .filter((item) => item.impact === "serious" || item.impact === "critical")
+      .map((item) => item.id),
+  ).toEqual([]);
+});
+
+test("operator project inspection has no serious accessibility violations", async ({
+  page,
+}) => {
+  await installMockApi(page, {
+    authenticated: true,
+    operator: true,
+    operatorProject: makeOperatorProject(),
+  });
+  await page.goto("/operator/projects/project-1?run=run-1");
+  await expect(
+    page.getByRole("heading", { name: "Beam study" }),
+  ).toBeVisible();
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();

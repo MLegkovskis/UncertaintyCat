@@ -1,8 +1,9 @@
-export const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.8.0";
+export const MODEL_UNDERSTANDING_PROMPT_VERSION = "1.9.0";
 export const MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS = 12_000;
 export const MODEL_UNDERSTANDING_FALLBACK_TIMEOUT_MS = 15_000;
+export const MODEL_UNDERSTANDING_REVIEW_TIMEOUT_MS = 15_000;
 export const REPORT_CHAT_TIMEOUT_MS = 45_000;
-export const MODEL_UNDERSTANDING_LEASE_MS = 30_000;
+export const MODEL_UNDERSTANDING_LEASE_MS = 60_000;
 
 export function generationLeaseIsActive(
   status: string | undefined,

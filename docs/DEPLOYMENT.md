@@ -58,14 +58,14 @@ gh secret set GROQ_API_KEY < /secure/path/to/groq.txt
 gh variable set AI_PROVIDER --body groq
 ```
 
-To return to the Cloudflare models, set `gh variable set AI_PROVIDER --body cloudflare` and redeploy an exact successful `main` SHA. Switching back requires no code change; the Workers AI binding remains deployed. Model Understanding cache keys include provider and model ID, so a switch cannot reuse prose produced by the previous provider.
+To return to the Cloudflare models, set `gh variable set AI_PROVIDER --body cloudflare` and redeploy an exact successful `main` SHA. Switching back requires no code change; the Workers AI binding remains deployed. Model Understanding cache keys include provider, generator ID, and reviewer ID, so a switch cannot reuse prose produced by the previous provider.
 
 The deployment token should remain scoped to the UncertaintyCat Cloudflare account/zone and only the Workers Scripts, Containers, D1, R2, Queues, Workers AI, and Workers Routes capabilities needed by the workflow. Never store the global API key in GitHub or the Worker.
 
 Workers Logs are enabled at a 100% head sample rate. AI generation events contain request/record IDs, provider, model ID,
 outcome, wall time, and output length only; they deliberately exclude prompts, model source, and persisted numerical
-evidence. Groq uses `openai/gpt-oss-20b` for concise Model Understanding and `openai/gpt-oss-120b` for grounded report tool use; see Groq's [model catalog](https://console.groq.com/docs/models), [OpenAI-compatible endpoint](https://console.groq.com/docs/openai), and [local tool-calling guide](https://console.groq.com/docs/tool-use/local-tool-calling). Model Understanding requests should normally complete in a few seconds. Its primary and fallback attempts
-have 12- and 15-second deadlines; exhausting both becomes an explicit retryable 504 and is not charged to the
+evidence. Groq uses `openai/gpt-oss-20b` for concise Model Understanding generation, `openai/gpt-oss-120b` for its independent equation review and generation fallback, and `openai/gpt-oss-120b` for grounded report tool use; see Groq's [model catalog](https://console.groq.com/docs/models), [OpenAI-compatible endpoint](https://console.groq.com/docs/openai), and [local tool-calling guide](https://console.groq.com/docs/tool-use/local-tool-calling). Model Understanding requests should normally complete in a few seconds. Its primary/fallback generation attempts
+have 12- and 15-second deadlines and each review attempt has a 15-second deadline; exhausting them becomes an explicit retryable 504 and is not charged to the
 successful-regeneration quota.
 
 ## Automatic delivery

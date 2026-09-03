@@ -4995,7 +4995,7 @@ tbody tr:hover td {
   font: 700 13px var(--font-mono);
 }
 
-/* Owner-only application operations */
+/* Operator-only application operations */
 .operations-page {
   display: grid;
   gap: 22px;
@@ -5228,6 +5228,99 @@ tbody tr:hover td {
   width: 15px;
   flex: 0 0 auto;
 }
+.operator-readonly-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 40%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--cyan) 6%, var(--panel));
+}
+.operator-readonly-note > svg {
+  width: 19px;
+  color: var(--cyan);
+}
+.operator-readonly-note > div {
+  display: grid;
+  gap: 3px;
+}
+.operator-readonly-note strong {
+  font-size: 11px;
+}
+.operator-readonly-note span {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.report-operator-note {
+  margin: 0 0 26px;
+}
+.operator-runs-panel > header {
+  border-bottom: 0;
+}
+.operator-run-list {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+.operator-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+.operator-pagination span {
+  color: var(--muted);
+  font: 600 9px var(--font-mono);
+}
+.operator-run-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  scroll-margin: 80px;
+}
+.operator-run-card.selected {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cyan) 12%, transparent);
+}
+.operator-run-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.operator-run-card > header > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.operator-run-card > header strong {
+  font-size: 11px;
+}
+.operator-run-card > header strong span,
+.operator-run-card > header small {
+  color: var(--muted);
+  font: 8px/1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.operator-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.operator-error {
+  max-width: 460px;
+  color: var(--danger);
+  line-height: 1.5;
+}
 
 @media (max-width: 900px) {
   .operator-kpis,
@@ -5246,6 +5339,15 @@ tbody tr:hover td {
   .operator-issues .button {
     grid-column: 2;
     justify-self: start;
+  }
+  .operator-run-card > header,
+  .operator-run-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .operator-pagination {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .data-lab-layout,
   .fit-summary-grid,

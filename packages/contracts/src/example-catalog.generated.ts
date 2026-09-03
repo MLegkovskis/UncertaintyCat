@@ -166,7 +166,7 @@ export const EXAMPLE_CATALOG = [
       },
       {
         "outputName": "Initial conditions and response",
-        "latex": "T(10^{-5})=300,\\quad T'(10^{-5})=0,\\quadY=\\max_{r\\in[10^{-5},R]}T(r)"
+        "latex": "T(10^{-5})=300,\\quad T'(10^{-5})=0,\\quad{}Y=\\max_{r\\in[10^{-5},R]}T(r)"
       }
     ]
   },
@@ -252,7 +252,7 @@ export const EXAMPLE_CATALOG = [
     "equations": [
       {
         "outputName": "River slope and depth",
-        "latex": "\\alpha=\\max\\left(\\frac{Z_m-Z_v}{L},0\\right),\\qquadH=\\begin{cases}\\left(\\frac{Q}{K_sB\\sqrt{\\alpha}}\\right)^{0.6},&Q,K_s,\\alpha>0\\\\0,&\\text{otherwise}\\end{cases}"
+        "latex": "\\alpha=\\max\\left(\\frac{Z_m-Z_v}{L},0\\right),\\qquad{}H=\\begin{cases}\\left(\\frac{Q}{K_sB\\sqrt{\\alpha}}\\right)^{0.6},&Q,K_s,\\alpha>0\\\\0,&\\text{otherwise}\\end{cases}"
       },
       {
         "outputName": "Overflow margin",
@@ -304,7 +304,7 @@ export const EXAMPLE_CATALOG = [
     "equations": [
       {
         "outputName": "Logistic response",
-        "latex": "\\widetilde y_0=10^6y_0,\\quad b=e^c,\\quady=\\frac{1}{10^6}\\frac{a\\widetilde y_0}{b\\widetilde y_0+(a-b\\widetilde y_0)e^{-a(2000-0)}}"
+        "latex": "\\widetilde y_0=10^6y_0,\\quad b=e^c,\\quad{}y=\\frac{1}{10^6}\\frac{a\\widetilde y_0}{b\\widetilde y_0+(a-b\\widetilde y_0)e^{-a(2000-0)}}"
       }
     ]
   },
@@ -354,7 +354,7 @@ export const EXAMPLE_CATALOG = [
       },
       {
         "outputName": "Input transformation",
-        "latex": "w_i=2(u_i-0.5),\\quadw_i=2\\left(\\frac{1.1u_i}{u_i+0.1}-0.5\\right)\\ \\text{for }i\\in\\{3,5,7\\}"
+        "latex": "w_i=2(u_i-0.5),\\quad{}w_i=2\\left(\\frac{1.1u_i}{u_i+0.1}-0.5\\right)\\ \\text{for }i\\in\\{3,5,7\\}"
       },
       {
         "outputName": "Morris coefficients",
@@ -459,11 +459,11 @@ export const EXAMPLE_CATALOG = [
     "equations": [
       {
         "outputName": "Plate and stiffener terms",
-        "latex": "k_{xy}=5.35+4\\left(\\frac{b_0}{a}\\right)^2,\\quadD=\\frac{Et^3}{12(1-\\nu^2)},\\quad A=\\ell t,\\quad\\bar A=A+t\\left[p+\\frac{f_1-f_2}{2}\\right]"
+        "latex": "k_{xy}=5.35+4\\left(\\frac{b_0}{a}\\right)^2,\\quad{}D=\\frac{Et^3}{12(1-\\nu^2)},\\quad A=\\ell t,\\quad\\bar A=A+t\\left[p+\\frac{f_1-f_2}{2}\\right]"
       },
       {
         "outputName": "Neutral-axis terms",
-        "latex": "h_0=\\frac{A(h_c+2t)+t^2(f_1-f_2)}{2\\bar A},\\quadh=h_c+t"
+        "latex": "h_0=\\frac{A(h_c+2t)+t^2(f_1-f_2)}{2\\bar A},\\quad{}h=h_c+t"
       },
       {
         "outputName": "Critical shear response",
@@ -594,7 +594,7 @@ export const EXAMPLE_CATALOG = [
     "equations": [
       {
         "outputName": "Vertical trajectory",
-        "latex": "\\tau=\\frac{m}{c},\\quad v_{\\infty}=-\\frac{mg}{c},\\quadz(t)=z_0+v_{\\infty}t+\\tau(v_0-v_{\\infty})\\left(1-e^{-t/\\tau}\\right),\\quad g=9.81"
+        "latex": "\\tau=\\frac{m}{c},\\quad v_{\\infty}=-\\frac{mg}{c},\\quad{}z(t)=z_0+v_{\\infty}t+\\tau(v_0-v_{\\infty})\\left(1-e^{-t/\\tau}\\right),\\quad g=9.81"
       },
       {
         "outputName": "Maximum height",

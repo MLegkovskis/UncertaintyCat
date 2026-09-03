@@ -12,7 +12,10 @@ interface AiModelDefinition {
 }
 
 interface AiProviderDefinition {
-  modelUnderstanding: AiModelDefinition & { fallbackModelId: string };
+  modelUnderstanding: AiModelDefinition & {
+    fallbackModelId: string;
+    reviewerModelId: string;
+  };
   reportChat: AiModelDefinition;
 }
 
@@ -26,7 +29,8 @@ export const AI_PROVIDER_DEFINITIONS: Record<
     modelUnderstanding: {
       modelId: "openai/gpt-oss-20b",
       fallbackModelId: "openai/gpt-oss-120b",
-      label: "Groq · GPT-OSS 20B",
+      reviewerModelId: "openai/gpt-oss-120b",
+      label: "Groq · GPT-OSS 20B + 120B equation review",
     },
     reportChat: {
       modelId: "openai/gpt-oss-120b",
@@ -37,7 +41,8 @@ export const AI_PROVIDER_DEFINITIONS: Record<
     modelUnderstanding: {
       modelId: "@cf/meta/llama-3.2-3b-instruct",
       fallbackModelId: "@cf/meta/llama-3.2-1b-instruct",
-      label: "Cloudflare Workers AI · Llama 3.2 3B Instruct",
+      reviewerModelId: "@cf/meta/llama-3.2-3b-instruct",
+      label: "Cloudflare Workers AI · Llama 3.2 3B with equation review",
     },
     reportChat: {
       modelId: "@cf/zai-org/glm-4.7-flash",
@@ -103,5 +108,5 @@ export function aiProviderOptions(
 
 export function modelUnderstandingCacheVersion(env: Env, promptVersion: string) {
   const runtime = aiRuntime(env);
-  return `${promptVersion}:${runtime.provider}:${runtime.models.modelUnderstanding.modelId}`;
+  return `${promptVersion}:${runtime.provider}:${runtime.models.modelUnderstanding.modelId}:${runtime.models.modelUnderstanding.reviewerModelId}`;
 }

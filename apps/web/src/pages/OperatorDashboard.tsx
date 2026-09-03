@@ -290,12 +290,12 @@ export function OperatorDashboard() {
                     <time dateTime={issue.occurredAt}>
                       {time(issue.occurredAt)}
                     </time>
-                    {issue.runId && (
+                    {issue.runId && issue.projectId && (
                       <Link
                         className="button secondary small"
-                        to={`/runs/${issue.runId}`}
+                        to={`/operator/projects/${issue.projectId}?run=${issue.runId}`}
                       >
-                        Open run
+                        Inspect run
                       </Link>
                     )}
                   </article>
@@ -338,7 +338,9 @@ export function OperatorDashboard() {
                   {data.recentRuns.map((run) => (
                     <tr key={run.id}>
                       <td>
-                        <Link to={`/runs/${run.id}`}>
+                        <Link
+                          to={`/operator/projects/${run.projectId}?run=${run.id}`}
+                        >
                           <strong>{run.modelName}</strong>
                           <small>{run.projectName}</small>
                         </Link>
@@ -476,7 +478,7 @@ export function OperatorDashboard() {
                     {data.projects.map((project) => (
                       <tr key={project.id}>
                         <td>
-                          <Link to={`/studies/${project.id}`}>
+                          <Link to={`/operator/projects/${project.id}`}>
                             <strong>{project.name}</strong>
                             <small>{project.ownerEmail}</small>
                           </Link>

@@ -376,6 +376,62 @@ export interface OperatorOverview {
   }>;
 }
 
+export interface OperatorProjectDetail {
+  generatedAt: string;
+  refreshAfterSeconds: number;
+  runPage: {
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    totalRuns: number;
+    start: number;
+    end: number;
+  };
+  project: {
+    id: string;
+    name: string;
+    ownerName: string;
+    ownerEmail: string;
+    createdAt: string;
+    updatedAt: string;
+    modelCount: number;
+    runCount: number;
+    taskCount: number;
+    failedTaskCount: number;
+    activeTaskCount: number;
+  };
+  models: Array<{
+    id: string;
+    displayName: string;
+    version: number;
+    sourceKind: "python" | "builder" | "example";
+    inputDimension: number | null;
+    outputDimension: number | null;
+    createdAt: string;
+  }>;
+  runs: Array<{
+    id: string;
+    modelName: string;
+    modelVersion: number;
+    status: string;
+    createdAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    durationMs: number | null;
+    tasks: Array<{
+      id: string;
+      analysisKey: string;
+      pluginVersion: string | null;
+      status: string;
+      createdAt: string;
+      startedAt: string | null;
+      completedAt: string | null;
+      durationMs: number | null;
+      error?: { code: string; message: string };
+    }>;
+  }>;
+}
+
 export interface ModelVersion {
   id: string;
   projectId: string;
@@ -648,6 +704,19 @@ export class ApiClient {
   session = () => this.request<SessionPolicy>("/session");
   operatorOverview = (hours: 24 | 168 | 720 = 168) =>
     this.request<OperatorOverview>(`/operator/overview?hours=${hours}`);
+  operatorProject = (projectId: string, page?: number, runId?: string) => {
+    const query = new URLSearchParams();
+    if (page !== undefined) query.set("page", String(page));
+    if (runId) query.set("run", runId);
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return this.request<OperatorProjectDetail>(
+      `/operator/projects/${encodeURIComponent(projectId)}${suffix}`,
+    );
+  };
+  operatorReport = (reportId: string) =>
+    this.request<{ report: Report }>(
+      `/operator/reports/${encodeURIComponent(reportId)}`,
+    );
   listProjects = () => this.request<{ projects: Project[] }>("/projects");
   createProject = (input: CreateProject) =>
     this.request<{ project: Project }>("/projects", {

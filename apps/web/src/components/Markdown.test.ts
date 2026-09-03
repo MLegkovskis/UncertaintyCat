@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { formatEvidenceCitations, humanizeSchemaKeys } from "./Markdown";
+import {
+  formatEvidenceCitations,
+  humanizeSchemaKeys,
+  normalizeLatexControlWordSpacing,
+} from "./Markdown";
 
 describe("report evidence citations", () => {
   it("replaces internal evidence paths with human-readable source labels", () => {
@@ -20,5 +24,20 @@ describe("report evidence citations", () => {
         "base_sample_size = 1000; largest_total_order_index = 0.61",
       ),
     ).toBe("Base Sample Size = 1000; Largest Total Order Index = 0.61");
+  });
+});
+
+describe("LaTeX display safeguards", () => {
+  it("separates spacing control words from following identifiers inside display math", () => {
+    expect(
+      normalizeLatexControlWordSpacing(
+        "Before $$x=1,\\qquadH=2,\\quady=3$$ after",
+      ),
+    ).toBe("Before $$x=1,\\qquad H=2,\\quad y=3$$ after");
+  });
+
+  it("does not rewrite non-math Markdown", () => {
+    expect(normalizeLatexControlWordSpacing("`\\qquadH`"))
+      .toBe("`\\qquadH`");
   });
 });

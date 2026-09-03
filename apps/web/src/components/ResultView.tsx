@@ -1,4 +1,4 @@
-import type { EChartsOption } from "echarts";
+import type { CustomSeriesRenderItem, EChartsOption } from "echarts";
 import { lazy, Suspense } from "react";
 
 import type {
@@ -56,25 +56,79 @@ function ChartLoading() {
   return <div className="chart-loading" aria-live="polite">Loading interactive chart…</div>;
 }
 
+export function wrapChartLabel(value: string, maximumLineLength = 16) {
+  if (value.length <= maximumLineLength) return value;
+  const words = value.split(/\s+/);
+  if (words.length === 1) return value;
+  const lines: string[] = [];
+  for (const word of words) {
+    const current = lines.at(-1);
+    if (!current || `${current} ${word}`.length > maximumLineLength)
+      lines.push(word);
+    else lines[lines.length - 1] = `${current} ${word}`;
+  }
+  return lines.join("\n");
+}
+
 function Heatmap({ name, matrix }: { name: string; matrix: MatrixData }) {
   const values = matrix.values.flatMap((row, rowIndex) =>
     row.map((value, columnIndex) => [columnIndex, rowIndex, value] as [number, number, number | null]),
   );
   const finite = values.map((item) => item[2]).filter((value): value is number => value !== null && Number.isFinite(value));
   const extent = Math.max(...finite.map(Math.abs), 1e-12);
+  const denseColumns = matrix.column_labels.length > 5;
+  const height = Math.min(
+    620,
+    Math.max(390, matrix.row_labels.length * 34 + 190),
+  );
   const option: EChartsOption = {
-    tooltip: { position: "top" },
-    toolbox: { feature: { saveAsImage: { title: "Export image" }, restore: {} } },
-    grid: { top: 32, right: 28, bottom: 70, left: 100 },
-    xAxis: { type: "category", data: matrix.column_labels, splitArea: { show: true }, axisLabel: { rotate: matrix.column_labels.length > 8 ? 35 : 0 } },
-    yAxis: { type: "category", data: matrix.row_labels, splitArea: { show: true } },
-    visualMap: { min: -extent, max: extent, calculable: true, orient: "horizontal", left: "center", bottom: 5, inRange: { color: ["#c94f61", "#f7f8fa", "#08717b"] } },
+    tooltip: { position: "top", confine: true },
+    toolbox: { top: 4, right: 8, feature: { saveAsImage: { title: "Export image" }, restore: {} } },
+    grid: {
+      top: 42,
+      right: 34,
+      bottom: denseColumns ? 132 : 112,
+      left: 88,
+      containLabel: true,
+    },
+    xAxis: {
+      type: "category",
+      data: matrix.column_labels,
+      splitArea: { show: true },
+      axisLabel: {
+        interval: 0,
+        hideOverlap: false,
+        rotate: denseColumns ? 24 : 0,
+        margin: 14,
+        formatter: (value: string) => wrapChartLabel(value),
+      },
+    },
+    yAxis: {
+      type: "category",
+      data: matrix.row_labels,
+      splitArea: { show: true },
+      axisLabel: {
+        interval: 0,
+        hideOverlap: false,
+        formatter: (value: string) => wrapChartLabel(value),
+      },
+    },
+    visualMap: {
+      min: -extent,
+      max: extent,
+      calculable: true,
+      orient: "horizontal",
+      left: "center",
+      bottom: 10,
+      textGap: 8,
+      inRange: { color: ["#c94f61", "#f7f8fa", "#08717b"] },
+    },
     series: [{ name, type: "heatmap", data: values, label: { show: matrix.row_labels.length <= 12 && matrix.column_labels.length <= 12, formatter: (params) => formatValue((params.value as unknown[])[2]) }, emphasis: { itemStyle: { shadowBlur: 8, shadowColor: "rgba(0,0,0,0.25)" } } }],
   };
   return (
     <section className="plot-panel">
       <h4>{name.replaceAll("_", " ")}</h4>
-      <Suspense fallback={<ChartLoading />}><EChart option={option} ariaLabel={`${name} heatmap with ${matrix.row_labels.length} rows and ${matrix.column_labels.length} columns`} /></Suspense>
+      <Suspense fallback={<ChartLoading />}><EChart option={option} ariaLabel={`${name} heatmap with ${matrix.row_labels.length} rows and ${matrix.column_labels.length} columns; every input label is shown`} height={height} /></Suspense>
       <details className="chart-data-fallback"><summary>Exact heatmap values</summary><DataTable table={{ columns: ["Row", ...matrix.column_labels], rows: matrix.values.map((row, index) => [matrix.row_labels[index] ?? index, ...row]), row_count: matrix.values.length, truncated: false }} /></details>
     </section>
   );
@@ -105,7 +159,7 @@ function TableChart({
         right: 4,
         feature: { dataZoom: {}, restore: {}, saveAsImage: { title: "Export image" } },
       },
-      grid: { top: 34, right: 30, bottom: 58, left: 72 },
+      grid: { top: 46, right: 124, bottom: 72, left: 104, containLabel: true },
       xAxis: {
         type: "value",
         name: definition.x,
@@ -158,6 +212,9 @@ function TableChart({
   if (!rows.length) return null;
   const categories = rows.map((row) => String(row[categoryIndex] ?? "Input"));
   const horizontal = categories.length > 8 || categories.some((item) => item.length > 18);
+  const height = horizontal
+    ? Math.min(760, Math.max(360, categories.length * 31 + 150))
+    : 370;
   const series = definition.values.map((column, index) => ({
     name: column,
     type: "bar" as const,
@@ -168,13 +225,18 @@ function TableChart({
   const categoryAxis = {
     type: "category" as const,
     data: categories,
-    axisLabel: { interval: 0, rotate: !horizontal && categories.length > 6 ? 25 : 0 },
+    axisLabel: {
+      interval: 0,
+      hideOverlap: false,
+      rotate: !horizontal && categories.length > 6 ? 24 : 0,
+      formatter: (value: string) => wrapChartLabel(value),
+    },
   };
   const valueAxis = { type: "value" as const, scale: true };
   const option: EChartsOption = {
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    legend: { top: 0, data: definition.values },
-    toolbox: { right: 4, feature: { restore: {}, saveAsImage: { title: "Export image" } } },
+    legend: { top: 8, left: 12, data: definition.values },
+    toolbox: { top: 4, right: 8, feature: { restore: {}, saveAsImage: { title: "Export image" } } },
     grid: horizontal
       ? { top: 52, right: 36, bottom: 42, left: 118, containLabel: true }
       : { top: 52, right: 30, bottom: 74, left: 66, containLabel: true },
@@ -189,6 +251,7 @@ function TableChart({
         <EChart
           option={option}
           ariaLabel={`${definition.title}; ${categories.length} inputs and ${definition.values.length} numerical series`}
+          height={height}
         />
       </Suspense>
     </section>
@@ -240,10 +303,12 @@ function OutputHistograms({ series }: { series: Record<string, SeriesData> }) {
     const { labels, counts } = histogram(values);
     const option: EChartsOption = {
       tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-      toolbox: { right: 4, feature: { dataZoom: {}, restore: {}, saveAsImage: { title: "Export image" } } },
-      grid: { top: 34, right: 30, bottom: 92, left: 68 },
-      dataZoom: labels.length > 20 ? [{ type: "inside" }, { type: "slider", bottom: 12 }] : [{ type: "inside" }],
-      xAxis: { type: "category", data: labels, name: value.y_label ?? value.name, nameLocation: "middle", nameGap: 66, axisLabel: { rotate: 35 } },
+      toolbox: { top: 4, right: 8, feature: { dataZoom: {}, restore: {}, saveAsImage: { title: "Export image" } } },
+      grid: { top: 42, right: 30, bottom: labels.length > 20 ? 142 : 122, left: 68, containLabel: true },
+      dataZoom: labels.length > 20
+        ? [{ type: "inside" }, { type: "slider", bottom: 10, height: 22 }]
+        : [{ type: "inside" }],
+      xAxis: { type: "category", data: labels, name: value.y_label ?? value.name, nameLocation: "middle", nameGap: 82, axisLabel: { interval: 0, rotate: 35, hideOverlap: false } },
       yAxis: { type: "value", name: "Frequency", minInterval: 1 },
       series: [{ name: value.name, type: "bar", data: counts, barMaxWidth: 42 }],
     };
@@ -254,6 +319,7 @@ function OutputHistograms({ series }: { series: Record<string, SeriesData> }) {
           <EChart
             option={option}
             ariaLabel={`Histogram of ${value.name} with ${values.length} retained samples`}
+            height={labels.length > 20 ? 400 : 360}
           />
         </Suspense>
         <details className="chart-data-fallback">
@@ -285,30 +351,98 @@ function SeriesChart({ series }: { series: Record<string, SeriesData> }) {
   const scatter = entries.every((entry) => /observed_vs_predicted/i.test(entry.key))
     || (entries.length === 1 && /validation|scatter|qq/i.test(entries[0]!.key));
   const pointCount = Math.max(...entries.map((entry) => entry.points.length));
+  const lower = entries.find((entry) => /confidence.*lower|lower.*confidence/i.test(`${entry.key} ${entry.value.name}`));
+  const upper = entries.find((entry) => /confidence.*upper|upper.*confidence/i.test(`${entry.key} ${entry.value.name}`));
+  const compatibleBand =
+    !scatter &&
+    lower &&
+    upper &&
+    lower.points.length === upper.points.length &&
+    lower.points.every(([x], index) => x === upper.points[index]?.[0]);
+  const visibleEntries = compatibleBand
+    ? entries.filter((entry) => entry !== lower && entry !== upper)
+    : entries;
+  const renderConfidenceBand: CustomSeriesRenderItem = (_params, api) => ({
+    type: "polygon",
+    shape: {
+      points: [
+        api.coord([api.value(0), api.value(1)]),
+        api.coord([api.value(0), api.value(2)]),
+        api.coord([api.value(3), api.value(5)]),
+        api.coord([api.value(3), api.value(4)]),
+      ],
+    },
+    style: {
+      fill: "rgba(49, 105, 220, 0.22)",
+      stroke: "none",
+    },
+  });
+  const chartSeries: NonNullable<EChartsOption["series"]> = compatibleBand
+    ? [
+        {
+          name: "95% confidence band",
+          type: "custom",
+          renderItem: renderConfidenceBand,
+          data: lower.points.slice(0, -1).map(([x, lowerY], index) => [
+            x,
+            lowerY,
+            upper.points[index]![1],
+            lower.points[index + 1]![0],
+            lower.points[index + 1]![1],
+            upper.points[index + 1]![1],
+          ]),
+          encode: { x: [0, 3], y: [1, 2, 4, 5] },
+          itemStyle: { color: "rgba(49, 105, 220, 0.22)" },
+          tooltip: { show: false },
+          silent: true,
+          clip: true,
+          z: 1,
+        },
+        ...visibleEntries.map((entry) => ({
+          name: entry.value.name,
+          type: "line" as const,
+          data: entry.points,
+          symbolSize: 4,
+          showSymbol: entry.points.length < 200,
+          sampling: "lttb" as const,
+          lineStyle: { width: 2.2 },
+          z: 2,
+        })),
+      ]
+    : entries.map((entry) => ({
+        name: entry.value.name,
+        type: scatter ? "scatter" as const : "line" as const,
+        data: entry.points,
+        symbolSize: scatter ? 7 : 4,
+        showSymbol: scatter || entry.points.length < 200,
+        sampling: "lttb" as const,
+        ...(scatter ? { markLine: { symbol: ["none", "none"], data: [[{ coord: ["min", "min"] }, { coord: ["max", "max"] }]], lineStyle: { type: "dashed" as const, color: "#64748b" } } } : {}),
+      }));
   const option: EChartsOption = {
     tooltip: { trigger: scatter ? "item" : "axis" },
-    legend: { top: 0, data: entries.map((entry) => entry.value.name) },
-    toolbox: { right: 4, feature: { dataZoom: {}, restore: {}, saveAsImage: { title: "Export image" } } },
-    grid: { top: 52, right: 30, bottom: pointCount > 100 ? 72 : 50, left: 68 },
-    dataZoom: pointCount > 100 ? [{ type: "inside" }, { type: "slider", bottom: 8 }] : [{ type: "inside" }],
-    xAxis: { type: "value", name: entries[0]!.value.x_label ?? "x", nameLocation: "middle", nameGap: 32, scale: true },
+    legend: {
+      top: 8,
+      left: 12,
+      data: [
+        ...visibleEntries.map((entry) => entry.value.name),
+        ...(compatibleBand ? ["95% confidence band"] : []),
+      ],
+    },
+    toolbox: { top: 4, right: 8, feature: { dataZoom: {}, restore: {}, saveAsImage: { title: "Export image" } } },
+    grid: { top: 64, right: 30, bottom: pointCount > 100 ? 116 : 66, left: 76, containLabel: true },
+    dataZoom: pointCount > 100
+      ? [{ type: "inside" }, { type: "slider", bottom: 10, height: 22 }]
+      : [{ type: "inside" }],
+    xAxis: { type: "value", name: entries[0]!.value.x_label ?? "x", nameLocation: "middle", nameGap: 38, scale: true },
     yAxis: { type: "value", name: entries[0]!.value.y_label ?? "y", nameLocation: "middle", nameGap: 48, scale: true },
-    series: entries.map((entry) => ({
-      name: entry.value.name,
-      type: scatter ? "scatter" : "line",
-      data: entry.points,
-      symbolSize: scatter ? 7 : 4,
-      showSymbol: scatter || entry.points.length < 200,
-      sampling: "lttb",
-      ...(scatter ? { markLine: { symbol: ["none", "none"], data: [[{ coord: ["min", "min"] }, { coord: ["max", "max"] }]], lineStyle: { type: "dashed", color: "#64748b" } } } : {}),
-    })),
+    series: chartSeries,
   };
   const maxRows = Math.max(...entries.map((entry) => entry.value.x.length));
   const rows = Array.from({ length: maxRows }, (_, index) => entries.flatMap((entry) => [tableValue(entry.value.x[index]), tableValue(entry.value.y[index])]));
   return (
     <section className="plot-panel">
       <h4>{scatter ? "Observed versus predicted" : "Convergence and series"}</h4>
-      <Suspense fallback={<ChartLoading />}><EChart option={option} ariaLabel={scatter ? "Observed versus predicted validation scatter plot" : `Interactive result chart with ${entries.length} series`} /></Suspense>
+      <Suspense fallback={<ChartLoading />}><EChart option={option} ariaLabel={scatter ? "Observed versus predicted validation scatter plot" : compatibleBand ? `Convergence chart with ${visibleEntries.length} estimate series and a shaded 95% confidence band` : `Interactive result chart with ${entries.length} series`} height={pointCount > 100 ? 400 : 360} /></Suspense>
       <details className="chart-data-fallback"><summary>Exact chart data</summary><DataTable table={{ columns: entries.flatMap((entry) => [`${entry.value.name} · ${entry.value.x_label ?? "x"}`, `${entry.value.name} · ${entry.value.y_label ?? "y"}`]), rows, row_count: maxRows, truncated: false }} /></details>
     </section>
   );

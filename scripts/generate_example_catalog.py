@@ -271,7 +271,7 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "outputName": "Initial conditions and response",
             "latex": (
                 r"T(10^{-5})=300,\quad T'(10^{-5})=0,\quad"
-                r"Y=\max_{r\in[10^{-5},R]}T(r)"
+                r"{}Y=\max_{r\in[10^{-5},R]}T(r)"
             ),
         },
     ],
@@ -326,7 +326,7 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "outputName": "River slope and depth",
             "latex": (
                 r"\alpha=\max\left(\frac{Z_m-Z_v}{L},0\right),\qquad"
-                r"H=\begin{cases}\left(\frac{Q}{K_sB\sqrt{\alpha}}\right)^{0.6},"
+                r"{}H=\begin{cases}\left(\frac{Q}{K_sB\sqrt{\alpha}}\right)^{0.6},"
                 r"&Q,K_s,\alpha>0\\0,&\text{otherwise}\end{cases}"
             ),
         },
@@ -346,7 +346,7 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "outputName": "Logistic response",
             "latex": (
                 r"\widetilde y_0=10^6y_0,\quad b=e^c,\quad"
-                r"y=\frac{1}{10^6}\frac{a\widetilde y_0}"
+                r"{}y=\frac{1}{10^6}\frac{a\widetilde y_0}"
                 r"{b\widetilde y_0+(a-b\widetilde y_0)e^{-a(2000-0)}}"
             ),
         }
@@ -376,7 +376,7 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "outputName": "Input transformation",
             "latex": (
                 r"w_i=2(u_i-0.5),\quad"
-                r"w_i=2\left(\frac{1.1u_i}{u_i+0.1}-0.5\right)"
+                r"{}w_i=2\left(\frac{1.1u_i}{u_i+0.1}-0.5\right)"
                 r"\ \text{for }i\in\{3,5,7\}"
             ),
         },
@@ -427,7 +427,7 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "outputName": "Plate and stiffener terms",
             "latex": (
                 r"k_{xy}=5.35+4\left(\frac{b_0}{a}\right)^2,\quad"
-                r"D=\frac{Et^3}{12(1-\nu^2)},\quad A=\ell t,\quad"
+                r"{}D=\frac{Et^3}{12(1-\nu^2)},\quad A=\ell t,\quad"
                 r"\bar A=A+t\left[p+\frac{f_1-f_2}{2}\right]"
             ),
         },
@@ -435,7 +435,7 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "outputName": "Neutral-axis terms",
             "latex": (
                 r"h_0=\frac{A(h_c+2t)+t^2(f_1-f_2)}{2\bar A},\quad"
-                r"h=h_c+t"
+                r"{}h=h_c+t"
             ),
         },
         {
@@ -501,7 +501,7 @@ EQUATIONS: dict[str, list[dict[str, str]]] = {
             "outputName": "Vertical trajectory",
             "latex": (
                 r"\tau=\frac{m}{c},\quad v_{\infty}=-\frac{mg}{c},\quad"
-                r"z(t)=z_0+v_{\infty}t+\tau(v_0-v_{\infty})"
+                r"{}z(t)=z_0+v_{\infty}t+\tau(v_0-v_{\infty})"
                 r"\left(1-e^{-t/\tau}\right),\quad g=9.81"
             ),
         },

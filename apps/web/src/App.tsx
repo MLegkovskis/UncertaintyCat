@@ -50,6 +50,11 @@ const OperatorDashboard = lazy(() =>
     default: module.OperatorDashboard,
   })),
 );
+const OperatorProjectDetail = lazy(() =>
+  import("./pages/OperatorProjectDetail").then((module) => ({
+    default: module.OperatorProjectDetail,
+  })),
+);
 
 export function App() {
   const privatePage = (page: ReactNode) => (
@@ -76,6 +81,22 @@ export function App() {
             element={privatePage(
               <OperatorRoute>
                 <OperatorDashboard />
+              </OperatorRoute>,
+            )}
+          />
+          <Route
+            path="/operator/projects/:projectId"
+            element={privatePage(
+              <OperatorRoute>
+                <OperatorProjectDetail />
+              </OperatorRoute>,
+            )}
+          />
+          <Route
+            path="/operator/reports/:reportId"
+            element={privatePage(
+              <OperatorRoute>
+                <ReportPage operator />
               </OperatorRoute>,
             )}
           />

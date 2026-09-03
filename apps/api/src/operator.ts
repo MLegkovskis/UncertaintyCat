@@ -1,4 +1,7 @@
-import type { OperatorOverview } from "@uncertaintycat/contracts";
+import type {
+  OperatorOverview,
+  OperatorProjectDetail,
+} from "@uncertaintycat/contracts";
 
 import type { Env } from "./env";
 
@@ -42,6 +45,212 @@ function safeError(value: string | null): { code: string; message: string } {
 export function operatorWindow(value: string | undefined): 24 | 168 | 720 {
   const parsed = Number(value ?? 168);
   return WINDOWS.has(parsed) ? (parsed as 24 | 168 | 720) : 168;
+}
+
+export async function loadOperatorProject(
+  env: Env,
+  projectId: string,
+  requestedPage?: number,
+  focusedRunId?: string,
+): Promise<OperatorProjectDetail | null> {
+  const project = await env.DB.prepare(
+    `SELECT p.id, p.name, p.created_at, p.updated_at,
+            COALESCE(u.name, p.owner_id) AS owner_name,
+            COALESCE(u.email, p.owner_id) AS owner_email,
+            (SELECT COUNT(*) FROM model_versions m WHERE m.project_id = p.id) AS model_count,
+            (SELECT COUNT(*) FROM runs r WHERE r.project_id = p.id) AS run_count,
+            (SELECT COUNT(*) FROM analysis_tasks t JOIN runs r ON r.id = t.run_id
+              WHERE r.project_id = p.id) AS task_count,
+            (SELECT COUNT(*) FROM analysis_tasks t JOIN runs r ON r.id = t.run_id
+              WHERE r.project_id = p.id AND t.status = 'failed') AS failed_task_count,
+            (SELECT COUNT(*) FROM analysis_tasks t JOIN runs r ON r.id = t.run_id
+              WHERE r.project_id = p.id AND t.status IN ('queued', 'running')) AS active_task_count
+       FROM projects p LEFT JOIN user u ON u.id = p.owner_id
+       WHERE p.id = ?`,
+  )
+    .bind(projectId)
+    .first<{
+      id: string;
+      name: string;
+      created_at: string;
+      updated_at: string;
+      owner_name: string;
+      owner_email: string;
+      model_count: number;
+      run_count: number;
+      task_count: number;
+      failed_task_count: number;
+      active_task_count: number;
+    }>();
+  if (!project) return null;
+
+  const pageSize = 50;
+  const totalRuns = count(project.run_count);
+  const totalPages = Math.max(1, Math.ceil(totalRuns / pageSize));
+  let page = Math.min(
+    totalPages,
+    Math.max(
+      1,
+      Math.floor(
+        requestedPage !== undefined && Number.isFinite(requestedPage)
+          ? requestedPage
+          : 1,
+      ),
+    ),
+  );
+  if (requestedPage === undefined && focusedRunId) {
+    const focusedRun = await env.DB.prepare(
+      `SELECT row_position FROM (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS row_position
+         FROM runs WHERE project_id = ?
+       ) WHERE id = ?`,
+    )
+      .bind(projectId, focusedRunId)
+      .first<{ row_position: number }>();
+    if (focusedRun) {
+      page = Math.ceil(count(focusedRun.row_position) / pageSize);
+    }
+  }
+  const offset = (page - 1) * pageSize;
+
+  const [models, runs, tasks] = await Promise.all([
+    env.DB.prepare(
+      `SELECT id, display_name, version, source_kind,
+              json_extract(metadata_json, '$.input_dimension') AS input_dimension,
+              json_extract(metadata_json, '$.output_dimension') AS output_dimension,
+              created_at
+         FROM model_versions WHERE project_id = ?
+         ORDER BY version DESC LIMIT ?`,
+    )
+      .bind(projectId, ROW_LIMIT)
+      .all<{
+        id: string;
+        display_name: string;
+        version: number;
+        source_kind: "python" | "builder" | "example";
+        input_dimension: number | null;
+        output_dimension: number | null;
+        created_at: string;
+      }>(),
+    env.DB.prepare(
+      `SELECT r.id, r.status, r.created_at, r.started_at, r.completed_at,
+              m.display_name AS model_name, m.version AS model_version,
+              CASE WHEN r.started_at IS NOT NULL AND r.completed_at IS NOT NULL
+                   THEN (julianday(r.completed_at) - julianday(r.started_at)) * 86400000 END AS duration_ms
+         FROM runs r JOIN model_versions m ON m.id = r.model_version_id
+         WHERE r.project_id = ? ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`,
+    )
+      .bind(projectId, pageSize, offset)
+      .all<{
+        id: string;
+        status: string;
+        created_at: string;
+        started_at: string | null;
+        completed_at: string | null;
+        model_name: string;
+        model_version: number;
+        duration_ms: number | null;
+      }>(),
+    env.DB.prepare(
+      `SELECT t.id, t.run_id, t.analysis_key, t.plugin_version, t.status,
+              t.error_json, t.created_at, t.started_at, t.completed_at,
+              CASE WHEN t.started_at IS NOT NULL AND t.completed_at IS NOT NULL
+                   THEN (julianday(t.completed_at) - julianday(t.started_at)) * 86400000 END AS duration_ms
+         FROM analysis_tasks t JOIN runs r ON r.id = t.run_id
+         WHERE r.project_id = ? AND r.id IN (
+           SELECT id FROM runs WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+         )
+         ORDER BY t.created_at ASC`,
+    )
+      .bind(projectId, projectId, pageSize, offset)
+      .all<{
+        id: string;
+        run_id: string;
+        analysis_key: string;
+        plugin_version: string | null;
+        status: string;
+        error_json: string | null;
+        created_at: string;
+        started_at: string | null;
+        completed_at: string | null;
+        duration_ms: number | null;
+      }>(),
+  ]);
+
+  const tasksByRun = new Map<
+    string,
+    OperatorProjectDetail["runs"][number]["tasks"]
+  >();
+  for (const row of tasks.results) {
+    const task = {
+      id: row.id,
+      analysisKey: row.analysis_key,
+      pluginVersion: row.plugin_version,
+      status: row.status,
+      createdAt: row.created_at,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+      durationMs:
+        row.duration_ms === null
+          ? null
+          : Math.max(0, Math.round(row.duration_ms)),
+      ...(row.error_json ? { error: safeError(row.error_json) } : {}),
+    };
+    const entries = tasksByRun.get(row.run_id) ?? [];
+    entries.push(task);
+    tasksByRun.set(row.run_id, entries);
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    refreshAfterSeconds: 30,
+    runPage: {
+      page,
+      pageSize,
+      totalPages,
+      totalRuns,
+      start: totalRuns === 0 ? 0 : offset + 1,
+      end: Math.min(offset + runs.results.length, totalRuns),
+    },
+    project: {
+      id: project.id,
+      name: project.name,
+      ownerName: project.owner_name,
+      ownerEmail: project.owner_email,
+      createdAt: project.created_at,
+      updatedAt: project.updated_at,
+      modelCount: count(project.model_count),
+      runCount: count(project.run_count),
+      taskCount: count(project.task_count),
+      failedTaskCount: count(project.failed_task_count),
+      activeTaskCount: count(project.active_task_count),
+    },
+    models: models.results.map((row) => ({
+      id: row.id,
+      displayName: row.display_name,
+      version: count(row.version),
+      sourceKind: row.source_kind,
+      inputDimension:
+        row.input_dimension === null ? null : count(row.input_dimension),
+      outputDimension:
+        row.output_dimension === null ? null : count(row.output_dimension),
+      createdAt: row.created_at,
+    })),
+    runs: runs.results.map((row) => ({
+      id: row.id,
+      modelName: row.model_name,
+      modelVersion: count(row.model_version),
+      status: row.status,
+      createdAt: row.created_at,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+      durationMs:
+        row.duration_ms === null
+          ? null
+          : Math.max(0, Math.round(row.duration_ms)),
+      tasks: tasksByRun.get(row.id) ?? [],
+    })),
+  };
 }
 
 export async function loadOperatorOverview(

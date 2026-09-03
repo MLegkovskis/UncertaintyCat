@@ -159,6 +159,9 @@ declare bounded governing LaTeX for procedural models. Curated reference equatio
 that deterministic definition renders immediately, the authenticated Model Understanding request sends at
 most 32,000 model-source characters to the selected AI provider for a clearly labelled approximate LaTeX
 interpretation. It is explanatory rather than numerical evidence and falls back to the deterministic mapping.
+The generated brief is not stored until a second AI pass has compared its equation to the same bounded source
+and facts and the result passes deterministic structural and LaTeX-safety checks. Historical retained equations
+also receive a narrowly scoped display-time repair for joined `\\quad`/`\\qquad` control words.
 The deterministic workflow recommendation is gated on that same completed state, so it cannot appear ahead of
 Model Understanding. A forward-only D1 `equations_json` cache backfills existing immutable model versions
 without rewriting their historical `metadata_json` or R2 source.
@@ -228,15 +231,16 @@ The contract also prevents an EDA correlation screen from being presented as a g
 prevents ANCOVA correlation contributions from being presented as causal or total-order effects, and
 requires all completed sensitivity sections to be inspected before declaring findings absent.
 Model Understanding receives bounded model source plus compact validated metadata, has a 240-to-360-word response contract and a bounded
-output budget, and D1 caches it by model hash, prompt version, provider, and model ID. Groq defaults to
-`openai/gpt-oss-20b` for the short brief, with one bounded `openai/gpt-oss-120b` fallback, and uses
+output budget, and D1 caches it by model hash, prompt version, provider, generator ID, and reviewer ID. Groq defaults to
+`openai/gpt-oss-20b` for the short brief, with one bounded `openai/gpt-oss-120b` generation fallback; a separate
+`openai/gpt-oss-120b` pass reviews and repairs the equation before persistence. Groq uses
 `openai/gpt-oss-120b` for report chat. Low reasoning effort avoids unnecessary latency and parallel tool calls
 are disabled because the report tools are intentionally serial and bounded. The Cloudflare option retains
-Llama 3.2 3B/1B for Model Understanding and GLM-4.7-Flash for report chat. Model Understanding has 12- and
-15-second attempt deadlines, zero automatic SDK retries, and a 30-second single-flight lease; concurrent clients poll the one active generation. Only successful
+Llama 3.2 3B/1B for Model Understanding, a Llama 3.2 3B review pass, and GLM-4.7-Flash for report chat. Model Understanding has 12- and
+15-second generation deadlines, a 15-second review deadline, zero automatic SDK retries, and a 60-second single-flight lease; concurrent clients poll the one active generation. Only successful
 manual regenerations and successful report-chat answers enter the usage ledger. Chat messages and daily usage are
 persisted in D1, so an authenticated user can resume a report conversation on another device. Structured Worker
-logs record model ID, fallback use, outcome, duration, and output size without recording model source, prompts, or
+logs record generator/reviewer model IDs, fallback use, outcome, duration, and output size without recording model source, prompts, or
 numerical artifacts.
 
 ## Data ownership and retention

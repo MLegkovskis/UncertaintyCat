@@ -38,6 +38,7 @@ import {
   MODEL_UNDERSTANDING_LEASE_MS,
   MODEL_UNDERSTANDING_PRIMARY_TIMEOUT_MS,
   MODEL_UNDERSTANDING_PROMPT_VERSION,
+  MODEL_UNDERSTANDING_REVIEW_TIMEOUT_MS,
   REPORT_CHAT_TIMEOUT_MS,
   runSequentialFallback,
 } from "./ai-config";
@@ -48,8 +49,11 @@ import {
   modelUnderstandingCacheVersion,
 } from "./ai-provider";
 import {
+  MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT,
   MODEL_UNDERSTANDING_SYSTEM_PROMPT,
   modelUnderstandingPrompt,
+  modelUnderstandingReviewPrompt,
+  modelUnderstandingValidationIssues,
   reportChatSystemPrompt,
   validModelUnderstanding,
 } from "./ai-prompts";
@@ -70,7 +74,11 @@ import {
 } from "./db";
 import type { Env, Identity, RunTaskMessage } from "./env";
 import { createReportBundle } from "./exports";
-import { loadOperatorOverview, operatorWindow } from "./operator";
+import {
+  loadOperatorOverview,
+  loadOperatorProject,
+  operatorWindow,
+} from "./operator";
 
 type Variables = { requestId: string; identity?: Identity };
 type AppContext = Context<{ Bindings: Env; Variables: Variables }>;
@@ -297,6 +305,78 @@ app.get("/api/v1/operator/overview", async (c) => {
     }),
   );
   return c.json(overview);
+});
+
+app.get("/api/v1/operator/projects/:projectId", async (c) => {
+  const identity = authenticatedIdentity(c);
+  if (!identity.operator) {
+    return jsonError(
+      c,
+      403,
+      "operator_access_required",
+      "This operational view is restricted to configured UncertaintyCat operators.",
+    );
+  }
+  const pageQuery = c.req.query("page");
+  const requestedPage = pageQuery === undefined ? undefined : Number(pageQuery);
+  const focusedRunId = c.req.query("run");
+  const project = await loadOperatorProject(
+    c.env,
+    c.req.param("projectId"),
+    requestedPage,
+    focusedRunId,
+  );
+  if (!project) {
+    return jsonError(
+      c,
+      404,
+      "operator_project_not_found",
+      "The project no longer exists.",
+    );
+  }
+  c.header("Cache-Control", "private, no-store");
+  console.log(
+    JSON.stringify({
+      event: "operator_project_read",
+      requestId: c.get("requestId"),
+      operatorId: identity.ownerId,
+      projectId: project.project.id,
+      page: project.runPage.page,
+      focusedRunId: focusedRunId ?? null,
+    }),
+  );
+  return c.json(project);
+});
+
+app.get("/api/v1/operator/reports/:reportId", async (c) => {
+  const identity = authenticatedIdentity(c);
+  if (!identity.operator) {
+    return jsonError(
+      c,
+      403,
+      "operator_access_required",
+      "This operational view is restricted to configured UncertaintyCat operators.",
+    );
+  }
+  const report = await loadRetainedReport(c.env, c.req.param("reportId"));
+  if (!report) {
+    return jsonError(
+      c,
+      404,
+      "operator_report_not_found",
+      "The retained numerical report is not available.",
+    );
+  }
+  c.header("Cache-Control", "private, no-store");
+  console.log(
+    JSON.stringify({
+      event: "operator_report_read",
+      requestId: c.get("requestId"),
+      operatorId: identity.ownerId,
+      runId: report.runId,
+    }),
+  );
+  return c.json({ report });
 });
 
 app.get("/api/v1/analyses/catalog", async (c) => {
@@ -2199,10 +2279,6 @@ app.post(
             const narrative = result.text.trim();
             if (!narrative)
               throw new Error("The AI provider returned an empty explanation.");
-            if (!validModelUnderstanding(narrative))
-              throw new Error(
-                "The AI provider returned an invalid Model Understanding structure.",
-              );
             return {
               content: narrative,
               modelId: attempt.modelId,
@@ -2224,7 +2300,62 @@ app.post(
           }
         },
       );
-      const { content, modelId, attemptDurationMs } = generation.result;
+      const reviewStartedAt = Date.now();
+      const reviewerAttempts = [
+        runtime.models.modelUnderstanding.reviewerModelId,
+        generation.result.modelId,
+        runtime.models.modelUnderstanding.modelId,
+      ].filter((modelId, index, values) => values.indexOf(modelId) === index);
+      const review = await runSequentialFallback(
+        reviewerAttempts,
+        async (reviewerModelId, index) => {
+          if (index > 0) {
+            console.warn(
+              JSON.stringify({
+                event: "model_understanding_review_fallback_started",
+                requestId: c.get("requestId"),
+                understandingId,
+                aiModelId: reviewerModelId,
+              }),
+            );
+          }
+          const providerOptions = aiProviderOptions(
+            runtime.provider,
+            "modelUnderstanding",
+          );
+          const result = await generateText({
+            model: createAiLanguageModel(
+              c.env,
+              reviewerModelId,
+              `understanding-review:${definition.modelVersion.sourceHash.slice(0, 48)}`,
+              "modelUnderstanding",
+            ),
+            ...(providerOptions ? { providerOptions } : {}),
+            maxOutputTokens: 1_600,
+            maxRetries: 0,
+            timeout: MODEL_UNDERSTANDING_REVIEW_TIMEOUT_MS,
+            temperature: 0,
+            system: MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT,
+            prompt: modelUnderstandingReviewPrompt(
+              definition,
+              generation.result.content,
+            ),
+          });
+          const reviewed = result.text.trim();
+          const validationIssues = modelUnderstandingValidationIssues(reviewed);
+          if (validationIssues.length > 0)
+            throw new Error(
+              `The equation reviewer returned an invalid brief: ${validationIssues.join(",")}`,
+            );
+          return { content: reviewed, modelId: reviewerModelId };
+        },
+      );
+      const { content, modelId } = review.result;
+      const attemptDurationMs = generation.result.attemptDurationMs;
+      if (!validModelUnderstanding(content))
+        throw new Error(
+          "The AI provider returned an invalid Model Understanding structure.",
+        );
       const statements = [
         c.env.DB.prepare(
           `UPDATE model_understandings SET status = 'succeeded', content = ?,
@@ -2254,6 +2385,9 @@ app.post(
           understandingId,
           aiModelId: modelId,
           fallbackUsed: generation.index > 0,
+          reviewerModelId: review.result.modelId,
+          reviewerFallbackUsed: review.index > 0,
+          reviewDurationMs: Date.now() - reviewStartedAt,
           attemptDurationMs,
           durationMs,
           outputCharacters: content.length,
@@ -2571,31 +2705,37 @@ app.get("/api/v1/runs/:runId/events", async (c) => {
   });
 });
 
-app.get("/api/v1/reports/:reportId", async (c) => {
-  const identity = authenticatedIdentity(c);
-  const reportRow = await c.env.DB.prepare(
-    `SELECT reports.id, reports.run_id, reports.title, reports.status, reports.updated_at
+async function loadRetainedReport(
+  env: Env,
+  reportId: string,
+  ownerId?: string,
+): Promise<Report | null> {
+  const reportRow = await env.DB.prepare(
+    `SELECT reports.id, reports.run_id, reports.title, reports.status,
+            reports.updated_at, runs.owner_id
      FROM reports JOIN runs ON runs.id = reports.run_id
-     WHERE (reports.id = ? OR reports.run_id = ?) AND runs.owner_id = ?`,
+     WHERE (reports.id = ? OR reports.run_id = ?)
+       AND (? IS NULL OR runs.owner_id = ?)`,
   )
-    .bind(c.req.param("reportId"), c.req.param("reportId"), identity.ownerId)
+    .bind(reportId, reportId, ownerId ?? null, ownerId ?? null)
     .first<{
       id: string;
       run_id: string;
       title: string;
       status: string;
       updated_at: string;
+      owner_id: string;
     }>();
-  if (!reportRow)
-    return jsonError(c, 404, "report_not_found", "Report is not ready.");
-  const run = await loadOwnedRun(c.env, reportRow.run_id, identity.ownerId);
-  if (!run) return jsonError(c, 404, "run_not_found", "Run not found.");
-  const metadata = await modelMetadata(c.env, run.modelVersionId);
-  const context = await reportModelContext(c.env, run.modelVersionId);
-  const surrogate = await reportSurrogateContext(c.env, run.surrogateModelId);
-  if (!context)
-    return jsonError(c, 404, "model_not_found", "Model version not found.");
-  const report: Report = {
+  if (!reportRow) return null;
+  const run = await loadOwnedRun(env, reportRow.run_id, reportRow.owner_id);
+  if (!run) return null;
+  const [metadata, context, surrogate] = await Promise.all([
+    modelMetadata(env, run.modelVersionId),
+    reportModelContext(env, run.modelVersionId),
+    reportSurrogateContext(env, run.surrogateModelId),
+  ]);
+  if (!context) return null;
+  return {
     id: reportRow.id,
     runId: reportRow.run_id,
     title: reportRow.title,
@@ -2629,6 +2769,17 @@ app.get("/api/v1/reports/:reportId", async (c) => {
       ...(task.error ? { error: task.error } : {}),
     })),
   };
+}
+
+app.get("/api/v1/reports/:reportId", async (c) => {
+  const identity = authenticatedIdentity(c);
+  const report = await loadRetainedReport(
+    c.env,
+    c.req.param("reportId"),
+    identity.ownerId,
+  );
+  if (!report)
+    return jsonError(c, 404, "report_not_found", "Report is not ready.");
   return c.json({ report });
 });
 

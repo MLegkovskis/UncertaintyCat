@@ -415,6 +415,71 @@ test("retained-user journey persists a project, executes every plugin, and produ
     expect(serializedOperations).not.toContain(privateField);
   }
 
+  const operatorProject = await request.get(
+    `http://127.0.0.1:8787/api/v1/operator/projects/${projectId}`,
+  );
+  expect(operatorProject.ok()).toBe(true);
+  const operatorProjectBody = await operatorProject.json();
+  expect(operatorProjectBody).toMatchObject({
+    project: { id: projectId, name: studyName },
+    runPage: {
+      page: 1,
+      pageSize: 50,
+      totalPages: expect.any(Number),
+      totalRuns: expect.any(Number),
+      start: 1,
+      end: expect.any(Number),
+    },
+    runs: expect.arrayContaining([
+      expect.objectContaining({
+        id: runId,
+        tasks: expect.arrayContaining([
+          expect.objectContaining({
+            analysisKey: "sobol",
+            status: "succeeded",
+          }),
+        ]),
+      }),
+    ]),
+  });
+  expect(operatorProjectBody.runPage.totalRuns).toBeGreaterThanOrEqual(1);
+  expect(operatorProjectBody.runPage.end).toBe(
+    Math.min(
+      operatorProjectBody.runPage.pageSize,
+      operatorProjectBody.runPage.totalRuns,
+    ),
+  );
+  expect(JSON.stringify(operatorProjectBody)).not.toMatch(
+    /source_key|config_json|result_json|object_key|chat_messages/,
+  );
+
+  await page.goto(`/operator/projects/${projectId}?run=${runId}`);
+  await expect(page.getByRole("heading", { name: studyName })).toBeVisible();
+  await expect(page.getByText("sobol", { exact: true }).first()).toBeVisible();
+  await page
+    .getByRole("link", { name: "Open numerical report" })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Uncertainty Quantification Report" }),
+  ).toBeVisible();
+  await expect(page.getByText("Operator inspection · read only")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
+  await expect(page.getByText("Ask this report")).toHaveCount(0);
+
+  const operatorReport = await request.get(
+    `http://127.0.0.1:8787/api/v1/operator/reports/${runId}`,
+  );
+  expect(operatorReport.ok()).toBe(true);
+  expect((await operatorReport.json()).report.sections).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        key: "sobol",
+        result: expect.objectContaining({ analysis_key: "sobol" }),
+      }),
+    ]),
+  );
+
   // Finish with the destructive lifecycle boundary: explicit typed confirmation,
   // D1 cascades, and authenticated absence of the deleted run/project.
   await page.goto("/studies");

@@ -1,10 +1,10 @@
 # Operations and application monitoring
 
-UncertaintyCat has two complementary observability planes. The authenticated owner dashboard at `/operator`
+UncertaintyCat has two complementary observability planes. The authenticated operator dashboard at `/operator`
 answers **what users and scientific work are retained right now**. Cloudflare's native observability answers
 **what happened inside the runtime and infrastructure**. Neither substitutes for the other.
 
-## Owner dashboard
+## Operator dashboard
 
 The React dashboard calls `GET /api/v1/operator/overview?hours=24|168|720`. The Worker requires a valid
 Cloudflare/Better Auth session and then matches the normalized identity email against `OPERATOR_EMAILS`.
@@ -25,6 +25,18 @@ input/output samples, task configuration/result envelopes, dataset contents, rep
 R2 keys are not selected or serialized. The response has `Cache-Control: private, no-store`. The browser
 refreshes every 30 seconds only while the view is open and offers a manual refresh; this is near-real-time D1
 state rather than a streaming event system.
+
+Every project and run link stays within the operator surface rather than crossing into the owning user's
+workspace. `GET /api/v1/operator/projects/:projectId` provides a read-only drill-down across accounts with
+retained model-version metadata plus every retained run in 50-run pages, with every analysis task's
+status/timing and bounded failure diagnostics. The operator UI can traverse every page and open every retained
+numerical report, so older analyses do not disappear behind a latest-results cap.
+Issue and recent-run deep links include a run identifier; the Worker resolves its retained-history page so an
+older run opens in view instead of silently falling back to the newest page.
+`GET /api/v1/operator/reports/:reportId` provides the corresponding persisted numerical report and charts.
+The operator report deliberately disables rerun, cancellation, sharing, model derivation, source download,
+and report chat so investigation cannot mutate the user's work. Both endpoints repeat the Worker-side operator
+authorization and return private, non-cacheable responses.
 
 Set operators in checked-in non-secret deployment configuration:
 
@@ -57,8 +69,8 @@ without improving the exact D1 state view.
 
 1. Open `/operator`, choose the relevant window, and identify the affected user, project, run, method, error
    code, and time. Check whether work is failed or merely active; a task is flagged stale after 15 minutes.
-2. Open the retained run when available. Preserve its immutable numerical evidence and record its request/run/
-   task identifiers.
+2. Open the project inspection view, select the retained run, and open its read-only numerical report when
+   available. Preserve its immutable evidence and record its request/run/task identifiers.
 3. Query Workers Logs around the recorded time/request identifier, then inspect Queue/DLQ and Sandbox metrics
    for compute failures or capacity symptoms. Use D1 metrics for database latency or query regressions.
 4. Reproduce locally through the normal test commands. Never edit production results or applied migrations to
