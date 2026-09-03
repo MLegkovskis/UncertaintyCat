@@ -7,17 +7,13 @@ import {
   LogOut,
   Menu,
   Moon,
+  Gauge,
   Sun,
   User,
   X,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type PropsWithChildren,
-} from "react";
+import { useEffect, useRef, useState, type PropsWithChildren } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api";
@@ -43,7 +39,11 @@ export function formatIdentity(claims?: IdentityClaims | null) {
       words.length === 1
         ? first.slice(0, 2)
         : `${first[0] ?? ""}${words.at(-1)?.[0] ?? ""}`;
-    return { initials: initials.toUpperCase(), label: name, fallbackIcon: false };
+    return {
+      initials: initials.toUpperCase(),
+      label: name,
+      fallbackIcon: false,
+    };
   }
   if (email) {
     const local = (email.split("@", 1)[0] ?? "").replace(/[^a-z0-9]/gi, "");
@@ -106,9 +106,11 @@ export function Shell({ children }: PropsWithChildren) {
     ? ["Uncertainty quantification", "OpenTURNS, made interactive"]
     : location.pathname === "/studies"
       ? ["Projects", "Models, studies, and retained results"]
-      : location.pathname.startsWith("/studies/")
-        ? ["Project workspace", "Model, methods, and numerical evidence"]
-        : ["Scientific report", "Reproducible numerical evidence"];
+      : location.pathname === "/operator"
+        ? ["Operations", "Application health and execution telemetry"]
+        : location.pathname.startsWith("/studies/")
+          ? ["Project workspace", "Model, methods, and numerical evidence"]
+          : ["Scientific report", "Reproducible numerical evidence"];
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -116,7 +118,11 @@ export function Shell({ children }: PropsWithChildren) {
     try {
       await authClient.signOut();
       queryClient.setQueryData(["session-policy"], {
-        identity: { ownerId: "anonymous", authenticated: false },
+        identity: {
+          ownerId: "anonymous",
+          authenticated: false,
+          operator: false,
+        },
         providers,
       });
       queryClient.removeQueries({
@@ -132,7 +138,12 @@ export function Shell({ children }: PropsWithChildren) {
     <div className="app-shell">
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
         <div className="brand-row">
-          <Link className="brand" to="/" onClick={() => setOpen(false)} aria-label="UncertaintyCat home">
+          <Link
+            className="brand"
+            to="/"
+            onClick={() => setOpen(false)}
+            aria-label="UncertaintyCat home"
+          >
             <span className="brand-mark">
               <Cat size={22} />
             </span>
@@ -148,9 +159,16 @@ export function Shell({ children }: PropsWithChildren) {
         </div>
         <nav aria-label="Primary navigation">
           {signedIn ? (
-            <NavLink to="/studies">
-              <FolderKanban size={18} /> Projects
-            </NavLink>
+            <>
+              <NavLink to="/studies">
+                <FolderKanban size={18} /> Projects
+              </NavLink>
+              {session.data?.identity.operator && (
+                <NavLink to="/operator">
+                  <Gauge size={18} /> Operations
+                </NavLink>
+              )}
+            </>
           ) : (
             <NavLink to="/" end>
               <BookOpen size={18} /> Overview
@@ -211,11 +229,21 @@ export function Shell({ children }: PropsWithChildren) {
               }
             >
               <span className="account-copy">
-                <small>{sessionLoading ? "Checking session" : signedIn ? "Signed in" : "Not signed in"}</small>
+                <small>
+                  {sessionLoading
+                    ? "Checking session"
+                    : signedIn
+                      ? "Signed in"
+                      : "Not signed in"}
+                </small>
                 <strong>{sessionLoading ? "Loading…" : formatted.label}</strong>
               </span>
               <span className="avatar">
-                {formatted.fallbackIcon ? <User aria-hidden="true" /> : formatted.initials}
+                {formatted.fallbackIcon ? (
+                  <User aria-hidden="true" />
+                ) : (
+                  formatted.initials
+                )}
               </span>
             </button>
             {accountOpen && (
@@ -226,7 +254,11 @@ export function Shell({ children }: PropsWithChildren) {
                     {claims.name?.trim() && claims.email?.trim() && (
                       <small>{claims.email.trim()}</small>
                     )}
-                    <button role="menuitem" onClick={() => void handleSignOut()} disabled={signingOut}>
+                    <button
+                      role="menuitem"
+                      onClick={() => void handleSignOut()}
+                      disabled={signingOut}
+                    >
                       <LogOut /> {signingOut ? "Signing out…" : "Sign out"}
                     </button>
                   </>

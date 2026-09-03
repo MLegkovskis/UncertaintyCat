@@ -7,6 +7,16 @@ import type { Context } from "hono";
 import { authSchema } from "./auth-schema";
 import type { Env, Identity } from "./env";
 
+function isOperator(env: Env, email?: string | null): boolean {
+  const normalized = email?.trim().toLocaleLowerCase();
+  if (!normalized) return false;
+  return (env.OPERATOR_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLocaleLowerCase())
+    .filter(Boolean)
+    .includes(normalized);
+}
+
 export function createAuth(env: Env) {
   const cloudflareProvider =
     env.CLOUDFLARE_ACCESS_CLIENT_ID &&
@@ -53,6 +63,7 @@ export async function identityFor(
     return {
       ownerId: "dev-user",
       authenticated: true,
+      operator: isOperator(c.env, "developer@localhost"),
       name: "Local retained user",
       email: "developer@localhost",
     };
@@ -65,6 +76,7 @@ export async function identityFor(
       return {
         ownerId: session.user.id,
         authenticated: true,
+        operator: isOperator(c.env, session.user.email),
         name: session.user.name,
         email: session.user.email,
       };
@@ -73,5 +85,5 @@ export async function identityFor(
     // Treat invalid and absent sessions identically. Private API middleware
     // rejects both before any application resource is read or mutated.
   }
-  return { ownerId: "", authenticated: false };
+  return { ownerId: "", authenticated: false, operator: false };
 }

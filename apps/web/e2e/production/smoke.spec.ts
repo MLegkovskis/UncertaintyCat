@@ -27,13 +27,16 @@ test("production serves the static overview and rejects every private API surfac
 
   const health = await request.get("/health");
   expect(health.ok()).toBe(true);
-  expect(await health.json()).toMatchObject({ status: "ok", service: "uncertaintycat-api" });
+  expect(await health.json()).toMatchObject({
+    status: "ok",
+    service: "uncertaintycat-api",
+  });
   expect(health.headers()["strict-transport-security"]).toBeTruthy();
   expect(health.headers()["x-content-type-options"]).toBe("nosniff");
 
   const session = await request.get("/api/v1/session");
   expect(session.ok()).toBe(true);
-  const sessionBody = await session.json() as {
+  const sessionBody = (await session.json()) as {
     identity: { authenticated: boolean };
     providers: string[];
     ai: {
@@ -49,18 +52,23 @@ test("production serves the static overview and rejects every private API surfac
     ai: { configured: true },
   });
   if (sessionBody.ai.provider === "groq") {
-    expect(sessionBody.ai.modelUnderstanding.modelId).toBe("openai/gpt-oss-20b");
+    expect(sessionBody.ai.modelUnderstanding.modelId).toBe(
+      "openai/gpt-oss-20b",
+    );
     expect(sessionBody.ai.reportChat.modelId).toBe("openai/gpt-oss-120b");
   } else {
     expect(sessionBody.ai.modelUnderstanding.modelId).toMatch(/^@cf\//);
     expect(sessionBody.ai.reportChat.modelId).toMatch(/^@cf\//);
   }
-  expect(session.headers()["set-cookie"] ?? "").not.toContain("uncertaintycat_guest");
+  expect(session.headers()["set-cookie"] ?? "").not.toContain(
+    "uncertaintycat_guest",
+  );
 
   for (const path of [
     "/api/v1/analyses/catalog",
     "/api/v1/examples",
     "/api/v1/projects",
+    "/api/v1/operator/overview",
     "/api/v1/runs",
     "/api/v1/shared-reports/not-a-token",
   ]) {
@@ -73,39 +81,58 @@ test("production serves the static overview and rejects every private API surfac
 
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Understand what uncertainty does to your model." }),
+    page.getByRole("heading", {
+      name: "Understand what uncertainty does to your model.",
+    }),
   ).toBeVisible();
   await expect(page.getByLabel("Example uncertainty result")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Sensitivity analysis" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign in with Cloudflare" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Sensitivity analysis" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Sign in with Cloudflare" }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Projects" })).toHaveCount(0);
-  let violations = (await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .analyze()).violations.filter(
+  let violations = (
+    await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze()
+  ).violations.filter(
     (item) => item.impact === "serious" || item.impact === "critical",
   );
   expect(violations.map((item) => item.id)).toEqual([]);
 
   await page.goto("/workspace");
-  await expect(page.getByRole("heading", { name: "Sign in before starting an analysis." })).toBeVisible();
-  violations = (await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .analyze()).violations.filter(
+  await expect(
+    page.getByRole("heading", { name: "Sign in before starting an analysis." }),
+  ).toBeVisible();
+  violations = (
+    await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze()
+  ).violations.filter(
     (item) => item.impact === "serious" || item.impact === "critical",
   );
   expect(violations.map((item) => item.id)).toEqual([]);
 });
 
-test("production Cloudflare identity initiation uses the configured OIDC application", async ({ page }) => {
+test("production Cloudflare identity initiation uses the configured OIDC application", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Not signed in Sign in" }).click();
-  await expect(page.getByRole("menuitem", { name: "Continue with Cloudflare" })).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Continue with Cloudflare" }),
+  ).toBeVisible();
   const result = await page.evaluate(async () => {
     const response = await fetch("/api/auth/sign-in/social", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ provider: "cloudflare", callbackURL: window.location.href }),
+      body: JSON.stringify({
+        provider: "cloudflare",
+        callbackURL: window.location.href,
+      }),
     });
     return { ok: response.ok, body: await response.json() };
   });
@@ -113,7 +140,9 @@ test("production Cloudflare identity initiation uses the configured OIDC applica
   const body = result.body as { url: string; redirect: boolean };
   expect(body.redirect).toBe(true);
   const authorization = new URL(body.url);
-  expect(authorization.origin).toBe("https://uncertaintycat.cloudflareaccess.com");
+  expect(authorization.origin).toBe(
+    "https://uncertaintycat.cloudflareaccess.com",
+  );
   expect(authorization.pathname).toContain("/cdn-cgi/access/sso/oidc/");
   expect(authorization.searchParams.get("redirect_uri")).toBe(
     "https://uncertaintycat.com/api/auth/callback/cloudflare",

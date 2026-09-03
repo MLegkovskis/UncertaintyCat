@@ -286,6 +286,7 @@ export interface SessionPolicy {
   identity: {
     ownerId: string;
     authenticated: boolean;
+    operator: boolean;
     name?: string;
     email?: string;
   };
@@ -296,6 +297,83 @@ export interface SessionPolicy {
     modelUnderstanding: { modelId: string; label: string };
     reportChat: { modelId: string; label: string };
   };
+}
+
+export interface OperatorOverview {
+  generatedAt: string;
+  windowHours: 24 | 168 | 720;
+  refreshAfterSeconds: number;
+  summary: {
+    users: number;
+    projects: number;
+    models: number;
+    runs: number;
+    successfulRuns: number;
+    failedRuns: number;
+    activeRuns: number;
+    tasks: number;
+    successfulTasks: number;
+    failedTasks: number;
+    activeTasks: number;
+    runSuccessRate: number | null;
+  };
+  runStatus: Array<{ status: string; count: number }>;
+  analyses: Array<{
+    key: string;
+    total: number;
+    succeeded: number;
+    failed: number;
+    active: number;
+    successRate: number | null;
+    averageDurationMs: number | null;
+  }>;
+  issues: Array<{
+    id: string;
+    kind:
+      "analysis" | "distribution_fit" | "model_understanding" | "stale_task";
+    code: string;
+    message: string;
+    status: string;
+    analysisKey?: string;
+    runId?: string;
+    projectId?: string;
+    projectName?: string;
+    ownerEmail?: string;
+    occurredAt: string;
+  }>;
+  recentRuns: Array<{
+    id: string;
+    projectId: string;
+    projectName: string;
+    modelName: string;
+    ownerEmail: string;
+    status: string;
+    createdAt: string;
+    completedAt: string | null;
+    durationMs: number | null;
+    tasks: number;
+    failedTasks: number;
+  }>;
+  users: Array<{
+    id: string;
+    name: string;
+    email: string;
+    registeredAt: string;
+    projectCount: number;
+    periodRunCount: number;
+    periodFailedRunCount: number;
+    lastActivityAt: string | null;
+  }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    ownerName: string;
+    ownerEmail: string;
+    modelCount: number;
+    periodRunCount: number;
+    periodFailedRunCount: number;
+    lastActivityAt: string;
+  }>;
 }
 
 export interface ModelVersion {
@@ -568,6 +646,8 @@ export class ApiClient {
   example = (id: string) =>
     this.request<{ example: ExampleCatalogEntry }>(`/examples/${id}`);
   session = () => this.request<SessionPolicy>("/session");
+  operatorOverview = (hours: 24 | 168 | 720 = 168) =>
+    this.request<OperatorOverview>(`/operator/overview?hours=${hours}`);
   listProjects = () => this.request<{ projects: Project[] }>("/projects");
   createProject = (input: CreateProject) =>
     this.request<{ project: Project }>("/projects", {

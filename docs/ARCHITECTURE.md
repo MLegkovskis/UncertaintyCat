@@ -69,6 +69,13 @@ session policy only. Analysis metadata, example source, projects, datasets, mode
 shared reports, and AI endpoints all return HTTP 401 before their route logic when no authenticated session
 is present. A share token grants report selection, not anonymous application access.
 
+`/api/v1/operator/overview` adds a second authorization boundary inside the authenticated API. It resolves
+operator status from a normalized exact-email allowlist, rechecks that claim in the Worker, and returns only
+bounded operational metadata from D1. The projection includes aggregate state, account/project identifiers,
+execution status and duration, analysis keys, and sanitized stored error summaries. It deliberately excludes
+model source, model/result/config JSON, datasets, chat content, and R2 object keys. Global overview indexes are
+forward-only migration state; the dashboard never writes application data.
+
 Numerical results are stored as immutable task JSON. Report generation is a projection over those task
 records, so a failed section does not destroy successful evidence.
 
@@ -80,6 +87,11 @@ APIs. Every other application route is wrapped by `AuthenticatedRoute`, independ
 boundary as the Worker. Cloudflare authentication returns to the project dashboard. Reference examples and
 editable Python are one authoring mode; the guided builder emits the same Python model contract using
 OpenTURNS `SymbolicFunction`.
+
+Configured operators receive one additional **Operations** navigation item. Its dashboard polls the private
+snapshot every 30 seconds while open and also supports manual refresh and 24-hour, 7-day, or 30-day windows.
+It is an application-state view, not a replacement for Cloudflare Workers Logs, Worker Metrics, D1 Metrics, or
+queue observability.
 
 Every scientific workspace is scoped beneath `/studies/:projectId`; global navigation exposes the project
 index rather than duplicating dashboard, project, and new-analysis destinations. Within a project, six

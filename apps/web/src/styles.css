@@ -2518,10 +2518,9 @@ tbody tr:hover td {
   font: 8px var(--font-mono);
 }
 .variable-row.expanded {
-  grid-template-columns: auto minmax(100px, 0.8fr) minmax(130px, 0.8fr) repeat(
-      4,
-      minmax(90px, 1fr)
-    ) auto;
+  grid-template-columns:
+    auto minmax(100px, 0.8fr) minmax(130px, 0.8fr) repeat(4, minmax(90px, 1fr))
+    auto;
   overflow-x: auto;
 }
 .reorder-controls {
@@ -4591,10 +4590,9 @@ tbody tr:hover td {
 }
 .project-creator {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(210px, 0.8fr) minmax(
-      240px,
-      1fr
-    ) auto;
+  grid-template-columns:
+    minmax(260px, 1.2fr) minmax(210px, 0.8fr) minmax(240px, 1fr)
+    auto;
   gap: 20px;
   align-items: end;
   margin-bottom: 24px;
@@ -4997,7 +4995,258 @@ tbody tr:hover td {
   font: 700 13px var(--font-mono);
 }
 
+/* Owner-only application operations */
+.operations-page {
+  display: grid;
+  gap: 22px;
+}
+.operations-page > .page-heading {
+  margin-bottom: 2px;
+}
+.operator-controls {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+.operator-controls label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.operator-controls select {
+  min-width: 170px;
+  min-height: 42px;
+  padding: 0 12px;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.operator-health {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 13px;
+  align-items: center;
+  padding: 15px 17px;
+  border: 1px solid color-mix(in srgb, var(--success) 45%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--success) 7%, var(--panel));
+}
+.operator-health.attention {
+  border-color: color-mix(in srgb, var(--orange) 50%, var(--line));
+  background: color-mix(in srgb, var(--orange) 7%, var(--panel));
+}
+.operator-health > svg {
+  color: var(--success);
+}
+.operator-health.attention > svg {
+  color: var(--orange);
+}
+.operator-health div {
+  display: grid;
+  gap: 3px;
+}
+.operator-health strong {
+  font-size: 12px;
+}
+.operator-health span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.operator-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.operator-kpis article {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 10px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.operator-kpis svg {
+  width: 18px;
+  color: var(--cyan);
+}
+.operator-kpis span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.operator-kpis strong,
+.operator-kpis small {
+  grid-column: 1 / -1;
+}
+.operator-kpis strong {
+  font: 700 28px/1 var(--font-mono);
+}
+.operator-kpis small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.operator-chart-grid,
+.operator-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.operator-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.operator-panel > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  min-height: 74px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.operator-panel > header h2 {
+  margin: 6px 0 0;
+  font-size: 17px;
+  letter-spacing: -0.025em;
+}
+.operator-panel > header > span {
+  color: var(--muted);
+  font: 500 9px var(--font-mono);
+  white-space: nowrap;
+}
+.operator-panel .empty-state {
+  min-height: 260px;
+  display: grid;
+  place-content: center;
+  padding: 30px;
+  text-align: center;
+}
+.operator-issues {
+  display: grid;
+}
+.operator-issues article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 13px;
+  align-items: center;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.operator-issues article:last-child {
+  border: 0;
+}
+.operator-issues article > svg {
+  width: 18px;
+  color: var(--danger);
+}
+.operator-issue-main {
+  min-width: 0;
+}
+.operator-issue-main strong {
+  display: block;
+  text-transform: capitalize;
+  font-size: 12px;
+}
+.operator-issue-main p {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.operator-issue-main small,
+.operator-issues time {
+  color: var(--muted);
+  font: 500 8px var(--font-mono);
+}
+.operator-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.operator-table-wrap:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+.operator-table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+}
+.operator-split .operator-table {
+  min-width: 100%;
+}
+.operator-table th,
+.operator-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+  font-size: 10px;
+}
+.operator-table th {
+  color: var(--muted);
+  background: var(--panel-2);
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.operator-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.operator-table td > a,
+.operator-table td:first-child {
+  display: grid;
+  gap: 3px;
+}
+.operator-table td strong {
+  font-size: 10px;
+  text-transform: capitalize;
+}
+.operator-table td small {
+  display: block;
+  color: var(--muted);
+  font-size: 8px;
+}
+.operator-table a:hover strong {
+  color: var(--cyan);
+}
+.operator-footnote {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+.operator-footnote svg {
+  width: 15px;
+  flex: 0 0 auto;
+}
+
 @media (max-width: 900px) {
+  .operator-kpis,
+  .operator-chart-grid,
+  .operator-split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .operator-chart-grid,
+  .operator-split {
+    grid-template-columns: 1fr;
+  }
+  .operator-issues article {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .operator-issues time,
+  .operator-issues .button {
+    grid-column: 2;
+    justify-self: start;
+  }
   .data-lab-layout,
   .fit-summary-grid,
   .distribution-chart-grid {
@@ -5088,6 +5337,19 @@ tbody tr:hover td {
   }
   .model-handoff-actions {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .operator-controls,
+  .operator-kpis {
+    width: 100%;
+    align-items: stretch;
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+  .operator-controls select {
+    width: 100%;
   }
 }
 

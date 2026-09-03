@@ -49,7 +49,7 @@ Required repository variables:
 - `CLOUDFLARE_D1_DATABASE_ID`;
 - `AI_PROVIDER`, exactly `groq` or `cloudflare` (unset also defaults to `groq`).
 
-Non-secret production origins, the default provider, and the Access issuer are checked into `apps/api/wrangler.production.jsonc`. `.github/scripts/prepare-cloudflare-config.mjs` creates an ignored deployment config containing the repository-provided D1 ID and validates the provider variable. Secrets are passed to Wrangler through an ephemeral permission-restricted file and removed in an `always()` step.
+Non-secret production origins, the default provider, and the Access issuer are checked into `apps/api/wrangler.production.jsonc`. The same configuration defines `OPERATOR_EMAILS`, a comma-separated allowlist for the owner-only operations view. Add or remove operators only as an explicit authorization change, use verified Cloudflare identity email addresses, and redeploy through the exact-SHA main workflow. `.github/scripts/prepare-cloudflare-config.mjs` creates an ignored deployment config containing the repository-provided D1 ID and validates the provider variable. Secrets are passed to Wrangler through an ephemeral permission-restricted file and removed in an `always()` step.
 
 Configure Groq without printing the key:
 
@@ -129,6 +129,7 @@ For an authenticated manual release audit:
 - create and open a share link while authenticated, then expire or revoke it;
 - ask report chat for a numerical value and confirm the persisted-result citation;
 - inspect logs for request/run/task identifiers without source or secrets;
+- open `/operator`, confirm the selected time window, D1 totals, recent run, method health, and sanitized issue feed agree with the retained application state, and verify an ordinary authenticated user receives HTTP 403;
 - confirm the Sandbox has no egress/secrets and is destroyed after execution.
 
 ## Incident and rollback notes

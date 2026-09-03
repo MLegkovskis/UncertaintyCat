@@ -1,7 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { installMockApi, makeReport, makeRun, project } from "./fixtures";
+import {
+  installMockApi,
+  makeOperatorOverview,
+  makeReport,
+  makeRun,
+  project,
+} from "./fixtures";
 
 const routes = [
   ["projects home", "/"],
@@ -18,30 +24,35 @@ const routes = [
 ] as const;
 
 for (const theme of ["light", "dark"] as const) {
-  test(
-    `authentication gate has no automatically detectable serious accessibility violations in ${theme} theme`,
-    async ({ page }) => {
-      await installMockApi(page);
-      await page.addInitScript((selectedTheme) => {
-        window.localStorage.setItem("uncertaintycat-theme", selectedTheme);
-      }, theme);
-      await page.goto("/workspace");
-      await expect(
-        page.getByRole("heading", { name: "Sign in before starting an analysis." }),
-      ).toBeVisible();
-      const results = await new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-        .analyze();
-      expect(
-        results.violations
-          .filter((item) => item.impact === "serious" || item.impact === "critical")
-          .map((item) => item.id),
-      ).toEqual([]);
-    },
-  );
+  test(`authentication gate has no automatically detectable serious accessibility violations in ${theme} theme`, async ({
+    page,
+  }) => {
+    await installMockApi(page);
+    await page.addInitScript((selectedTheme) => {
+      window.localStorage.setItem("uncertaintycat-theme", selectedTheme);
+    }, theme);
+    await page.goto("/workspace");
+    await expect(
+      page.getByRole("heading", {
+        name: "Sign in before starting an analysis.",
+      }),
+    ).toBeVisible();
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(
+      results.violations
+        .filter(
+          (item) => item.impact === "serious" || item.impact === "critical",
+        )
+        .map((item) => item.id),
+    ).toEqual([]);
+  });
 
   for (const [name, path] of routes) {
-    test(`${name} has no automatically detectable serious accessibility violations in ${theme} theme`, async ({ page }) => {
+    test(`${name} has no automatically detectable serious accessibility violations in ${theme} theme`, async ({
+      page,
+    }) => {
       await installMockApi(page, {
         authenticated: true,
         projects: [project],
@@ -57,8 +68,8 @@ for (const theme of ["light", "dark"] as const) {
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
         .analyze();
-      const serious = results.violations.filter((item) =>
-        item.impact === "serious" || item.impact === "critical",
+      const serious = results.violations.filter(
+        (item) => item.impact === "serious" || item.impact === "critical",
       );
       expect(
         serious.map((violation) => ({
@@ -73,7 +84,9 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 
-test("guided builder and expanded account controls remain accessible", async ({ page }) => {
+test("guided builder and expanded account controls remain accessible", async ({
+  page,
+}) => {
   await installMockApi(page, { authenticated: true, projects: [project] });
   await page.goto("/studies/project-1/workspace");
   await page.getByRole("button", { name: "Guided builder" }).click();
@@ -87,12 +100,40 @@ test("guided builder and expanded account controls remain accessible", async ({ 
       .filter((item) => item.impact === "serious" || item.impact === "critical")
       .map((item) => ({
         id: item.id,
-        nodes: item.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })),
+        nodes: item.nodes.map((node) => ({
+          target: node.target,
+          summary: node.failureSummary,
+        })),
       })),
   ).toEqual([]);
 });
 
-test("mobile navigation has no serious accessibility violations", async ({ page }) => {
+test("operator dashboard has no serious accessibility violations", async ({
+  page,
+}) => {
+  await installMockApi(page, {
+    authenticated: true,
+    operator: true,
+    operatorOverview: makeOperatorOverview(),
+  });
+  await page.goto("/operator");
+  await expect(
+    page.getByRole("heading", { name: "Application health." }),
+  ).toBeVisible();
+  await expect(page.locator(".echart canvas")).toHaveCount(2);
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    results.violations
+      .filter((item) => item.impact === "serious" || item.impact === "critical")
+      .map((item) => item.id),
+  ).toEqual([]);
+});
+
+test("mobile navigation has no serious accessibility violations", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installMockApi(page);
   await page.goto("/");

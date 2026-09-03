@@ -70,6 +70,7 @@ import {
 } from "./db";
 import type { Env, Identity, RunTaskMessage } from "./env";
 import { createReportBundle } from "./exports";
+import { loadOperatorOverview, operatorWindow } from "./operator";
 
 type Variables = { requestId: string; identity?: Identity };
 type AppContext = Context<{ Bindings: Env; Variables: Variables }>;
@@ -272,6 +273,30 @@ app.get("/api/v1/session", async (c) => {
       },
     },
   });
+});
+
+app.get("/api/v1/operator/overview", async (c) => {
+  const identity = authenticatedIdentity(c);
+  if (!identity.operator) {
+    return jsonError(
+      c,
+      403,
+      "operator_access_required",
+      "This operational view is restricted to configured UncertaintyCat operators.",
+    );
+  }
+  const windowHours = operatorWindow(c.req.query("hours"));
+  const overview = await loadOperatorOverview(c.env, windowHours);
+  c.header("Cache-Control", "private, no-store");
+  console.log(
+    JSON.stringify({
+      event: "operator_overview_read",
+      requestId: c.get("requestId"),
+      operatorId: identity.ownerId,
+      windowHours,
+    }),
+  );
+  return c.json(overview);
 });
 
 app.get("/api/v1/analyses/catalog", async (c) => {
@@ -1149,7 +1174,8 @@ app.post(
     const referenceEquations =
       input.sourceKind === "example"
         ? EXAMPLE_CATALOG.find(
-            (example) => example.sha256 === validationBody.metadata?.source_hash,
+            (example) =>
+              example.sha256 === validationBody.metadata?.source_hash,
           )?.equations
         : undefined;
     const metadata: ModelMetadata = referenceEquations?.length
@@ -1215,7 +1241,7 @@ app.post(
         parent_version_id: string | null;
         derivation_json: string | null;
         created_at: string;
-    }>();
+      }>();
     if (existing) {
       await c.env.DB.prepare(
         "UPDATE model_versions SET assessment_json = ?, equations_json = ? WHERE id = ?",

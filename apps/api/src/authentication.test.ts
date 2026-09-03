@@ -45,6 +45,7 @@ describe("authenticated application boundary", () => {
     "/api/v1/analyses/catalog",
     "/api/v1/examples",
     "/api/v1/projects",
+    "/api/v1/operator/overview",
     "/api/v1/runs",
     "/api/v1/reports/report-id",
     "/api/v1/shared-reports/share-token",
@@ -53,6 +54,32 @@ describe("authenticated application boundary", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "authentication_required" },
+    });
+  });
+
+  it("keeps operational telemetry behind a separate operator allowlist", async () => {
+    const ordinaryUserEnv = {
+      DB: {},
+      BETTER_AUTH_URL: "http://127.0.0.1:8787",
+      DEV_AUTH_BYPASS: "true",
+      OPERATOR_EMAILS: "someone-else@example.com",
+    } as unknown as Env;
+    const denied = await app.request(
+      "/api/v1/operator/overview",
+      undefined,
+      ordinaryUserEnv,
+    );
+    expect(denied.status).toBe(403);
+    await expect(denied.json()).resolves.toMatchObject({
+      error: { code: "operator_access_required" },
+    });
+
+    const operatorSession = await app.request("/api/v1/session", undefined, {
+      ...ordinaryUserEnv,
+      OPERATOR_EMAILS: " DEVELOPER@LOCALHOST ",
+    });
+    await expect(operatorSession.json()).resolves.toMatchObject({
+      identity: { authenticated: true, operator: true },
     });
   });
 

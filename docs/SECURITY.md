@@ -7,14 +7,14 @@ imports/calls, but AST filtering is not a security boundary and must never be de
 
 ## Trust boundaries
 
-| Boundary          | Current control                                                               | Production requirement                                |
-| ----------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Boundary          | Current control                                                                                   | Production requirement                                |
+| ----------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Browser to Worker | authenticated API middleware, strict Zod inputs, ownership checks, secure headers, quota, cookies | abuse controls and CSP review                         |
-| Public surface    | static homepage, health, auth handlers, and session discovery only            | regression tests for the explicit allowlist           |
-| Worker to compute | private Sandbox Durable Object binding or test-only local bearer token        | keep the Sandbox binding private                      |
-| Python execution  | fresh non-root Sandbox, no secrets, egress disabled, timeout + forced destroy | adversarial verification                              |
-| Results/chat      | structured stored facts and tool-only numerical access                        | prompt-injection evals, rate limits, retention policy |
-| Sharing           | authentication plus 256-bit token, SHA-256 stored, expiry/revocation          | audit log and owner-visible link management           |
+| Public surface    | static homepage, health, auth handlers, and session discovery only                                | regression tests for the explicit allowlist           |
+| Worker to compute | private Sandbox Durable Object binding or test-only local bearer token                            | keep the Sandbox binding private                      |
+| Python execution  | fresh non-root Sandbox, no secrets, egress disabled, timeout + forced destroy                     | adversarial verification                              |
+| Results/chat      | structured stored facts and tool-only numerical access                                            | prompt-injection evals, rate limits, retention policy |
+| Sharing           | authentication plus 256-bit token, SHA-256 stored, expiry/revocation                              | audit log and owner-visible link management           |
 
 ## Production compute launch gate
 
@@ -98,6 +98,21 @@ Target-domain HSIC uses the same authenticated run, ownership, Queue, and Sandbo
 direct numerical plugin. Its strict result stores aggregate indices and diagnostics only; the bounded
 sample used to construct the target score is neither persisted nor sent to report chat. Thresholds and
 permutation controls are ordinary authenticated run configuration and do not expose model source.
+
+## Operator telemetry boundary
+
+`OPERATOR_EMAILS` is a comma-separated, case-insensitive allowlist evaluated only after Better Auth has
+resolved a valid Cloudflare identity. It is authorization configuration rather than a credential; production
+currently grants the application owner access. Hiding the navigation item is only a usability measure: the
+Worker independently returns HTTP 403 to every authenticated identity outside the allowlist, and HTTP 401 to
+anonymous requests.
+
+The operations response is private and `no-store`. It is bounded to 100 recent rows per collection and exposes
+only identifiers, names, email addresses, timestamps, statuses, counts, durations, analysis keys, and truncated
+public-safe error messages. It must never include Python source, dataset values, configuration/result JSON,
+report-chat content, AI prompts, or artifact keys. Operator reads emit request/identity/window metadata to
+Workers Logs without including response data. See [OPERATIONS.md](OPERATIONS.md) for the complete data contract
+and incident workflow.
 
 ## Secrets
 

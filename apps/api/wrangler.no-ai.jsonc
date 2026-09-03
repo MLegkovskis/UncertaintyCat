@@ -9,32 +9,35 @@
     "COMPUTE_SERVICE_URL": "http://127.0.0.1:8080",
     "BETTER_AUTH_URL": "http://127.0.0.1:8787",
     "PUBLIC_WEB_ORIGIN": "http://127.0.0.1:5173",
-    "DEV_AUTH_BYPASS": "true"
+    "DEV_AUTH_BYPASS": "true",
+    "OPERATOR_EMAILS": "developer@localhost",
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "uncertaintycat-local",
       "database_id": "00000000-0000-0000-0000-000000000001",
-      "migrations_dir": "migrations"
-    }
+      "migrations_dir": "migrations",
+    },
   ],
   "r2_buckets": [
     {
       "binding": "ARTIFACTS",
-      "bucket_name": "uncertaintycat-artifacts-local"
-    }
+      "bucket_name": "uncertaintycat-artifacts-local",
+    },
   ],
   "queues": {
-    "producers": [{ "binding": "RUN_QUEUE", "queue": "uncertaintycat-runs-local" }],
+    "producers": [
+      { "binding": "RUN_QUEUE", "queue": "uncertaintycat-runs-local" },
+    ],
     "consumers": [
       {
         "queue": "uncertaintycat-runs-local",
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 3,
-        "dead_letter_queue": "uncertaintycat-runs-dlq-local"
-      }
-    ]
-  }
+        "dead_letter_queue": "uncertaintycat-runs-dlq-local",
+      },
+    ],
+  },
 }

@@ -29,6 +29,7 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - the static public overview, absence of private navigation, private-route login wall, and Cloudflare sign-in initiation;
 - a production-bundle gate proving canonical authenticated example source and hashes are absent from public JavaScript and source maps;
 - authenticated desktop/mobile navigation, account identity, immediate sign-out without a hard refresh, and theme persistence;
+- owner-only Operations navigation, an authenticated non-operator denial state, D1 snapshot rendering, issue links, time-window controls, and dashboard accessibility;
 - discovery of all 24 reference models in the unified, immediately editable Python authoring view;
 - blank/manual model naming, resizable Python authoring, project creation from the project index, project-scoped studio navigation, and the multi-output symbolic OpenTURNS builder;
 - model validation success/failure, immediate deterministic equation fallback, Groq-compatible display-math interpretation for arbitrary authenticated Python, in-flight Model Understanding feedback, analysis controls locked until the complete AI brief succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
@@ -56,7 +57,7 @@ The key regression contract is explicit: an unauthenticated browser cannot mount
 npm run test:e2e:full-stack
 ```
 
-Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated project; validates the Ishigami model; executes the ten independent-input direct analyses—including global and target-domain HSIC with their real OpenTURNS permutation paths—through the direct workspace; asserts terminal per-task progress persistence; calibrates the official nonlinear exponential model through the named-data studio and real compute boundary; builds a dependent symbolic model, proves a direct API attempt cannot bypass the Sobol applicability rejection, and executes ANCOVA through compute, persistence, and the generic report; exercises Morris and model-based PCE/GPR through their project studios; fits a data-driven GPR from pre-filled paired observations; downloads real report ZIPs; creates and opens an authenticated share link; reloads project history; and verifies persisted D1 records through the API. Successful execution also proves immutable source, dataset, and surrogate-artifact round-tripping through R2.
+Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated project; validates the Ishigami model; executes the ten independent-input direct analyses—including global and target-domain HSIC with their real OpenTURNS permutation paths—through the direct workspace; asserts terminal per-task progress persistence; calibrates the official nonlinear exponential model through the named-data studio and real compute boundary; builds a dependent symbolic model, proves a direct API attempt cannot bypass the Sobol applicability rejection, and executes ANCOVA through compute, persistence, and the generic report; exercises Morris and model-based PCE/GPR through their project studios; fits a data-driven GPR from pre-filled paired observations; downloads real report ZIPs; creates and opens an authenticated share link; reloads project history; verifies persisted D1 records through the API; and checks the real operator snapshot before destructive cleanup. It also asserts that telemetry contains no source, configuration/result, chat, or artifact-key fields. Successful execution proves immutable source, dataset, and surrogate-artifact round-tripping through R2.
 
 The test Wrangler configurations use `DEV_AUTH_BYPASS=true` and the browser supplies a synthetic Better Auth session. This is intentionally test-only: CI must not hold a human Cloudflare password, session cookie, or MFA recovery material. Production configuration omits the bypass.
 
@@ -71,7 +72,7 @@ This suite runs automatically after deployment and is deliberately read-only. It
 - health and security headers;
 - unauthenticated session discovery and the configured Cloudflare provider;
 - no generated guest-identity cookie;
-- HTTP 401 and `authentication_required` across representative catalog, example, project, run, and shared-report endpoints;
+- HTTP 401 and `authentication_required` across representative catalog, example, project, run, shared-report, and operator endpoints;
 - the static method/model overview without protected API data;
 - the login wall on direct private-route navigation;
 - WCAG A/AA results for public and gated pages; and

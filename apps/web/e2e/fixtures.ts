@@ -5,6 +5,7 @@ import type {
   ModelAssessment,
   ModelMetadata,
   ModelVersion,
+  OperatorOverview,
   Project,
   Report,
   Run,
@@ -40,8 +41,8 @@ export const catalog: AnalysisCatalogEntry[] = [
     : key === "target_hsic"
       ? "1.1.0"
       : ["hsic", "morris"].includes(key)
-      ? "2.1.0"
-      : "2.0.0",
+        ? "2.1.0"
+        : "2.0.0",
   name,
   category,
   description: `${name} produces versioned numerical evidence.`,
@@ -474,11 +475,104 @@ async function json(route: Route, body: unknown, status = 200) {
 
 export interface MockApiOptions {
   authenticated?: boolean;
+  operator?: boolean;
   projects?: Project[];
   runs?: Run[];
   report?: Report;
   modelUnderstanding?: (route: Route) => Promise<void>;
   models?: ModelVersion[];
+  operatorOverview?: OperatorOverview;
+}
+
+export function makeOperatorOverview(): OperatorOverview {
+  return {
+    generatedAt: "2026-09-03T09:30:00.000Z",
+    windowHours: 168,
+    refreshAfterSeconds: 30,
+    summary: {
+      users: 3,
+      projects: 9,
+      models: 12,
+      runs: 12,
+      successfulRuns: 11,
+      failedRuns: 1,
+      activeRuns: 0,
+      tasks: 41,
+      successfulTasks: 40,
+      failedTasks: 1,
+      activeTasks: 0,
+      runSuccessRate: 11 / 12,
+    },
+    runStatus: [
+      { status: "succeeded", count: 11 },
+      { status: "partially_succeeded", count: 1 },
+    ],
+    analyses: [
+      {
+        key: "hsic",
+        total: 3,
+        succeeded: 2,
+        failed: 1,
+        active: 0,
+        successRate: 2 / 3,
+        averageDurationMs: 12_400,
+      },
+    ],
+    issues: [
+      {
+        id: "task-failed",
+        kind: "analysis",
+        code: "compute_failed",
+        message: "The bounded compute task did not complete.",
+        status: "failed",
+        analysisKey: "hsic",
+        runId: "run-1",
+        projectId: "project-1",
+        projectName: "Beam study",
+        ownerEmail: "mlegkovskis@gmail.com",
+        occurredAt: "2026-09-03T09:20:00.000Z",
+      },
+    ],
+    recentRuns: [
+      {
+        id: "run-1",
+        projectId: "project-1",
+        projectName: "Beam study",
+        modelName: "Simply supported beam",
+        ownerEmail: "mlegkovskis@gmail.com",
+        status: "partially_succeeded",
+        createdAt: "2026-09-03T09:10:00.000Z",
+        completedAt: "2026-09-03T09:20:00.000Z",
+        durationMs: 600_000,
+        tasks: 4,
+        failedTasks: 1,
+      },
+    ],
+    users: [
+      {
+        id: "user-1",
+        name: "Mark Legkovskis",
+        email: "mlegkovskis@gmail.com",
+        registeredAt: "2026-08-01T09:00:00.000Z",
+        projectCount: 3,
+        periodRunCount: 5,
+        periodFailedRunCount: 1,
+        lastActivityAt: "2026-09-03T09:20:00.000Z",
+      },
+    ],
+    projects: [
+      {
+        id: "project-1",
+        name: "Beam study",
+        ownerName: "Mark Legkovskis",
+        ownerEmail: "mlegkovskis@gmail.com",
+        modelCount: 2,
+        periodRunCount: 5,
+        periodFailedRunCount: 1,
+        lastActivityAt: "2026-09-03T09:20:00.000Z",
+      },
+    ],
+  };
 }
 
 export async function installMockApi(page: Page, options: MockApiOptions = {}) {
@@ -521,10 +615,11 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
         ? {
             ownerId: "user-1",
             authenticated: true,
+            operator: options.operator ?? false,
             name: "Mark Legkovskis",
             email: "mlegkovskis@gmail.com",
           }
-        : { ownerId: "", authenticated: false },
+        : { ownerId: "", authenticated: false, operator: false },
       providers: ["cloudflare"],
       ai: {
         provider: "groq",
@@ -539,6 +634,20 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
         },
       },
     }),
+  );
+  await page.route("**/api/v1/operator/overview?*", (route) =>
+    options.operator
+      ? json(route, options.operatorOverview ?? makeOperatorOverview())
+      : json(
+          route,
+          {
+            error: {
+              code: "operator_access_required",
+              message: "Operator access required.",
+            },
+          },
+          403,
+        ),
   );
   await page.route("**/api/v1/analyses/catalog", (route) =>
     json(route, { analyses: catalog }),

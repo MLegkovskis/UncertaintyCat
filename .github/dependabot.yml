@@ -2,6 +2,8 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    exclude-paths:
+      - "Streamlit_Backup/**"
     schedule:
       interval: weekly
       day: monday
@@ -23,6 +25,8 @@ updates:
 
   - package-ecosystem: uv
     directory: /
+    exclude-paths:
+      - "Streamlit_Backup/**"
     schedule:
       interval: weekly
       day: monday

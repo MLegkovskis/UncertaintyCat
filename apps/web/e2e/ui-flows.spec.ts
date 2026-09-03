@@ -5,11 +5,55 @@ import {
   calibrationSavedModel,
   catalog,
   installMockApi,
+  makeOperatorOverview,
   makeReport,
   makeRun,
   project,
   savedModel,
 } from "./fixtures";
+
+test.describe("operator telemetry", () => {
+  test("hides operations from ordinary users and denies direct navigation", async ({
+    page,
+  }) => {
+    await installMockApi(page, { authenticated: true });
+    await page.goto("/studies");
+    await expect(page.getByRole("link", { name: "Operations" })).toHaveCount(0);
+    await page.goto("/operator");
+    await expect(
+      page.getByRole("heading", { name: "This view is restricted." }),
+    ).toBeVisible();
+  });
+
+  test("shows an operator the current D1 snapshot and actionable issue links", async ({
+    page,
+  }) => {
+    await installMockApi(page, {
+      authenticated: true,
+      operator: true,
+      operatorOverview: makeOperatorOverview(),
+      runs: [makeRun()],
+    });
+    await page.goto("/operator");
+    await expect(
+      page.getByRole("heading", { name: "Application health." }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Operations" })).toBeVisible();
+    await expect(page.getByText("3", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Errors and stale work" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("The bounded compute task did not complete."),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open run" })).toHaveAttribute(
+      "href",
+      "/runs/run-1",
+    );
+    await page.getByLabel("Reporting window").selectOption("24");
+    await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  });
+});
 
 test.describe("application shell and identity", () => {
   test("the public shell advertises a crawlable cat favicon", async ({
@@ -556,35 +600,41 @@ test.describe("model studio", () => {
     await expect(
       page.getByRole("region", { name: "HSIC method comparison" }),
     ).toContainText("Two complementary HSIC questions");
-    await expect(page.getByText("Whole response", { exact: true })).toBeVisible();
-    await expect(page.getByText("Critical region", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Whole response", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Critical region", { exact: true }),
+    ).toBeVisible();
     await expect(page.getByLabel("Region direction")).toBeVisible();
     await expect(page.getByLabel("Output threshold")).toBeVisible();
     await expect(page.getByLabel("Permutation replicates")).toHaveValue("100");
-    const targetBoxes = await page.locator(".target-hsic-studio").evaluate((studio) => {
-      const bounds = (selector: string) => {
-        const element = studio.querySelector(selector);
-        if (!element) return null;
-        const { x, y, width, height } = element.getBoundingClientRect();
-        return { x, y, width, height };
-      };
-      const { x, y, width, height } = studio.getBoundingClientRect();
-      return {
-        studio: { x, y, width, height },
-        direction: bounds(".target-domain-fields label:first-child"),
-        threshold: bounds(".target-domain-fields label:last-child"),
-        permutations: bounds(".target-permutation-card label"),
-      };
-    });
+    const targetBoxes = await page
+      .locator(".target-hsic-studio")
+      .evaluate((studio) => {
+        const bounds = (selector: string) => {
+          const element = studio.querySelector(selector);
+          if (!element) return null;
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        const { x, y, width, height } = studio.getBoundingClientRect();
+        return {
+          studio: { x, y, width, height },
+          direction: bounds(".target-domain-fields label:first-child"),
+          threshold: bounds(".target-domain-fields label:last-child"),
+          permutations: bounds(".target-permutation-card label"),
+        };
+      });
     expect(targetBoxes.studio).not.toBeNull();
     expect(targetBoxes.direction).not.toBeNull();
     expect(targetBoxes.threshold).not.toBeNull();
     expect(targetBoxes.permutations).not.toBeNull();
     expect(targetBoxes.direction!.width).toBeGreaterThan(250);
     expect(targetBoxes.threshold!.width).toBeGreaterThan(200);
-    expect(targetBoxes.direction!.x + targetBoxes.direction!.width).toBeLessThanOrEqual(
-      targetBoxes.threshold!.x,
-    );
+    expect(
+      targetBoxes.direction!.x + targetBoxes.direction!.width,
+    ).toBeLessThanOrEqual(targetBoxes.threshold!.x);
     expect(targetBoxes.permutations!.width).toBeGreaterThan(180);
     await testInfo.attach("target-hsic-composer", {
       body: await page.screenshot({ fullPage: true }),
@@ -1123,7 +1173,9 @@ test.describe("reports and grounded chat", () => {
 
     await page.goto("/reports/report-1");
     await expect(page.getByText("User-defined deflection")).toBeVisible();
-    await expect(page.locator(".model-definition-section .katex")).toBeVisible();
+    await expect(
+      page.locator(".model-definition-section .katex"),
+    ).toBeVisible();
     await expect(page.locator(".model-definition-section")).not.toContainText(
       "response = x1 + x2^2",
     );
@@ -1169,7 +1221,9 @@ test.describe("reports and grounded chat", () => {
     await expect(
       page.getByRole("img", { name: /FAST total-order decomposition/ }),
     ).toBeVisible();
-    await expect(page.getByRole("table").filter({ hasText: "x3" })).toBeVisible();
+    await expect(
+      page.getByRole("table").filter({ hasText: "x3" }),
+    ).toBeVisible();
   });
 
   test("renders every evidence type and operates export, share, print, and streaming chat", async ({

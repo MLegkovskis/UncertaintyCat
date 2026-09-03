@@ -11,6 +11,7 @@ The public site is a static product overview. Authentication through Cloudflare 
 - Fifteen versioned analysis plugins: uncertainty propagation by Monte Carlo sampling, exploratory data analysis, correlation, dependent-input ANCOVA, Sobol, FAST, global HSIC, target-domain HSIC, Taylor, Morris, expectation convergence, reliability, polynomial chaos, Gaussian-process regression, and nonlinear least-squares parameter calibration.
 - Multi-output propagation and exploration with explicit output targeting for scalar methods.
 - D1-backed studies, datasets, runs, task state, reports, quotas, model explanations, and report conversations.
+- An owner-only operations dashboard with near-real-time D1 snapshots of users, projects, runs, method health, failed work, and stale tasks; private scientific payloads remain excluded.
 - R2-backed immutable model source, private uploaded data, promoted model-based surrogates, and retained data-driven OpenTURNS Gaussian-process artifacts.
 - Queue-driven, idempotent computation in isolated Cloudflare Sandbox containers with retry, cancellation, and partial-result handling.
 - Apache ECharts reports with exact data fallbacks, direct browser PDF downloads, ZIP/JSON/CSV exports, and authenticated read-only share links.
@@ -47,7 +48,7 @@ React/Vite web  ->  Hono Worker API  ->  D1 metadata
 
 The stable numerical extension point is `uncertaintycat_core.plugins.base.AnalysisPlugin`. Plugins declare strict configuration, applicability, assumptions, resource class, implementation version, and a common JSON-safe result envelope. The Worker and UI consume the catalog rather than importing algorithm-specific code.
 
-Read [Architecture](docs/ARCHITECTURE.md), [plugin development](docs/ANALYSIS_PLUGIN_GUIDE.md), [security](docs/SECURITY.md), [scientific validation](docs/SCIENTIFIC_VALIDATION.md), [testing](docs/TESTING.md), [deployment](docs/DEPLOYMENT.md), and the [dependency automation trust model](docs/DEPENDENCY_AUTOMATION.md). The upstream evaluation procedure is in the [OpenTURNS synchronization guide](docs/openturns-sync/README.md); use its [canonical scheduled ChatGPT prompt](docs/openturns-sync/CHATGPT_SCHEDULED_FEATURE_PROMPT.md) for the twice-weekly, pull-request-based capability workflow. Repository-wide agent rules are in [AGENTS.md](AGENTS.md).
+Read [Architecture](docs/ARCHITECTURE.md), [operations](docs/OPERATIONS.md), [plugin development](docs/ANALYSIS_PLUGIN_GUIDE.md), [security](docs/SECURITY.md), [scientific validation](docs/SCIENTIFIC_VALIDATION.md), [testing](docs/TESTING.md), [deployment](docs/DEPLOYMENT.md), and the [dependency automation trust model](docs/DEPENDENCY_AUTOMATION.md). The upstream evaluation procedure is in the [OpenTURNS synchronization guide](docs/openturns-sync/README.md); use its [canonical scheduled ChatGPT prompt](docs/openturns-sync/CHATGPT_SCHEDULED_FEATURE_PROMPT.md) for the twice-weekly, pull-request-based capability workflow. Repository-wide agent rules are in [AGENTS.md](AGENTS.md).
 
 ## Quality gates
 

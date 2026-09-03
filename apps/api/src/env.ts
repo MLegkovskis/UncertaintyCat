@@ -18,6 +18,7 @@ export interface Env {
   CLOUDFLARE_ACCESS_CLIENT_ID?: string;
   CLOUDFLARE_ACCESS_CLIENT_SECRET?: string;
   CLOUDFLARE_ACCESS_ISSUER?: string;
+  OPERATOR_EMAILS?: string;
 }
 
 export interface RunTaskMessage {
@@ -29,6 +30,7 @@ export interface RunTaskMessage {
 export interface Identity {
   ownerId: string;
   authenticated: boolean;
+  operator: boolean;
   name?: string;
   email?: string;
 }

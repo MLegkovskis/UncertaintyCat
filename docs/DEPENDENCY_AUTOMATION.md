@@ -32,6 +32,9 @@ rebase its dependency-only branch so the complete suite tests the combined resul
 
 `.github/dependabot.yml` scans npm, uv, GitHub Actions, and compute-container bases every Monday in
 staggered UTC slots.
+The root npm and uv scans explicitly exclude `Streamlit_Backup/**`: that directory is a read-only historical
+snapshot outside every active package, image, test, and deployment graph. This prevents obsolete archive-only
+security proposals without ignoring the same package or advisory when it affects an active dependency surface.
 Security updates are grouped per ecosystem; routine patch/minor updates are grouped to reduce churn;
 major updates remain isolated because they often need migration work. Dependabot rebases automatically,
 targets the default `main` branch, and may keep up to five version-update pull requests open per ecosystem.
@@ -127,6 +130,7 @@ Use this diagnosis order for any failure:
 | #70, #72           | Security proposals affected only the read-only `Streamlit_Backup` archive, outside the package graph and deployment.                                                              | Closed as not used; corresponding archive alerts were dismissed with that explicit scope rather than changing the historical snapshot.                                                                                                     |
 | #71, #73           | The first grouped idna security branch conflicted after #69 merged; replacement #73 was generated from current `main`.                                                            | #73 passed every gate and auto-merged; no compatibility repair or waiver was required.                                                                                                                                                     |
 | #74                | The first Docker update moved the compute runtime from Python 3.12 to 3.14. Its first full-stack run lost the unrelated local Wrangler process, while both changed images passed. | The unchanged SHA passed the full-stack rerun, both images built and imported OpenTURNS/the compute app, and Python 3.14 independently passed all 23 examples and 66 Python tests. It then auto-merged and passed exact-SHA post-merge CI. |
+| #80                | Tornado security update passed every CI gate but changed only `Streamlit_Backup/uv.lock`, which the privileged file-scope policy correctly rejected.                              | Closed as `not_used`; the four matching archive-only alerts were dismissed with an audit reason, and root npm/uv scans now exclude the historical snapshot. The active dependency allowlist and merger remain unchanged.                   |
 
 The alert audit found 196 findings attached only to the excluded Streamlit archive (including its old
 path before the directory rename). Those findings were dismissed as `not_used` with an auditable reason.

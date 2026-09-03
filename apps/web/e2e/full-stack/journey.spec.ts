@@ -383,6 +383,38 @@ test("retained-user journey persists a project, executes every plugin, and produ
     ]),
   );
 
+  // The local retained user is explicitly configured as an operator. Verify the
+  // owner-only D1 snapshot sees this real project/run without exposing source or
+  // numerical payloads through the telemetry contract.
+  await page.goto("/operator");
+  await expect(
+    page.getByRole("heading", { name: "Application health." }),
+  ).toBeVisible();
+  await expect(page.getByText(studyName).first()).toBeVisible();
+  const operations = await request.get(
+    "http://127.0.0.1:8787/api/v1/operator/overview?hours=24",
+  );
+  expect(operations.ok()).toBe(true);
+  const operationsBody = await operations.json();
+  expect(operationsBody).toMatchObject({
+    windowHours: 24,
+    summary: { users: 0, projects: 1 },
+    projects: expect.arrayContaining([
+      expect.objectContaining({ name: studyName }),
+    ]),
+  });
+  const serializedOperations = JSON.stringify(operationsBody);
+  for (const privateField of [
+    "source_key",
+    "source",
+    "config_json",
+    "result_json",
+    "object_key",
+    "chat_messages",
+  ]) {
+    expect(serializedOperations).not.toContain(privateField);
+  }
+
   // Finish with the destructive lifecycle boundary: explicit typed confirmation,
   // D1 cascades, and authenticated absence of the deleted run/project.
   await page.goto("/studies");
