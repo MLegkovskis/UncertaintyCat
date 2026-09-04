@@ -213,6 +213,14 @@ path uses Groq's official Vercel provider and OpenAI-compatible API; the retaine
 pinned open-source `workers-ai-provider`. `AI_PROVIDER=groq|cloudflare` selects one path at deployment, and
 the public session policy reports the active non-secret model labels so the UI never mislabels a response.
 
+Model Understanding uses Groq strict JSON-schema output for both the primary interpretation and its
+independent equation review. The Worker renders that bounded object into the fixed Markdown/KaTeX contract,
+so provider formatting variation cannot remove headings, delimiters, or the verification notice. A valid
+primary interpretation remains usable when the optional second-pass reviewer has a transient transport or
+formatting failure; only an invalid primary plus exhausted repair attempts produces a retry state. Automatic
+SDK retries are limited to retryable provider responses, and structured logs retain only safe failure
+categories/status codes and validation issue names—not prompts, source, responses, or credentials.
+
 The model receives conversation history and can read only these projections of persisted numerical data:
 
 - section/status/available-field outline;

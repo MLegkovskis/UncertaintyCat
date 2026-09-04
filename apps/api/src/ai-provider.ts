@@ -99,6 +99,8 @@ export function aiProviderOptions(
       groq: {
         reasoningEffort: "low",
         parallelToolCalls: false,
+        structuredOutputs: true,
+        strictJsonSchema: true,
       },
     } as const;
   }

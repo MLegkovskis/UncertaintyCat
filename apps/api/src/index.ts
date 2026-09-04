@@ -24,7 +24,7 @@ import {
   subsetSamplingIncompatibility,
   uploadDatasetSchema,
 } from "@uncertaintycat/contracts";
-import { generateText, stepCountIs, streamText, tool } from "ai";
+import { generateObject, generateText, stepCountIs, streamText, tool } from "ai";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
@@ -53,10 +53,15 @@ import {
 import {
   MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT,
   MODEL_UNDERSTANDING_SYSTEM_PROMPT,
+  MODEL_UNDERSTANDING_STRUCTURED_REVIEW_SYSTEM_PROMPT,
+  MODEL_UNDERSTANDING_STRUCTURED_SYSTEM_PROMPT,
   modelUnderstandingPrompt,
   modelUnderstandingReviewPrompt,
+  modelUnderstandingSectionsSchema,
   modelUnderstandingValidationIssues,
+  renderStructuredModelUnderstanding,
   reportChatSystemPrompt,
+  selectValidatedModelUnderstanding,
   validModelUnderstanding,
 } from "./ai-prompts";
 import { computeFetch, destroyRunSandbox } from "./compute-client";
@@ -2263,30 +2268,66 @@ app.post(
               runtime.provider,
               "modelUnderstanding",
             );
-            const result = await generateText({
-              model: createAiLanguageModel(
-                c.env,
-                attempt.modelId,
-                `understanding:${definition.modelVersion.sourceHash.slice(0, 48)}`,
-                "modelUnderstanding",
-              ),
-              ...(providerOptions ? { providerOptions } : {}),
-              maxOutputTokens: 1_400,
-              maxRetries: 0,
-              timeout: attempt.timeoutMs,
-              temperature: 0.1,
-              system: MODEL_UNDERSTANDING_SYSTEM_PROMPT,
-              prompt: modelUnderstandingPrompt(definition),
-            });
-            const narrative = result.text.trim();
+            const model = createAiLanguageModel(
+              c.env,
+              attempt.modelId,
+              `understanding:${definition.modelVersion.sourceHash.slice(0, 48)}`,
+              "modelUnderstanding",
+            );
+            const narrative =
+              runtime.provider === "groq"
+                ? renderStructuredModelUnderstanding(
+                    (
+                      await generateObject({
+                        model,
+                        ...(providerOptions ? { providerOptions } : {}),
+                        schema: modelUnderstandingSectionsSchema,
+                        schemaName: "model_understanding",
+                        schemaDescription:
+                          "A bounded engineering model explanation with LaTeX equations and validated-fact narrative sections.",
+                        maxOutputTokens: 1_400,
+                        maxRetries: 1,
+                        abortSignal: AbortSignal.timeout(attempt.timeoutMs),
+                        temperature: 0.1,
+                        system: MODEL_UNDERSTANDING_STRUCTURED_SYSTEM_PROMPT,
+                        prompt: modelUnderstandingPrompt(definition),
+                      })
+                    ).object,
+                  )
+                : (
+                    await generateText({
+                      model,
+                      ...(providerOptions ? { providerOptions } : {}),
+                      maxOutputTokens: 1_400,
+                      maxRetries: 1,
+                      timeout: attempt.timeoutMs,
+                      temperature: 0.1,
+                      system: MODEL_UNDERSTANDING_SYSTEM_PROMPT,
+                      prompt: modelUnderstandingPrompt(definition),
+                    })
+                  ).text.trim();
             if (!narrative)
               throw new Error("The AI provider returned an empty explanation.");
+            const validationIssues =
+              modelUnderstandingValidationIssues(narrative);
+            if (validationIssues.length > 0) {
+              console.warn(
+                JSON.stringify({
+                  event: "model_understanding_candidate_invalid",
+                  requestId: c.get("requestId"),
+                  understandingId,
+                  aiModelId: attempt.modelId,
+                  validationIssues,
+                }),
+              );
+            }
             return {
               content: narrative,
               modelId: attempt.modelId,
               attemptDurationMs: Date.now() - attemptStartedAt,
             };
           } catch (error) {
+            const failure = generationFailure(error);
             console.warn(
               JSON.stringify({
                 event: "model_understanding_attempt_failed",
@@ -2294,8 +2335,8 @@ app.post(
                 understandingId,
                 aiModelId: attempt.modelId,
                 durationMs: Date.now() - attemptStartedAt,
-                errorType:
-                  error instanceof Error ? error.name : "provider_error",
+                diagnostic: failure.diagnostic,
+                providerStatusCode: failure.providerStatusCode,
               }),
             );
             throw error;
@@ -2303,61 +2344,143 @@ app.post(
         },
       );
       const reviewStartedAt = Date.now();
-      const reviewerAttempts = [
+      const generatedValidationIssues = modelUnderstandingValidationIssues(
+        generation.result.content,
+      );
+      const allReviewerAttempts = [
         runtime.models.modelUnderstanding.reviewerModelId,
         generation.result.modelId,
         runtime.models.modelUnderstanding.modelId,
       ].filter((modelId, index, values) => values.indexOf(modelId) === index);
-      const review = await runSequentialFallback(
-        reviewerAttempts,
-        async (reviewerModelId, index) => {
-          if (index > 0) {
-            console.warn(
-              JSON.stringify({
-                event: "model_understanding_review_fallback_started",
-                requestId: c.get("requestId"),
-                understandingId,
-                aiModelId: reviewerModelId,
-              }),
-            );
-          }
-          const providerOptions = aiProviderOptions(
-            runtime.provider,
-            "modelUnderstanding",
-          );
-          const result = await generateText({
-            model: createAiLanguageModel(
-              c.env,
-              reviewerModelId,
-              `understanding-review:${definition.modelVersion.sourceHash.slice(0, 48)}`,
+      const reviewerAttempts =
+        generatedValidationIssues.length === 0
+          ? allReviewerAttempts.slice(0, 1)
+          : allReviewerAttempts;
+      let reviewedContent: string | undefined;
+      let reviewerModelId: string | undefined;
+      let reviewerFallbackUsed = false;
+      try {
+        const review = await runSequentialFallback(
+          reviewerAttempts,
+          async (candidateReviewerModelId, index) => {
+            if (index > 0) {
+              console.warn(
+                JSON.stringify({
+                  event: "model_understanding_review_fallback_started",
+                  requestId: c.get("requestId"),
+                  understandingId,
+                  aiModelId: candidateReviewerModelId,
+                }),
+              );
+            }
+            const providerOptions = aiProviderOptions(
+              runtime.provider,
               "modelUnderstanding",
-            ),
-            ...(providerOptions ? { providerOptions } : {}),
-            maxOutputTokens: 1_600,
-            maxRetries: 0,
-            timeout: MODEL_UNDERSTANDING_REVIEW_TIMEOUT_MS,
-            temperature: 0,
-            system: MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT,
-            prompt: modelUnderstandingReviewPrompt(
-              definition,
-              generation.result.content,
-            ),
-          });
-          const reviewed = result.text.trim();
-          const validationIssues = modelUnderstandingValidationIssues(reviewed);
-          if (validationIssues.length > 0)
-            throw new Error(
-              `The equation reviewer returned an invalid brief: ${validationIssues.join(",")}`,
             );
-          return { content: reviewed, modelId: reviewerModelId };
-        },
+            try {
+              const model = createAiLanguageModel(
+                c.env,
+                candidateReviewerModelId,
+                `understanding-review:${definition.modelVersion.sourceHash.slice(0, 48)}`,
+                "modelUnderstanding",
+              );
+              const reviewed =
+                runtime.provider === "groq"
+                  ? renderStructuredModelUnderstanding(
+                      (
+                        await generateObject({
+                          model,
+                          ...(providerOptions ? { providerOptions } : {}),
+                          schema: modelUnderstandingSectionsSchema,
+                          schemaName: "reviewed_model_understanding",
+                          schemaDescription:
+                            "An independently reviewed engineering model explanation with corrected LaTeX equations.",
+                          maxOutputTokens: 1_600,
+                          maxRetries: 1,
+                          abortSignal: AbortSignal.timeout(
+                            MODEL_UNDERSTANDING_REVIEW_TIMEOUT_MS,
+                          ),
+                          temperature: 0,
+                          system:
+                            MODEL_UNDERSTANDING_STRUCTURED_REVIEW_SYSTEM_PROMPT,
+                          prompt: modelUnderstandingReviewPrompt(
+                            definition,
+                            generation.result.content,
+                          ),
+                        })
+                      ).object,
+                    )
+                  : (
+                      await generateText({
+                        model,
+                        ...(providerOptions ? { providerOptions } : {}),
+                        maxOutputTokens: 1_600,
+                        maxRetries: 1,
+                        timeout: MODEL_UNDERSTANDING_REVIEW_TIMEOUT_MS,
+                        temperature: 0,
+                        system: MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT,
+                        prompt: modelUnderstandingReviewPrompt(
+                          definition,
+                          generation.result.content,
+                        ),
+                      })
+                    ).text.trim();
+              const validationIssues =
+                modelUnderstandingValidationIssues(reviewed);
+              if (validationIssues.length > 0)
+                throw new Error(
+                  `The equation reviewer returned an invalid brief: ${validationIssues.join(",")}`,
+                );
+              return {
+                content: reviewed,
+                modelId: candidateReviewerModelId,
+              };
+            } catch (error) {
+              const failure = generationFailure(error);
+              console.warn(
+                JSON.stringify({
+                  event: "model_understanding_review_attempt_failed",
+                  requestId: c.get("requestId"),
+                  understandingId,
+                  aiModelId: candidateReviewerModelId,
+                  diagnostic: failure.diagnostic,
+                  providerStatusCode: failure.providerStatusCode,
+                }),
+              );
+              throw error;
+            }
+          },
+        );
+        reviewedContent = review.result.content;
+        reviewerModelId = review.result.modelId;
+        reviewerFallbackUsed = review.index > 0;
+      } catch (error) {
+        if (!validModelUnderstanding(generation.result.content)) throw error;
+        const failure = generationFailure(error);
+        console.warn(
+          JSON.stringify({
+            event: "model_understanding_review_unavailable_using_valid_candidate",
+            requestId: c.get("requestId"),
+            understandingId,
+            diagnostic: failure.diagnostic,
+            providerStatusCode: failure.providerStatusCode,
+          }),
+        );
+      }
+      const selected = selectValidatedModelUnderstanding(
+        generation.result.content,
+        reviewedContent,
       );
-      const { content, modelId } = review.result;
-      const attemptDurationMs = generation.result.attemptDurationMs;
-      if (!validModelUnderstanding(content))
+      if (!selected)
         throw new Error(
           "The AI provider returned an invalid Model Understanding structure.",
         );
+      const content = selected.content;
+      const modelId =
+        selected.source === "reviewed"
+          ? (reviewerModelId ?? generation.result.modelId)
+          : generation.result.modelId;
+      const attemptDurationMs = generation.result.attemptDurationMs;
       const statements = [
         c.env.DB.prepare(
           `UPDATE model_understandings SET status = 'succeeded', content = ?,
@@ -2387,8 +2510,9 @@ app.post(
           understandingId,
           aiModelId: modelId,
           fallbackUsed: generation.index > 0,
-          reviewerModelId: review.result.modelId,
-          reviewerFallbackUsed: review.index > 0,
+          reviewerModelId,
+          reviewerAccepted: selected.source === "reviewed",
+          reviewerFallbackUsed,
           reviewDurationMs: Date.now() - reviewStartedAt,
           attemptDurationMs,
           durationMs,
@@ -2418,7 +2542,8 @@ app.post(
           fallbackAiModelId: runtime.models.modelUnderstanding.fallbackModelId,
           durationMs: Date.now() - generationStartedAt,
           code: failure.code,
-          errorType: failure.code,
+          diagnostic: failure.diagnostic,
+          providerStatusCode: failure.providerStatusCode,
         }),
       );
       return jsonError(c, failure.status, failure.code, failure.message);

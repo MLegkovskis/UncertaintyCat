@@ -36,8 +36,28 @@ describe("AI runtime policy", () => {
       code: "model_understanding_timeout",
       status: 504,
     });
-    expect(failure.message).toContain("failed requests are not charged");
+    expect(failure.message).toBe(
+      "The model explanation did not finish in time. Please retry.",
+    );
     expect(failure.diagnostic).toBe("upstream_timeout");
+  });
+
+  it("retains only safe provider categories for diagnosis", () => {
+    const rateLimit = generationFailure(
+      Object.assign(new Error("provider payload omitted"), { statusCode: 429 }),
+    );
+    expect(rateLimit).toMatchObject({
+      code: "model_understanding_rate_limited",
+      diagnostic: "upstream_rate_limited",
+      providerStatusCode: 429,
+      status: 503,
+    });
+    expect(rateLimit.message).not.toContain("provider payload omitted");
+
+    const invalidResponse = generationFailure(
+      new Error("The equation reviewer returned an invalid brief: missing heading"),
+    );
+    expect(invalidResponse.diagnostic).toBe("upstream_response_invalid");
   });
 
   it("uses the first successful fallback attempt", async () => {

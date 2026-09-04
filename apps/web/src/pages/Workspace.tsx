@@ -52,7 +52,7 @@ import { useTheme } from "../components/Theme";
 
 type AuthorMode = "source" | "builder";
 
-const MODEL_UNDERSTANDING_CLIENT_TIMEOUT_MS = 35_000;
+const MODEL_UNDERSTANDING_CLIENT_TIMEOUT_MS = 50_000;
 const MODEL_UNDERSTANDING_POLL_MS = 750;
 
 function abortableDelay(milliseconds: number, signal: AbortSignal) {
@@ -75,11 +75,11 @@ function abortableDelay(milliseconds: number, signal: AbortSignal) {
 
 function modelUnderstandingError(caught: unknown) {
   if (caught instanceof DOMException && caught.name === "AbortError") {
-    return "The AI provider did not answer within 35 seconds. Please retry; failed requests are not charged.";
+    return "The model explanation did not finish within 50 seconds. Please retry.";
   }
   return caught instanceof Error
     ? caught.message
-    : "Model Understanding failed. Please retry; failed requests are not charged.";
+    : "Model Understanding could not be completed. Please retry.";
 }
 
 const SCALAR_ANALYSES = new Set([
@@ -723,7 +723,7 @@ function ModelUnderstandingPane({
         }
         if (understanding?.status === "failed") {
           throw new Error(
-            "The AI provider could not create the explanation. Please retry; failed requests are not charged.",
+            "The model explanation could not be completed. Please retry.",
           );
         }
       }

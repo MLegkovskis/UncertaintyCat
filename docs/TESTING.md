@@ -40,7 +40,7 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - discovery of all 24 reference models in the unified, immediately editable Python authoring view;
 - blank/manual model naming, resizable Python authoring, project creation from the project index, project-scoped studio navigation, and the multi-output symbolic OpenTURNS builder;
 - model validation success/failure, immediate deterministic equation fallback, Groq-compatible display-math interpretation for arbitrary authenticated Python, in-flight Model Understanding feedback, analysis controls locked until the complete AI brief succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
-- integrated validation/Model Understanding, primary/fallback model policy, single-flight polling, explicit uncharged timeout/failure states, named-observation Calibration Studio, model- and data-driven surrogate fitting, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
+- integrated validation/Model Understanding, strict structured Groq output, primary/fallback model policy, non-fatal reviewer failure for a valid primary brief, single-flight polling, explicit exhausted timeout/failure states, named-observation Calibration Studio, model- and data-driven surrogate fitting, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
 - desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
 - queued/running/terminal run states, separate accessible progress bars and named phase messages for every
   task, indeterminate OpenTURNS phases, retry state, cancellation, exact reruns, and project-oriented history;

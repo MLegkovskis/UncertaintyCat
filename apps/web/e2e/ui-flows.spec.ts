@@ -527,7 +527,7 @@ test.describe("model studio", () => {
     expect(writes).toBe(0);
   });
 
-  test("surfaces Model Understanding failures as uncharged and retryable", async ({
+  test("surfaces exhausted Model Understanding failures as retryable", async ({
     page,
   }) => {
     await installMockApi(page, {
@@ -547,7 +547,7 @@ test.describe("model studio", () => {
           body: JSON.stringify({
             error: {
               message:
-                "The AI provider did not answer in time. Please retry; failed requests are not charged.",
+                "The model explanation did not finish in time. Please retry.",
             },
           }),
         });
@@ -558,7 +558,7 @@ test.describe("model studio", () => {
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
     await expect(
-      page.getByText(/failed requests are not charged/i),
+      page.getByText(/model explanation did not finish in time/i),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });

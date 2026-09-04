@@ -3,17 +3,23 @@ import type {
   ModelDefinition,
 } from "@uncertaintycat/contracts";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   MODEL_UNDERSTANDING_SYSTEM_PROMPT,
   MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT,
+  MODEL_UNDERSTANDING_STRUCTURED_REVIEW_SYSTEM_PROMPT,
+  MODEL_UNDERSTANDING_STRUCTURED_SYSTEM_PROMPT,
   MAX_MODEL_EQUATION_SOURCE_CHARACTERS,
   modelUnderstandingPrompt,
   modelUnderstandingReviewPrompt,
+  modelUnderstandingSectionsSchema,
   modelUnderstandingValidationIssues,
   referenceModelContext,
+  renderStructuredModelUnderstanding,
   reportChatSystemPrompt,
   REPORT_CHAT_SYSTEM_PROMPT,
+  selectValidatedModelUnderstanding,
   validModelUnderstanding,
 } from "./ai-prompts";
 
@@ -93,6 +99,12 @@ describe("AI response contracts", () => {
     expect(MODEL_UNDERSTANDING_REVIEW_SYSTEM_PROMPT).toContain(
       "independent second-pass reviewer",
     );
+    expect(MODEL_UNDERSTANDING_STRUCTURED_SYSTEM_PROMPT).toContain(
+      "Populate every field in the response schema",
+    );
+    expect(MODEL_UNDERSTANDING_STRUCTURED_REVIEW_SYSTEM_PROMPT).toContain(
+      "independent second-pass reviewer",
+    );
     expect(referenceModelContext(target, catalog)).not.toHaveProperty(
       "equations",
     );
@@ -163,6 +175,73 @@ Questions.`;
       "code_fence_not_allowed",
     );
     expect(validModelUnderstanding(template("y=x,\\qquad H=x"))).toBe(true);
+  });
+
+  it("renders strict structured output into stable validated Markdown", () => {
+    const rendered = renderStructuredModelUnderstanding({
+      equations: [
+        {
+          latex: "$$P=\\frac{1}{2}\\rho C_d A v^3+\\qquadH$$",
+          limitation: "The result is defined by an implicit balance.",
+        },
+      ],
+      modelOverview: "### Model overview\nAn eight-input mapping.",
+      inputUncertainty: ["Power — Uniform with supplied moments."],
+      dependenceAndPropagation: "The inputs are independent.",
+      validatedPilotBehaviour: "The small validation pilot executed successfully.",
+      questionsToConfirm: ["Which physical units apply?"],
+    });
+
+    expect(rendered).toContain("$$P=\\frac{1}{2}\\rho C_d A v^3+\\qquad H$$");
+    expect(rendered).not.toContain("### Model overview\nAn eight-input mapping.\n\n### Model overview");
+    expect(rendered).toContain(
+      "_AI-interpreted from the authenticated Python definition; verify against the source before engineering use._",
+    );
+    expect(modelUnderstandingValidationIssues(rendered)).toEqual([]);
+  });
+
+  it("exposes a Groq strict-mode-compatible required object schema", () => {
+    const jsonSchema = z.toJSONSchema(modelUnderstandingSectionsSchema) as {
+      additionalProperties?: boolean;
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+    expect(jsonSchema.additionalProperties).toBe(false);
+    expect(jsonSchema.required).toEqual(
+      expect.arrayContaining([
+        "equations",
+        "modelOverview",
+        "inputUncertainty",
+        "dependenceAndPropagation",
+        "validatedPilotBehaviour",
+        "questionsToConfirm",
+      ]),
+    );
+    expect(jsonSchema.required).toHaveLength(
+      Object.keys(jsonSchema.properties ?? {}).length,
+    );
+  });
+
+  it("uses a valid generated brief when the independent review is unavailable", () => {
+    const generated = renderStructuredModelUnderstanding({
+      equations: [{ latex: "y=x^2", limitation: "" }],
+      modelOverview: "A validated scalar mapping.",
+      inputUncertainty: ["x uses the supplied distribution."],
+      dependenceAndPropagation: "The supplied copula is independent.",
+      validatedPilotBehaviour: "The small validation pilot executed.",
+      questionsToConfirm: ["Which units apply?"],
+    });
+    const invalidReview = "The reviewer returned prose without the contract.";
+
+    expect(
+      selectValidatedModelUnderstanding(generated, invalidReview),
+    ).toEqual({ content: generated, source: "generated" });
+    expect(
+      selectValidatedModelUnderstanding(invalidReview, generated),
+    ).toEqual({ content: generated, source: "reviewed" });
+    expect(
+      selectValidatedModelUnderstanding(invalidReview, invalidReview),
+    ).toBeUndefined();
   });
 
   it("bounds authenticated source in the equation prompt without adding report data", () => {

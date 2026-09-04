@@ -96,6 +96,10 @@ selected adapter executes, and provider/generator/reviewer identity is included 
 Only the bounded Model Understanding request receives Python source; neither adapter receives unrelated R2
 objects. Groq's key is a Worker secret and is never returned
 by session discovery, written to logs, or included in browser assets.
+Groq responses use a strict Zod-derived JSON schema and are rendered into Markdown by the Worker. The
+equation reviewer may replace a valid primary interpretation, but reviewer failure cannot discard an
+already-valid primary response. Observability stores only a bounded diagnostic category, optional provider
+status code, and contract issue names; it never stores the prompt, model source, or generated narrative.
 
 Canonical reference-model source is likewise authenticated data. The generated catalog is owned by the
 Worker and must never be imported into the web application bundle. Every web production build runs

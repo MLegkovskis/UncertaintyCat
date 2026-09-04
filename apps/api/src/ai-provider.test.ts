@@ -60,7 +60,12 @@ describe("deployment-selectable AI provider", () => {
 
   it("disables parallel tool calls and uses low reasoning on Groq", () => {
     expect(aiProviderOptions("groq", "reportChat")).toEqual({
-      groq: { reasoningEffort: "low", parallelToolCalls: false },
+      groq: {
+        reasoningEffort: "low",
+        parallelToolCalls: false,
+        structuredOutputs: true,
+        strictJsonSchema: true,
+      },
     });
     expect(aiProviderOptions("cloudflare", "reportChat")).toBeUndefined();
   });
