@@ -1,5 +1,11 @@
 # Security model
 
+Subset sampling admits bounded settings and model/output applicability in the authenticated
+Worker and again in the numerical core. Its point-evaluation guard checks the all-level
+budget before each model invocation; incomplete results and oversized reports are rejected.
+Progress and translated model errors are source-free. This adds no public endpoint, source
+disclosure, AI access, or mutable provenance path.
+
 ## The primary rule
 
 User-authored Python is untrusted code. `preflight_source` improves error messages and blocks obvious

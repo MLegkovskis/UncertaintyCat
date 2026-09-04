@@ -7,6 +7,7 @@ import type {
   ModelUnderstanding,
   ModelVersion,
 } from "@uncertaintycat/contracts";
+import { boundedSubsetConfigSchema, subsetSamplingIncompatibility } from "@uncertaintycat/contracts";
 import {
   Beaker,
   ArrowRight,
@@ -108,7 +109,8 @@ function analysisConfig(
     threshold: number;
     operator: ">" | ">=" | "<" | "<=";
     maximum_evaluations: number;
-    target_coefficient_of_variation: number;
+    target_coefficient_of_variation?: number;
+    subset_sample_size?: number;
   },
   targetHsic: {
     threshold: number;
@@ -1120,6 +1122,7 @@ export function Workspace() {
   const [reliabilityMaximumEvaluations, setReliabilityMaximumEvaluations] =
     useState(20_000);
   const [reliabilityTargetCov, setReliabilityTargetCov] = useState(0.05);
+  const [subsetSampleSize, setSubsetSampleSize] = useState(2_000);
   const [targetHsicThreshold, setTargetHsicThreshold] = useState(0);
   const [targetHsicOperator, setTargetHsicOperator] = useState<"<=" | ">=">(
     ">=",
@@ -1316,10 +1319,24 @@ export function Workspace() {
       setError(caught instanceof Error ? caught.message : "Validation failed."),
   });
   const analysisComposerLocked = !savedModel || saveModel.isPending;
+  const subsetReason = savedModel
+    ? subsetSamplingIncompatibility(savedModel.assessment, outputTarget)
+    : undefined;
+  const subsetConfig = {
+    method: "SUBSET_SAMPLING" as const,
+    threshold: reliabilityThreshold,
+    operator: reliabilityOperator,
+    maximum_evaluations: reliabilityMaximumEvaluations,
+    subset_sample_size: subsetSampleSize,
+  };
+  const subsetConfigInvalid = !boundedSubsetConfigSchema.safeParse(subsetConfig).success;
+  const subsetSelected = selected.includes("reliability") && reliabilityMethod === "SUBSET_SAMPLING";
   const createRun = useMutation({
     mutationFn: async () => {
       if (!savedModel) throw new Error("Validate and save the model first.");
-      const reliability = {
+      if (subsetSelected && (subsetReason || subsetConfigInvalid))
+        throw new Error(subsetReason ?? "Correct the subset population and total budget before running.");
+      const reliability = reliabilityMethod === "SUBSET_SAMPLING" ? subsetConfig : {
         method: reliabilityMethod,
         threshold: reliabilityThreshold,
         operator: reliabilityOperator,
@@ -1444,12 +1461,13 @@ export function Workspace() {
                   </small>
                 </div>
                 <CodeMirror
-                  onCreateEditor={(view) =>
+                  onCreateEditor={(view) => {
                     view.contentDOM.setAttribute(
                       "aria-label",
                       "Python model source",
-                    )
-                  }
+                    );
+                    view.scrollDOM.tabIndex = 0;
+                  }}
                   height="100%"
                   theme={theme}
                   value={source}
@@ -1636,7 +1654,7 @@ export function Workspace() {
           {selected.includes("reliability") && (
             <div className="analysis-settings">
               {selected.includes("reliability") && (
-                <div className="reliability-studio">
+                <div className={`reliability-studio ${reliabilityMethod === "SUBSET_SAMPLING" ? "subset-studio" : ""}`}>
                   <div className="reliability-step">
                     <i>1</i>
                     <div>
@@ -1739,7 +1757,7 @@ export function Workspace() {
                       <option value="DIRECTIONAL_SAMPLING">
                         Directional sampling
                       </option>
-                      <option value="SUBSET_SAMPLING">Subset sampling</option>
+                      <option value="SUBSET_SAMPLING" disabled={Boolean(subsetReason)}>Subset sampling · bounded</option>
                     </select>
                   </label>
                   <label>
@@ -1747,7 +1765,7 @@ export function Workspace() {
                     <input
                       type="number"
                       min="100"
-                      max="2000000"
+                      max={reliabilityMethod === "SUBSET_SAMPLING" ? 50000 : 2000000}
                       value={reliabilityMaximumEvaluations}
                       onChange={(event) =>
                         setReliabilityMaximumEvaluations(
@@ -1756,7 +1774,7 @@ export function Workspace() {
                       }
                     />
                   </label>
-                  <label>
+                  {reliabilityMethod !== "SUBSET_SAMPLING" && <label>
                     <span>Target coefficient of variation</span>
                     <input
                       type="number"
@@ -1768,7 +1786,21 @@ export function Workspace() {
                         setReliabilityTargetCov(Number(event.target.value))
                       }
                     />
-                  </label>
+                  </label>}
+                  {subsetReason && <p role="status">{subsetReason}</p>}
+                  {reliabilityMethod === "SUBSET_SAMPLING" && <>
+                    <label>
+                      <span>Subset samples per level</span>
+                      <input type="number" min="100" max="5000" step="10" value={subsetSampleSize}
+                        onChange={(event) => setSubsetSampleSize(Number(event.target.value))} />
+                    </label>
+                    <p className="provenance-note">
+                      At most ten populations, including the initial sample, within the total evaluation budget.
+                      OpenTURNS stops when the requested threshold is reached; coefficient of variation is a diagnostic, not a stopping target.
+                      Incomplete runs produce no event-probability result. Nominal intervals are approximate, not confidence guarantees.
+                    </p>
+                    {subsetConfigInvalid && <p role="alert">Use 100–5,000 samples per level in multiples of 10, no more than the total budget (maximum 50,000).</p>}
+                  </>}
                 </div>
               )}
             </div>
@@ -1962,7 +1994,8 @@ export function Workspace() {
             <button
               className="button primary run-button"
               disabled={
-                !savedModel || selected.length === 0 || createRun.isPending
+                !savedModel || selected.length === 0 || createRun.isPending ||
+                (subsetSelected && (Boolean(subsetReason) || subsetConfigInvalid))
               }
               onClick={() => createRun.mutate()}
             >

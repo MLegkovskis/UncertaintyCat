@@ -3847,6 +3847,33 @@ tbody tr:hover td {
   align-items: flex-start;
   grid-column: 1 / -1;
 }
+.subset-studio {
+  width: 100%;
+  min-width: 0;
+}
+.subset-studio > label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font: 700 11px var(--font-mono);
+}
+.subset-studio input,
+.subset-studio select {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  font: 600 12px var(--font-mono);
+}
+.subset-studio > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
 .reliability-step i {
   display: grid;
   place-items: center;

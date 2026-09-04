@@ -37,7 +37,7 @@ export const catalog: AnalysisCatalogEntry[] = [
   ],
 ].map(([key, name, category, resourceClass]) => ({
   key,
-  version: ["ancova", "calibration_nlls"].includes(key)
+  version: key === "reliability" ? "3.0.0" : ["ancova", "calibration_nlls"].includes(key)
     ? "1.0.0"
     : key === "target_hsic"
       ? "1.1.0"
