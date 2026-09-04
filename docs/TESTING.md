@@ -39,7 +39,7 @@ This suite uses stateful HTTP fixtures with the real React application. It cover
 - owner-only Operations navigation, an authenticated non-operator denial state, D1 snapshot rendering, issue links, time-window controls, and dashboard accessibility;
 - discovery of all 24 reference models in the unified, immediately editable Python authoring view;
 - blank/manual model naming, resizable Python authoring, project creation from the project index, project-scoped studio navigation, and the multi-output symbolic OpenTURNS builder;
-- model validation success/failure, immediate deterministic equation fallback, Groq-compatible display-math interpretation for arbitrary authenticated Python, in-flight Model Understanding feedback, analysis controls locked until the complete AI brief succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
+- model validation success/failure, atomic validation/equation/brief disclosure, parser-checked deterministic equation fallback, Groq-compatible display-math interpretation for arbitrary authenticated Python, in-flight Model Understanding feedback, analysis controls locked until the complete assessment succeeds, deterministic direct/reduction/surrogate routing, and the direct-only analysis catalog;
 - integrated validation/Model Understanding, strict structured Groq output, primary/fallback model policy, non-fatal reviewer failure for a valid primary brief, single-flight polling, explicit exhausted timeout/failure states, named-observation Calibration Studio, model- and data-driven surrogate fitting, dedicated Morris screening/reduction, and Distribution Fitting composition with beam sample data;
 - desktop bounding-box and screenshot evidence guarding the validated two-column layout against header overlap;
 - queued/running/terminal run states, separate accessible progress bars and named phase messages for every
@@ -66,7 +66,20 @@ The key regression contract is explicit: an unauthenticated browser cannot mount
 npm run test:e2e:full-stack
 ```
 
-Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker, FastAPI/OpenTURNS compute adapter, and Vite; applies forward-only migrations; creates an authenticated project; validates the Ishigami model; executes the ten independent-input direct analyses—including global and target-domain HSIC with their real OpenTURNS permutation paths—through the direct workspace; asserts terminal per-task progress persistence; calibrates the official nonlinear exponential model through the named-data studio and real compute boundary; builds a dependent symbolic model, proves a direct API attempt cannot bypass the Sobol applicability rejection, and executes ANCOVA through compute, persistence, and the generic report; exercises Morris and model-based PCE/GPR through their project studios; fits a data-driven GPR from pre-filled paired observations; downloads real report ZIPs; creates and opens an authenticated share link; reloads project history; verifies persisted D1 records through the API; and checks the real operator snapshot before destructive cleanup. It also asserts that telemetry contains no source, configuration/result, chat, or artifact-key fields. Successful execution proves immutable source, dataset, and surrogate-artifact round-tripping through R2.
+Playwright owns every test process and creates isolated local D1/R2/Queue state. It starts the Hono Worker,
+FastAPI/OpenTURNS compute adapter, Vite, and a deterministic loopback Groq-compatible server; applies
+forward-only migrations; creates an authenticated project; validates the Ishigami model; executes the ten
+independent-input direct analyses—including global and target-domain HSIC with their real OpenTURNS permutation
+paths—through the direct workspace; asserts terminal per-task progress persistence; calibrates the official
+nonlinear exponential model through the named-data studio and real compute boundary; builds a dependent symbolic
+model, proves a direct API attempt cannot bypass the Sobol applicability rejection, and executes ANCOVA through
+compute, persistence, and the generic report; exercises Morris and model-based PCE/GPR through their project
+studios; fits a data-driven GPR from pre-filled paired observations; downloads real report ZIPs; creates and opens
+an authenticated share link; reloads project history; verifies persisted D1 records through the API; and checks
+the real operator snapshot before destructive cleanup. The local AI fixture requires the real Worker adapter to
+submit Groq's strict JSON schema and never logs or interprets model source. The suite also asserts that telemetry
+contains no source, configuration/result, chat, or artifact-key fields. Successful execution proves immutable
+source, dataset, and surrogate-artifact round-tripping through R2.
 
 The test Wrangler configurations use `DEV_AUTH_BYPASS=true` and the browser supplies a synthetic Better Auth session. This is intentionally test-only: CI must not hold a human Cloudflare password, session cookie, or MFA recovery material. Production configuration omits the bypass.
 

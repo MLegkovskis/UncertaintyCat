@@ -4,6 +4,7 @@ import {
   aiProviderOptions,
   aiRuntime,
   AI_PROVIDER_DEFINITIONS,
+  localGroqBaseUrl,
   modelUnderstandingCacheVersion,
   resolveAiProvider,
 } from "./ai-provider";
@@ -68,5 +69,29 @@ describe("deployment-selectable AI provider", () => {
       },
     });
     expect(aiProviderOptions("cloudflare", "reportChat")).toBeUndefined();
+  });
+
+  it("allows a Groq-compatible fixture only on loopback in local bypass mode", () => {
+    expect(
+      localGroqBaseUrl(
+        env({
+          DEV_AUTH_BYPASS: "true",
+          GROQ_BASE_URL: "http://127.0.0.1:8790/openai/v1/",
+        }),
+      ),
+    ).toBe("http://127.0.0.1:8790/openai/v1");
+    expect(() =>
+      localGroqBaseUrl(
+        env({ GROQ_BASE_URL: "http://127.0.0.1:8790/openai/v1" }),
+      ),
+    ).toThrow("restricted to local development");
+    expect(() =>
+      localGroqBaseUrl(
+        env({
+          DEV_AUTH_BYPASS: "true",
+          GROQ_BASE_URL: "https://example.com/openai/v1",
+        }),
+      ),
+    ).toThrow("HTTP on a loopback host");
   });
 });

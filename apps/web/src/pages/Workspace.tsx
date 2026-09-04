@@ -51,6 +51,12 @@ import { EmptyState } from "../components/Status";
 import { useTheme } from "../components/Theme";
 
 type AuthorMode = "source" | "builder";
+type ModelUnderstandingStatus =
+  | "loading"
+  | "streaming"
+  | "waiting"
+  | "ready"
+  | "failed";
 
 const MODEL_UNDERSTANDING_CLIENT_TIMEOUT_MS = 50_000;
 const MODEL_UNDERSTANDING_POLL_MS = 750;
@@ -611,64 +617,58 @@ function ModelValidationPendingPane({
           <ScanSearch />
         </div>
         <div>
-          <strong>Your model is being validated…</strong>
+          <strong>Your model is being validated and assessed…</strong>
           <p>
-            OpenTURNS is checking the executable model, input distribution,
-            output shape, and bounded pilot behaviour.
+            OpenTURNS validation, equation interpretation, the model brief,
+            and workflow recommendation are completing as one assessment.
           </p>
         </div>
         <ol aria-label="Validation progress">
-          <li className="active">Isolated model checks</li>
-          <li>Deterministic assessment</li>
-          <li>Model brief</li>
+          <li className="active">Numerical validation</li>
+          <li className="active">Equation &amp; model brief</li>
+          <li className="active">Analysis readiness</li>
         </ol>
         <small>
-          Direct analyses stay locked until deterministic validation succeeds.
+          Results and analyses remain locked until the complete assessment is
+          ready.
         </small>
       </section>
     </aside>
   );
 }
 
-function equationMarkdownText(value: string) {
-  return value.replace(/([\\`*_[\]{}()#+.!|>~-])/g, "\\$1");
-}
-
-function equationMathBody(value: string) {
-  return value.replaceAll("$", "\\$");
-}
-
-function ModelEquationBlock({ model }: { model: ModelVersion }) {
-  const equations = model.metadata.equations?.length
-    ? model.metadata.equations
-    : [
-        {
-          output_name: "Validated Python mapping",
-          latex: String.raw`\mathbf{y}=f_{\mathrm{Python}}\left(\mathbf{x}\right)`,
-          representation: "formal_mapping" as const,
-        },
-      ];
-  const representations = new Set(
-    equations.map((equation) => equation.representation),
-  );
-  const origin = representations.has("formal_mapping")
-    ? "The validator confirmed this exact input-output mapping. Procedural code could not be reduced safely to a single closed-form expression."
-    : representations.has("declared")
-      ? "Declared by the model author and retained as bounded equation metadata."
-      : "Derived deterministically during isolated validation before the AI interpretation is requested.";
+function ModelAssessmentFailurePane({
+  aiModelLabel,
+  error,
+  onRetry,
+}: {
+  aiModelLabel: string;
+  error: string;
+  onRetry: () => void;
+}) {
   return (
-    <section className="validation-equations">
-      <h3>Model equation</h3>
-      <Markdown>
-        {equations
-          .map(
-            (equation) =>
-              `**${equationMarkdownText(equation.output_name)}**\n\n$$${equationMathBody(equation.latex)}$$`,
-          )
-          .join("\n\n")}
-      </Markdown>
-      <small>{origin}</small>
-    </section>
+    <aside className="understanding-pane" aria-label="Model Understanding">
+      <header>
+        <div>
+          <span className="section-kicker">Validation &amp; explanation</span>
+          <h2>Model Understanding</h2>
+        </div>
+        <small>{aiModelLabel}</small>
+      </header>
+      <section className="understanding-narrative" role="alert">
+        <h3>Assessment incomplete</h3>
+        <p>{error}</p>
+        <p>
+          No numerical facts, recommendation, or analyses are released until
+          the complete assessment succeeds.
+        </p>
+        <div className="understanding-actions">
+          <button className="button secondary small" onClick={onRetry}>
+            Retry
+          </button>
+        </div>
+      </section>
+    </aside>
   );
 }
 
@@ -676,15 +676,16 @@ function ModelUnderstandingPane({
   model,
   projectId,
   aiModelLabel,
+  onStatusChange,
 }: {
   model: ModelVersion;
   projectId: string;
   aiModelLabel: string;
+  onStatusChange: (modelId: string, status: ModelUnderstandingStatus) => void;
 }) {
   const [content, setContent] = useState("");
-  const [status, setStatus] = useState<
-    "loading" | "streaming" | "waiting" | "ready" | "failed"
-  >("loading");
+  const [status, setStatus] =
+    useState<ModelUnderstandingStatus>("loading");
   const [error, setError] = useState<string>();
   const activeRequest = useRef<AbortController | undefined>(undefined);
   const assessment = model.assessment;
@@ -840,6 +841,23 @@ function ModelUnderstandingPane({
     };
   }, [generate, model.id, pollActiveGeneration]);
 
+  useEffect(() => {
+    onStatusChange(model.id, status);
+  }, [model.id, onStatusChange, status]);
+
+  if (status !== "ready") {
+    if (status === "failed") {
+      return (
+        <ModelAssessmentFailurePane
+          aiModelLabel={aiModelLabel}
+          error={error ?? "Model Understanding could not be completed."}
+          onRetry={() => void generate(false)}
+        />
+      );
+    }
+    return <ModelValidationPendingPane aiModelLabel={aiModelLabel} />;
+  }
+
   return (
     <aside className="understanding-pane" aria-label="Model Understanding">
       <header>
@@ -904,11 +922,9 @@ function ModelUnderstandingPane({
           </div>
         ))}
       </section>
-      {status !== "ready" && <ModelEquationBlock model={model} />}
       <section
         className="understanding-narrative"
         aria-live="polite"
-        aria-busy={status === "streaming" || status === "waiting"}
       >
         <h3>
           Model brief <small>generated by {aiModelLabel}</small>
@@ -918,38 +934,17 @@ function ModelUnderstandingPane({
           authenticated Python definition. Verify them against the retained
           source before engineering use.
         </p>
-        {(status === "streaming" || status === "waiting") && !content && (
-          <div className="assistant-placeholder">
-            <span /> <span /> <span />{" "}
-            {status === "waiting"
-              ? "An existing AI generation is finishing…"
-              : "The AI provider is drafting a concise explanation…"}
-          </div>
-        )}
-        {content && <Markdown>{content}</Markdown>}
-        {error && <div className="inline-error">{error}</div>}
+        <Markdown>{content}</Markdown>
         <div className="understanding-actions">
-          {status === "failed" && (
-            <button
-              className="button secondary small"
-              onClick={() => void generate(false)}
-            >
-              Retry
-            </button>
-          )}
-          {status === "ready" && (
-            <button
-              className="button secondary small"
-              onClick={() => void generate(true)}
-            >
-              Regenerate
-            </button>
-          )}
+          <button
+            className="button secondary small"
+            onClick={() => void generate(true)}
+          >
+            Regenerate
+          </button>
         </div>
       </section>
-      {status === "ready" && (
-        <WorkflowAssessment model={model} projectId={projectId} compact />
-      )}
+      <WorkflowAssessment model={model} projectId={projectId} compact />
     </aside>
   );
 }
@@ -1106,6 +1101,10 @@ export function Workspace() {
     copula: { kind: "independent", correlation: identityCorrelation(2) },
   }));
   const [savedModel, setSavedModel] = useState<ModelVersion>();
+  const [understandingState, setUnderstandingState] = useState<{
+    modelId: string;
+    status: ModelUnderstandingStatus;
+  }>();
   const [selected, setSelected] = useState<string[]>([
     "monte_carlo",
     "eda",
@@ -1135,6 +1134,24 @@ export function Workspace() {
   const activeProjectId = routeProjectId ?? "";
   const activeProject = projects.find((item) => item.id === activeProjectId);
   const examples = examplesQuery.data?.examples ?? [];
+  const activeUnderstandingStatus =
+    savedModel && understandingState?.modelId === savedModel.id
+      ? understandingState.status
+      : "loading";
+  const modelAssessmentReady =
+    Boolean(savedModel) && activeUnderstandingStatus === "ready";
+  const modelAssessmentFailed =
+    Boolean(savedModel) && activeUnderstandingStatus === "failed";
+  const handleUnderstandingStatus = useCallback(
+    (modelId: string, status: ModelUnderstandingStatus) => {
+      setUnderstandingState((current) =>
+        current?.modelId === modelId && current.status === status
+          ? current
+          : { modelId, status },
+      );
+    },
+    [],
+  );
   const definitionQuery = useQuery({
     queryKey: ["model-definition", sourceModelId],
     queryFn: () => api.getModelDefinition(sourceModelId),
@@ -1144,6 +1161,26 @@ export function Workspace() {
     const pilot = savedModel?.assessment?.profile.pilot_outputs[outputTarget];
     if (pilot) setTargetHsicThreshold(pilot.mean);
   }, [outputTarget, savedModel?.id]);
+  useEffect(() => {
+    if (
+      !modelAssessmentReady ||
+      !savedModel ||
+      !activeProjectId ||
+      !["calibration", "dimension-reduction", "surrogates"].includes(
+        requestedNext,
+      )
+    )
+      return;
+    navigate(
+      `/studies/${activeProjectId}/${requestedNext}?modelId=${savedModel.id}`,
+    );
+  }, [
+    activeProjectId,
+    modelAssessmentReady,
+    navigate,
+    requestedNext,
+    savedModel,
+  ]);
   useEffect(() => {
     const definition = definitionQuery.data?.definition;
     if (!definition) return;
@@ -1301,24 +1338,21 @@ export function Workspace() {
           : {}),
       });
     },
-    onMutate: () => setError(undefined),
+    onMutate: () => {
+      setError(undefined);
+      setUnderstandingState(undefined);
+    },
     onSuccess: ({ modelVersion }) => {
       setSavedModel(modelVersion);
       setError(undefined);
-      if (
-        ["calibration", "dimension-reduction", "surrogates"].includes(
-          requestedNext,
-        )
-      ) {
-        navigate(
-          `/studies/${activeProjectId}/${requestedNext}?modelId=${modelVersion.id}`,
-        );
-      }
     },
     onError: (caught) =>
       setError(caught instanceof Error ? caught.message : "Validation failed."),
   });
-  const analysisComposerLocked = !savedModel || saveModel.isPending;
+  const modelAssessmentPending =
+    saveModel.isPending ||
+    (Boolean(savedModel) && !modelAssessmentReady && !modelAssessmentFailed);
+  const analysisComposerLocked = !modelAssessmentReady;
   const subsetReason = savedModel
     ? subsetSamplingIncompatibility(savedModel.assessment, outputTarget)
     : undefined;
@@ -1396,7 +1430,7 @@ export function Workspace() {
       </div>
       <section
         className={`studio-card ${savedModel || saveModel.isPending ? "validated-studio" : ""}`}
-        aria-busy={saveModel.isPending}
+        aria-busy={modelAssessmentPending}
       >
         <div className="studio-authoring">
           {dataFitProvenance && (
@@ -1511,15 +1545,23 @@ export function Workspace() {
           )}
           <div className="studio-footer">
             <div className="model-status">
-              {saveModel.isPending ? (
+              {modelAssessmentPending ? (
                 <>
                   <span className="validation-dot" />
                   <div>
-                    <strong>Validation in progress</strong>
+                    <strong>Validation and assessment in progress</strong>
                     <small>
-                      OpenTURNS checks are running in the isolated compute
-                      boundary.
+                      The complete numerical and explanatory assessment will
+                      appear together.
                     </small>
+                  </div>
+                </>
+              ) : modelAssessmentFailed ? (
+                <>
+                  <span className="idle-dot" />
+                  <div>
+                    <strong>Assessment incomplete</strong>
+                    <small>Retry Model Understanding in the adjacent panel.</small>
                   </div>
                 </>
               ) : !savedModel ? (
@@ -1543,13 +1585,13 @@ export function Workspace() {
               className="button primary"
               onClick={() => saveModel.mutate()}
               disabled={
-                saveModel.isPending ||
+                modelAssessmentPending ||
                 !modelName.trim() ||
                 (mode === "source" ? !source.trim() : !generatedSource)
               }
             >
               <Save />{" "}
-              {saveModel.isPending
+              {modelAssessmentPending
                 ? "Validating and assessing…"
                 : "Validate & Assess"}
             </button>
@@ -1570,6 +1612,7 @@ export function Workspace() {
               sessionQuery.data?.ai?.modelUnderstanding.label ??
               "Configured AI provider"
             }
+            onStatusChange={handleUnderstandingStatus}
           />
         ) : null}
       </section>
@@ -1590,7 +1633,7 @@ export function Workspace() {
         id="direct-analyses"
         className={`analysis-composer ${analysisComposerLocked ? "disabled-panel" : ""}`}
         aria-disabled={analysisComposerLocked}
-        aria-busy={saveModel.isPending}
+        aria-busy={modelAssessmentPending}
       >
         <fieldset
           className="analysis-composer-fields"
@@ -1640,13 +1683,15 @@ export function Workspace() {
               <ScanSearch />
               <div>
                 <strong>
-                  {saveModel.isPending
-                    ? "Analyses will unlock after validation"
-                    : "Validate the model to unlock analyses"}
+                  {modelAssessmentPending
+                    ? "Analyses will unlock after the assessment"
+                    : modelAssessmentFailed
+                      ? "Complete Model Understanding to unlock analyses"
+                      : "Validate and assess the model to unlock analyses"}
                 </strong>
                 <small>
-                  Analysis choices are enabled only for a deterministic,
-                  successfully validated model.
+                  Analysis choices are enabled only after numerical validation,
+                  equation rendering, and Model Understanding all succeed.
                 </small>
               </div>
             </div>

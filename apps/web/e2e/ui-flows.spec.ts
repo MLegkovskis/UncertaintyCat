@@ -493,7 +493,7 @@ test.describe("model studio", () => {
               aiModelId: "@cf/meta/llama-3.2-3b-instruct",
               status: succeeded ? "succeeded" : "generating",
               content: succeeded
-                ? "## Model in brief\n\nThe existing generation completed once."
+                ? "### Interpreted model equation\n\n$$y=x^2$$\n\n_AI-interpreted from the authenticated Python definition; verify against the source before engineering use._\n\n### Model overview\n\nThe existing generation completed once.\n\n### Input uncertainty\n\n- x uses the supplied distribution.\n\n### Dependence and propagation\n\nThe inputs are independent.\n\n### Validated pilot behaviour\n\nThe pilot executed.\n\n### Questions to confirm\n\n- Which units apply?"
                 : null,
               error: null,
               createdAt: "2026-08-23T12:00:00Z",
@@ -508,18 +508,18 @@ test.describe("model studio", () => {
     await page.locator(".example-card").click();
     await page.getByRole("button", { name: "Validate & Assess" }).click();
     await expect(
-      page.getByText("An existing AI generation is finishing…"),
+      page.getByText("Your model is being validated and assessed…"),
     ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /model equation/i }),
-    ).toBeVisible();
-    await expect(page.locator(".validation-equations .katex")).toBeVisible();
+    await expect(page.getByText("Model validated", { exact: true })).toHaveCount(0);
+    await expect(page.locator(".understanding-pane .katex")).toHaveCount(0);
     await expect(
       page.getByText("This model is practical to evaluate directly."),
     ).toHaveCount(0);
     await expect(
       page.getByText("The existing generation completed once."),
     ).toBeVisible();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+    await expect(page.locator(".understanding-pane .katex")).toBeVisible();
     await expect(
       page.getByText("This model is practical to evaluate directly."),
     ).toBeVisible();
@@ -563,7 +563,7 @@ test.describe("model studio", () => {
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 
-  test("opens validation feedback immediately and locks analyses until validation succeeds", async ({
+  test("reveals validation atomically and locks analyses until the complete assessment succeeds", async ({
     page,
   }) => {
     await installMockApi(page, { authenticated: true, projects: [project] });
@@ -571,9 +571,27 @@ test.describe("model studio", () => {
     const validationGate = new Promise<void>((resolve) => {
       releaseValidation = resolve;
     });
+    let releaseUnderstanding: (() => void) | undefined;
+    const understandingGate = new Promise<void>((resolve) => {
+      releaseUnderstanding = resolve;
+    });
     await page.route("**/api/v1/projects/*/models", async (route) => {
       if (route.request().method() === "POST") await validationGate;
       await route.fallback();
+    });
+    await page.route("**/api/v1/model-versions/*/understanding", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({ understanding: null }),
+        });
+        return;
+      }
+      await understandingGate;
+      await route.fulfill({
+        contentType: "text/plain; charset=utf-8",
+        body: "### Interpreted model equation\n\n$$y=x^2$$\n\n_AI-interpreted from the authenticated Python definition; verify against the source before engineering use._\n\n### Model overview\n\nThe complete assessment is ready.\n\n### Input uncertainty\n\n- x uses the supplied distribution.\n\n### Dependence and propagation\n\nThe inputs are independent.\n\n### Validated pilot behaviour\n\nThe pilot executed.\n\n### Questions to confirm\n\n- Which units apply?",
+      });
     });
 
     await page.goto("/studies/project-1/workspace");
@@ -589,7 +607,7 @@ test.describe("model studio", () => {
     await page.getByRole("button", { name: "Validate & Assess" }).click();
     await expect(page.getByLabel("Model Understanding")).toBeVisible();
     await expect(
-      page.getByText("Your model is being validated…"),
+      page.getByText("Your model is being validated and assessed…"),
     ).toBeVisible();
     await expect(page.locator(".validation-loader")).toBeVisible();
     await expect(page.locator("#direct-analyses")).toHaveAttribute(
@@ -601,11 +619,20 @@ test.describe("model studio", () => {
 
     releaseValidation?.();
     await expect(
+      page.getByText("Your model is being validated and assessed…"),
+    ).toBeVisible();
+    await expect(page.getByText("Model validated", { exact: true })).toHaveCount(0);
+    await expect(propagationChoice).toBeDisabled();
+    await expect(page.getByLabel("Standard sample budget")).toBeDisabled();
+
+    releaseUnderstanding?.();
+    await expect(
       page.getByText("Model validated", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("Your model is being validated…")).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByText("Your model is being validated and assessed…"),
+    ).toHaveCount(0);
+    await expect(page.locator(".understanding-pane .katex")).toBeVisible();
     await expect(propagationChoice).toBeEnabled();
     await expect(page.getByLabel("Standard sample budget")).toBeEnabled();
   });

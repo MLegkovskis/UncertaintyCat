@@ -171,6 +171,11 @@ Questions.`;
     expect(modelUnderstandingValidationIssues(template("y=x,\\qquadH=x"))).toContain(
       "joined_latex_control_word",
     );
+    expect(
+      modelUnderstandingValidationIssues(
+        template(String.raw`P=\text{gravity}\v`),
+      ),
+    ).toContain("unrenderable_equation");
     expect(modelUnderstandingValidationIssues(`\`\`\`markdown\n${template("y=x")}\n\`\`\``)).toContain(
       "code_fence_not_allowed",
     );
@@ -197,6 +202,37 @@ Questions.`;
     expect(rendered).toContain(
       "_AI-interpreted from the authenticated Python definition; verify against the source before engineering use._",
     );
+    expect(modelUnderstandingValidationIssues(rendered)).toEqual([]);
+  });
+
+  it("replaces non-renderable AI equations with validated equation metadata", () => {
+    const rendered = renderStructuredModelUnderstanding(
+      {
+        equations: [
+          {
+            latex: String.raw`P=\text{gravity}\v`,
+            limitation: "The speed is solved implicitly.",
+          },
+        ],
+        modelOverview: "An eight-input cycling-speed mapping.",
+        inputUncertainty: ["Power uses the supplied distribution."],
+        dependenceAndPropagation: "The supplied copula is independent.",
+        validatedPilotBehaviour: "The small validation pilot executed.",
+        questionsToConfirm: ["Which units apply?"],
+      },
+      [
+        {
+          output_name: "Cycling speed",
+          latex: String.raw`P_r=\frac{1}{2}\rho C_d A_f v^3+C_{rr}mgv`,
+          representation: "closed_form",
+        },
+      ],
+    );
+
+    expect(rendered).toContain(
+      String.raw`$$P_r=\frac{1}{2}\rho C_d A_f v^3+C_{rr}mgv$$`,
+    );
+    expect(rendered).not.toContain(String.raw`\text{gravity}\v`);
     expect(modelUnderstandingValidationIssues(rendered)).toEqual([]);
   });
 

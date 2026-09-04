@@ -155,13 +155,16 @@ evaluations, and otherwise recommends direct analysis. The selected AI provider 
 separately; it does not choose the route. The isolated validator produces
 bounded equation metadata for every Python model: closed-form LaTeX for reducible callbacks and symbolic
 formulas, or an exact formal `y=f(x)` mapping for procedural solvers and control flow. Authors may explicitly
-declare bounded governing LaTeX for procedural models. Curated reference equations take precedence. While
-that deterministic definition renders immediately, the authenticated Model Understanding request sends at
-most 32,000 model-source characters to the selected AI provider for a clearly labelled approximate LaTeX
-interpretation. It is explanatory rather than numerical evidence and falls back to the deterministic mapping.
+declare bounded governing LaTeX for procedural models. Curated reference equations take precedence. The
+authenticated Model Understanding request sends at most 32,000 model-source characters to the selected AI
+provider for a clearly labelled approximate LaTeX interpretation. The authoring surface retains one pending
+state until numerical validation, equation rendering, the AI brief, and the deterministic route are all ready;
+analysis controls remain locked and no intermediate equation or validation facts are exposed. The AI result is
+explanatory rather than numerical evidence and falls back to the deterministic mapping.
 The generated brief is not stored until a second AI pass has compared its equation to the same bounded source
-and facts and the result passes deterministic structural and LaTeX-safety checks. Historical retained equations
-also receive a narrowly scoped display-time repair for joined `\\quad`/`\\qquad` control words.
+and facts and the result passes deterministic structural checks plus a real KaTeX parse. A non-renderable AI
+equation is replaced with the isolated validator's renderable equation metadata before persistence. Historical
+retained equations also receive a narrowly scoped display-time repair for joined `\\quad`/`\\qquad` control words.
 The deterministic workflow recommendation is gated on that same completed state, so it cannot appear ahead of
 Model Understanding. A forward-only D1 `equations_json` cache backfills existing immutable model versions
 without rewriting their historical `metadata_json` or R2 source.
@@ -215,11 +218,16 @@ the public session policy reports the active non-secret model labels so the UI n
 
 Model Understanding uses Groq strict JSON-schema output for both the primary interpretation and its
 independent equation review. The Worker renders that bounded object into the fixed Markdown/KaTeX contract,
-so provider formatting variation cannot remove headings, delimiters, or the verification notice. A valid
+then parses every display equation with the same pinned KaTeX version used by the browser. Provider formatting
+variation therefore cannot remove headings, delimiters, the verification notice, or ship unrenderable math. A valid
 primary interpretation remains usable when the optional second-pass reviewer has a transient transport or
 formatting failure; only an invalid primary plus exhausted repair attempts produces a retry state. Automatic
 SDK retries are limited to retryable provider responses, and structured logs retain only safe failure
 categories/status codes and validation issue names—not prompts, source, responses, or credentials.
+
+The full-stack Playwright harness exercises the real Worker AI adapter through a deterministic local
+Groq-compatible endpoint. A custom Groq base URL is accepted only when `DEV_AUTH_BYPASS=true`, uses plain HTTP,
+and resolves to an explicit loopback hostname; production cannot redirect authenticated model source to it.
 
 The model receives conversation history and can read only these projections of persisted numerical data:
 

@@ -7,6 +7,7 @@ export interface Env {
   AI?: Ai;
   AI_PROVIDER?: string;
   GROQ_API_KEY?: string;
+  GROQ_BASE_URL?: string;
   ASSETS?: Fetcher;
   SANDBOX?: DurableObjectNamespace<Sandbox>;
   COMPUTE_SERVICE_URL?: string;

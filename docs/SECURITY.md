@@ -73,7 +73,9 @@ the Worker sends at most 32,000 characters of that model's private definition to
 can render an explicitly labelled, approximate LaTeX interpretation. A separate bounded reviewer call then
 checks the candidate equation against the same source and validated facts, repairs semantic or KaTeX defects,
 and must pass deterministic heading, display-math, brace, spacing, length, and unsafe-content checks before the
-brief is persisted. Both prompts treat source, comments, strings, and identifiers as untrusted data; forbid
+brief is persisted. Every display equation must also parse with the browser's pinned KaTeX version; invalid AI
+math is replaced by renderable equation metadata produced inside isolated validation. Both prompts treat source,
+comments, strings, and identifiers as untrusted data; forbid
 reproducing code or secrets; and separate the result from OpenTURNS evidence. Source is never logged, returned
 by the session endpoint, sent to report chat, or exposed on a public route. Authors must therefore avoid
 embedding credentials in model files, just as they would for any source stored in R2.
@@ -82,7 +84,9 @@ Inside the isolated validation boundary, a bounded AST projection also derives L
 Python callbacks and OpenTURNS `SymbolicFunction` formulas. Procedural callbacks that cannot be reduced
 faithfully receive an exact formal input-output mapping; an authenticated author may additionally declare a
 bounded `model_equations` list for governing equations. This deterministic definition appears while the AI
-request is in flight and remains the fallback if interpretation fails. Reference models persist curated
+request is in flight only as private state and remains the fallback if interpretation fails. The UI reveals the
+validated facts, equation, AI brief, deterministic route, and enabled analyses atomically after the complete
+assessment succeeds. Reference models persist curated
 equations. The AI interpretation is explanatory and must not be treated as computed evidence. Report chat
 must resolve a stored field to its actual value before answering; citation
 tokens support that value rather than replacing it.
@@ -97,9 +101,14 @@ Only the bounded Model Understanding request receives Python source; neither ada
 objects. Groq's key is a Worker secret and is never returned
 by session discovery, written to logs, or included in browser assets.
 Groq responses use a strict Zod-derived JSON schema and are rendered into Markdown by the Worker. The
-equation reviewer may replace a valid primary interpretation, but reviewer failure cannot discard an
+equation fields are parser-checked with pinned KaTeX before persistence. The equation reviewer may replace a
+valid primary interpretation, but reviewer failure cannot discard an
 already-valid primary response. Observability stores only a bounded diagnostic category, optional provider
 status code, and contract issue names; it never stores the prompt, model source, or generated narrative.
+
+`GROQ_BASE_URL` exists solely for the deterministic full-stack test provider. The Worker rejects it unless local
+authentication bypass is explicitly enabled, the scheme is plain HTTP, and the host is loopback. Production has
+no permitted custom-provider route.
 
 Canonical reference-model source is likewise authenticated data. The generated catalog is owned by the
 Worker and must never be imported into the web application bundle. Every web production build runs

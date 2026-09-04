@@ -42,6 +42,13 @@ export default defineConfig({
   ],
   webServer: [
     {
+      command: "node e2e/full-stack/groq-fixture.mjs",
+      cwd: ".",
+      url: "http://127.0.0.1:8790/health",
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
+    {
       command:
         "uv run uvicorn services.compute.main:app --host 127.0.0.1 --port 8080",
       cwd: "../..",
@@ -50,7 +57,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `${wrangler} d1 migrations apply uncertaintycat-local --local --persist-to ${stateDirectory} --config ${wranglerConfig} && ${wrangler} dev --local --port 8787 --persist-to ${stateDirectory} --config ${wranglerConfig}`,
+      command: `${wrangler} d1 migrations apply uncertaintycat-local --local --persist-to ${stateDirectory} --config ${wranglerConfig} && ${wrangler} dev --local --port 8787 --persist-to ${stateDirectory} --config ${wranglerConfig} --var AI_PROVIDER:groq --var GROQ_API_KEY:e2e-local-only --var GROQ_BASE_URL:http://127.0.0.1:8790/openai/v1`,
       cwd: "../..",
       url: "http://127.0.0.1:8787/health",
       reuseExistingServer: false,

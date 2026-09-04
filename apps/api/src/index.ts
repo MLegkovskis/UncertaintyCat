@@ -2293,6 +2293,7 @@ app.post(
                         prompt: modelUnderstandingPrompt(definition),
                       })
                     ).object,
+                    definition.modelVersion.metadata.equations,
                   )
                 : (
                     await generateText({
@@ -2409,6 +2410,7 @@ app.post(
                           ),
                         })
                       ).object,
+                      definition.modelVersion.metadata.equations,
                     )
                   : (
                       await generateText({

@@ -66,6 +66,28 @@ export function aiRuntime(env: Env) {
   return { provider, models, configured };
 }
 
+export function localGroqBaseUrl(env: Env): string | undefined {
+  const configured = env.GROQ_BASE_URL?.trim();
+  if (!configured) return undefined;
+  if (env.DEV_AUTH_BYPASS !== "true") {
+    throw new Error("GROQ_BASE_URL is restricted to local development.");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error("GROQ_BASE_URL must be a valid loopback URL.");
+  }
+  if (
+    parsed.protocol !== "http:" ||
+    !["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)
+  ) {
+    throw new Error("GROQ_BASE_URL must use HTTP on a loopback host.");
+  }
+  return configured.replace(/\/+$/, "");
+}
+
 export function createAiLanguageModel(
   env: Env,
   modelId: string,
@@ -76,7 +98,11 @@ export function createAiLanguageModel(
   if (provider === "groq") {
     if (!env.GROQ_API_KEY?.trim())
       throw new Error("GROQ_API_KEY is not configured.");
-    return createGroq({ apiKey: env.GROQ_API_KEY })(modelId);
+    const baseURL = localGroqBaseUrl(env);
+    return createGroq({
+      apiKey: env.GROQ_API_KEY,
+      ...(baseURL ? { baseURL } : {}),
+    })(modelId);
   }
   if (!env.AI) throw new Error("Cloudflare Workers AI is not configured.");
   return createWorkersAI({ binding: env.AI })(modelId, {
