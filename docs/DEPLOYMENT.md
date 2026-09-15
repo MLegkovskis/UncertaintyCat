@@ -31,7 +31,11 @@ https://uncertaintycat.com/api/auth/callback/cloudflare
 
 The authorization-code flow uses PKCE and the `openid`, `email`, and `profile` scopes. The site itself is not wrapped in a Cloudflare Access self-hosted application because the static overview remains public. Users explicitly select **Continue with Cloudflare**; after authentication, Better Auth stores the session in D1.
 
+Better Auth 1.7.0-1.7.2 required `account.issuer`, but 1.7.3+ stopped writing it and validates the Drizzle schema at auth startup. Migration `0008_auth_account_issuer_compat.sql` preserves existing issuer values, makes that column nullable, removes the obsolete `(issuer, accountId)` index, and enforces the current `(providerId, accountId)` identity key. A dependency update that crosses this boundary must pass the Worker auth-initialization regression test before auto-merge, not just a mocked browser flow. See the [Better Auth 1.7 upgrade guide](https://better-auth.com/docs/guides/1-7-upgrade-guide).
+
 The Worker permits anonymous access only to static assets and SPA HTML, `/health`, `/api/auth/*`, and `/api/v1/session`. Middleware rejects every other `/api/v1/*` request with HTTP 401, including catalogs, example source, shared reports, and exports. Production must never define `DEV_AUTH_BYPASS`.
+
+Sign-in is a same-tab redirect, not a popup. Each public/private sign-in entry point shows a retryable inline error if the OAuth initiation request fails, rather than leaving an apparently inert button.
 
 ## GitHub configuration
 

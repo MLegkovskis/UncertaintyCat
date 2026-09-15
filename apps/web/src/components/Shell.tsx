@@ -17,7 +17,7 @@ import { useEffect, useRef, useState, type PropsWithChildren } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api";
-import { authClient } from "../auth-client";
+import { authClient, useCloudflareSignIn } from "../auth-client";
 import { useTheme } from "./Theme";
 
 interface IdentityClaims {
@@ -62,6 +62,7 @@ export function Shell({ children }: PropsWithChildren) {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const { beginSignIn, isSigningIn, signInError } = useCloudflareSignIn();
   const accountMenu = useRef<HTMLDivElement>(null);
   const accountButton = useRef<HTMLButtonElement>(null);
   const queryClient = useQueryClient();
@@ -272,15 +273,14 @@ export function Shell({ children }: PropsWithChildren) {
                     {providers.includes("cloudflare") && (
                       <button
                         role="menuitem"
-                        onClick={() =>
-                          authClient.signIn.social({
-                            provider: "cloudflare",
-                            callbackURL: `${window.location.origin}/`,
-                          })
-                        }
+                        onClick={() => void beginSignIn(`${window.location.origin}/`)}
+                        disabled={isSigningIn}
                       >
-                        <Cloud /> Continue with Cloudflare
+                        <Cloud /> {isSigningIn ? "Connecting to Cloudflare…" : "Continue with Cloudflare"}
                       </button>
+                    )}
+                    {signInError && (
+                      <small className="error-copy" role="alert">{signInError}</small>
                     )}
                     {providers.length === 0 && (
                       <small>

@@ -12,7 +12,7 @@ import {
 import { Navigate } from "react-router-dom";
 
 import { api } from "../api";
-import { authClient } from "../auth-client";
+import { useCloudflareSignIn } from "../auth-client";
 
 const methodGroups = [
   {
@@ -86,13 +86,11 @@ function SensitivityPreview() {
 
 export function Home() {
   const session = useQuery({ queryKey: ["session-policy"], queryFn: api.session });
+  const { beginSignIn, isSigningIn, signInError } = useCloudflareSignIn();
   if (session.data?.identity.authenticated) return <Navigate to="/studies" replace />;
 
   const signIn = () =>
-    authClient.signIn.social({
-      provider: "cloudflare",
-      callbackURL: `${window.location.origin}/studies`,
-    });
+    void beginSignIn(`${window.location.origin}/studies`);
 
   return (
     <div className="page home-page">
@@ -107,13 +105,14 @@ export function Home() {
             and turn numerical runs into clear, reproducible reports.
           </p>
           <div className="hero-actions">
-            <button className="button primary" type="button" onClick={signIn}>
-              <Cloud /> Sign in with Cloudflare
+            <button className="button primary" type="button" onClick={signIn} disabled={isSigningIn}>
+              <Cloud /> {isSigningIn ? "Connecting to Cloudflare…" : "Sign in with Cloudflare"}
             </button>
             <a className="button secondary" href="#methods">
               Explore methods <ArrowRight />
             </a>
           </div>
+          {signInError && <p className="error-copy" role="alert">{signInError}</p>}
         </div>
         <div className="hero-result-card" aria-label="Example uncertainty result">
           <header><span>Output distribution</span><small>10,000 evaluations</small></header>
@@ -162,7 +161,8 @@ export function Home() {
           <span className="section-kicker">Readable by design</span>
           <h2>See which inputs matter—and why.</h2>
           <p>Interactive reports expose indices, diagnostics, assumptions, convergence evidence, and the exact model source. AI explanations are clearly separated from deterministic numerical results.</p>
-          <button className="button primary" type="button" onClick={signIn}>Create your first project <ArrowRight /></button>
+          <button className="button primary" type="button" onClick={signIn} disabled={isSigningIn}>Create your first project <ArrowRight /></button>
+          {signInError && <p className="error-copy" role="alert">{signInError}</p>}
         </div>
       </section>
     </div>

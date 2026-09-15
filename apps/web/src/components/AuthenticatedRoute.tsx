@@ -3,10 +3,11 @@ import { Cloud, ShieldCheck } from "lucide-react";
 import type { PropsWithChildren } from "react";
 
 import { api } from "../api";
-import { authClient } from "../auth-client";
+import { useCloudflareSignIn } from "../auth-client";
 
 export function AuthenticatedRoute({ children }: PropsWithChildren) {
   const session = useQuery({ queryKey: ["session-policy"], queryFn: api.session });
+  const { beginSignIn, isSigningIn, signInError } = useCloudflareSignIn();
 
   if (session.isPending) {
     return <div className="route-loading">Checking your secure session…</div>;
@@ -32,16 +33,13 @@ export function AuthenticatedRoute({ children }: PropsWithChildren) {
           <button
             className="button primary"
             type="button"
-            onClick={() =>
-              authClient.signIn.social({
-                provider: "cloudflare",
-                callbackURL: `${window.location.origin}/`,
-              })
-            }
+            onClick={() => void beginSignIn(`${window.location.origin}/`)}
+            disabled={isSigningIn}
           >
-            <Cloud /> Continue with Cloudflare
+            <Cloud /> {isSigningIn ? "Connecting to Cloudflare…" : "Continue with Cloudflare"}
           </button>
         )}
+        {signInError && <p className="error-copy" role="alert">{signInError}</p>}
       </section>
     </div>
   );

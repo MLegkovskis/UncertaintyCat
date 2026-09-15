@@ -34,7 +34,9 @@ export const account = sqliteTable(
   "account",
   {
     id: text("id").primaryKey(),
-    issuer: text("issuer").notNull(),
+    // Retain values written by Better Auth 1.7.0-1.7.2, but 1.7.3+ no
+    // longer writes issuer. A required extra column now blocks auth startup.
+    issuer: text("issuer"),
     accountId: text("accountId").notNull(),
     providerId: text("providerId").notNull(),
     userId: text("userId")
@@ -55,8 +57,8 @@ export const account = sqliteTable(
     updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [
-    uniqueIndex("account_issuer_accountId_uidx").on(
-      table.issuer,
+    uniqueIndex("account_provider_account_uidx").on(
+      table.providerId,
       table.accountId,
     ),
   ],

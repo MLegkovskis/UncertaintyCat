@@ -225,6 +225,37 @@ test.describe("application shell and identity", () => {
     ).toBeVisible();
   });
 
+  test("all sign-in entry points explain an auth initiation failure instead of silently doing nothing", async ({
+    page,
+  }) => {
+    await installMockApi(page);
+    await page.route("**/api/auth/sign-in/social", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { message: "Auth startup failed" } }),
+      }),
+    );
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Sign in with Cloudflare" }).click();
+    await expect(
+      page.locator(".landing-hero-copy").getByRole("alert"),
+    ).toContainText("Cloudflare sign-in could not start");
+
+    await page.getByRole("button", { name: "Not signed in Sign in" }).click();
+    await page.getByRole("menuitem", { name: "Continue with Cloudflare" }).click();
+    await expect(
+      page.locator(".account-popover").getByRole("alert"),
+    ).toContainText("Cloudflare sign-in could not start");
+
+    await page.goto("/workspace");
+    await page.getByRole("button", { name: "Continue with Cloudflare" }).click();
+    await expect(
+      page.locator(".auth-required-card").getByRole("alert"),
+    ).toContainText("Cloudflare sign-in could not start");
+  });
+
   test("a retained user sees account details and can sign out", async ({
     page,
   }) => {

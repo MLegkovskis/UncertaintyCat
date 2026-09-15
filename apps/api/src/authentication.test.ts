@@ -16,6 +16,16 @@ const unauthenticatedEnv = {
 } as unknown as Env;
 
 describe("authenticated application boundary", () => {
+  it("initializes Better Auth before an OAuth button can be offered", async () => {
+    const response = await app.request("/api/auth/ok", undefined, {
+      ...unauthenticatedEnv,
+      CLOUDFLARE_ACCESS_CLIENT_ID: "test-client",
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: "test-secret",
+      CLOUDFLARE_ACCESS_ISSUER: "https://example.com/oidc",
+    });
+    expect(response.status).toBe(200);
+  });
+
   it("keeps health and session discovery public without creating a guest identity", async () => {
     const health = await app.request("/health", undefined, unauthenticatedEnv);
     expect(health.status).toBe(200);
