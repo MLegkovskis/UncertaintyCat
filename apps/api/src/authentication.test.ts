@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+
+import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Env } from "./env";
@@ -24,6 +27,92 @@ describe("authenticated application boundary", () => {
       CLOUDFLARE_ACCESS_ISSUER: "https://example.com/oidc",
     });
     expect(response.status).toBe(200);
+  });
+
+  it("initiates Cloudflare OAuth without contacting a real identity provider", async () => {
+    const miniflare = new Miniflare(
+      convertV4MiniflareOptions({
+        modules: true,
+        script: "export default { fetch() { return new Response('ok') } }",
+        compatibilityDate: "2026-09-15",
+        d1Databases: { DB: "auth-integration-test" },
+      }),
+    );
+    try {
+      const db = await miniflare.getD1Database("DB");
+      const migration = (name: string) =>
+        readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8");
+      for (const name of [
+        "0001_initial.sql",
+        "0002_auth_account_issuer.sql",
+        "0008_auth_account_issuer_compat.sql",
+      ]) {
+        // D1's exec() expects each statement on one line; migrations deliberately
+        // use readable multi-line SQL, so apply statements through prepared D1.
+        for (const statement of migration(name).split(/;\s*(?:\r?\n|$)/)) {
+          if (statement.trim()) await db.prepare(statement.trim()).run();
+        }
+      }
+      const issuer = "https://identity.example.test/oidc";
+      const discoveryUrl = `${issuer}/.well-known/openid-configuration`;
+      const discovery = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url !== discoveryUrl) {
+          throw new Error(`Unexpected identity-provider request: ${url}`);
+        }
+        return Response.json({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          userinfo_endpoint: `${issuer}/userinfo`,
+          jwks_uri: `${issuer}/jwks`,
+          response_types_supported: ["code"],
+          subject_types_supported: ["public"],
+          id_token_signing_alg_values_supported: ["RS256"],
+          code_challenge_methods_supported: ["S256"],
+        });
+      });
+      try {
+        const response = await app.request(
+          "https://uncertaintycat.test/api/auth/sign-in/social",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: "https://uncertaintycat.test",
+            },
+            body: JSON.stringify({
+              provider: "cloudflare",
+              callbackURL: "/projects",
+            }),
+          },
+          {
+            ...unauthenticatedEnv,
+            DB: db,
+            CLOUDFLARE_ACCESS_CLIENT_ID: "test-client",
+            CLOUDFLARE_ACCESS_CLIENT_SECRET: "test-secret",
+            CLOUDFLARE_ACCESS_ISSUER: issuer,
+          },
+        );
+        expect(response.status).toBe(200);
+        const result = (await response.json()) as { url?: string };
+        expect(result.url).toBeDefined();
+        const authorizeUrl = new URL(result.url!);
+        expect(authorizeUrl.origin).toBe("https://identity.example.test");
+        expect(authorizeUrl.pathname).toBe("/oidc/authorize");
+        expect(authorizeUrl.searchParams.get("client_id")).toBe("test-client");
+        expect(authorizeUrl.searchParams.get("redirect_uri")).toBe(
+          "https://uncertaintycat.test/api/auth/callback/cloudflare",
+        );
+        expect(authorizeUrl.searchParams.get("code_challenge_method")).toBe("S256");
+        expect(authorizeUrl.searchParams.get("state")).toBeTruthy();
+        expect(discovery).toHaveBeenCalled();
+      } finally {
+        discovery.mockRestore();
+      }
+    } finally {
+      await miniflare.dispose();
+    }
   });
 
   it("keeps health and session discovery public without creating a guest identity", async () => {

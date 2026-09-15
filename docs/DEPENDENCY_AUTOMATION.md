@@ -69,9 +69,18 @@ Dependabot PR
 ```
 
 The `required` CI job is the single branch-ruleset check. It succeeds only when dispatch integrity and all
-five application gates succeed, plus dependency review on pull requests. A skipped underlying test cannot
+six application gates succeed, plus dependency review on pull requests. A skipped underlying test cannot
 accidentally satisfy it. The pull-request dependency review rejects newly introduced high/critical known
 vulnerabilities, and the TypeScript gate also audits production npm dependencies.
+
+The TypeScript job runs a named Cloudflare authentication compatibility step before its general typecheck,
+test, and build steps. It initializes Better Auth with the deployed Drizzle schema, applies the forward-only
+auth migrations to an isolated local D1 database, and exercises the Hono Worker sign-in route using mocked OIDC
+discovery. It checks that the route returns a valid Cloudflare authorization URL without a live identity
+provider or production credentials. This is a pre-merge gate for Better Auth, Drizzle, Wrangler/Miniflare,
+and auth-schema compatibility: a dependency update that breaks sign-in fails the exact-head CI run and is
+not eligible for Dependabot auto-merge. Post-deploy production Playwright remains a separate release check,
+not the first opportunity to detect an authentication regression.
 
 Bot merges use `GITHUB_TOKEN`, which suppresses a normal chained push workflow. The merge workflow
 therefore dispatches CI with `expected_sha`; CI rejects the dispatch if GitHub resolved `main` to another

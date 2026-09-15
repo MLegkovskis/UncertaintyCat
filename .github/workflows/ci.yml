@@ -99,6 +99,8 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - name: Cloudflare authentication compatibility (Better Auth + D1)
+        run: npm run test --workspace @uncertaintycat/api -- src/authentication.test.ts src/auth-schema.test.ts
       - run: npm run typecheck
       - run: npm run test:ts
       - run: npm run build
