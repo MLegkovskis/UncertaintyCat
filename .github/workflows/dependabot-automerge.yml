@@ -121,12 +121,46 @@ jobs:
             gh pr review "$PR_NUMBER" --repo "$REPOSITORY" --approve \
               --body "Automatically approved after the complete CI workflow passed for $TESTED_SHA."
           fi
+          # GitHub can return a transient 503 after committing the merge. The
+          # CLI exit status alone is ambiguous; recover only if the API proves
+          # this same tested Dependabot revision really merged into main.
+          merge_status=0
           gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --squash --delete-branch \
-            --match-head-commit "$TESTED_SHA"
+            --match-head-commit "$TESTED_SHA" || merge_status=$?
 
-          merged_sha="$(gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+          merged_pr=""
+          for attempt in 1 2 3; do
+            if merged_pr="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")" &&
+               jq -e --arg sha "$TESTED_SHA" \
+                 '.state == "closed" and .merged_at != null and
+                  .head.sha == $sha and .base.ref == "main" and
+                  .user.login == "dependabot[bot]" and
+                  (.merge_commit_sha | test("^[0-9a-f]{40}$"))' \
+                 <<<"$merged_pr" >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          jq -e --arg sha "$TESTED_SHA" \
+            '.state == "closed" and .merged_at != null and
+             .head.sha == $sha and .base.ref == "main" and
+             .user.login == "dependabot[bot]" and
+             (.merge_commit_sha | test("^[0-9a-f]{40}$"))' \
+            <<<"$merged_pr" >/dev/null
+          merged_sha="$(jq -r '.merge_commit_sha' <<<"$merged_pr")"
           [[ "$merged_sha" =~ ^[0-9a-f]{40}$ ]]
+          if (( merge_status != 0 )); then
+            echo "Merge CLI returned $merge_status, but the API confirms tested PR #$PR_NUMBER merged as $merged_sha."
+          fi
 
           # A merge made with GITHUB_TOKEN does not emit another push-triggered
           # workflow run. Dispatch CI so merged main is tested and then deployed.
-          gh workflow run ci.yml --repo "$REPOSITORY" --ref main -f expected_sha="$merged_sha"
+          dispatched=false
+          for attempt in 1 2 3; do
+            if gh workflow run ci.yml --repo "$REPOSITORY" --ref main -f expected_sha="$merged_sha"; then
+              dispatched=true
+              break
+            fi
+            sleep 2
+          done
+          [[ "$dispatched" == "true" ]]

@@ -88,6 +88,12 @@ revision. Any authorized maintainer or bot may initiate that exact-SHA dispatch,
 never release. Successful exact-SHA CI dispatches deployment explicitly. Deployment independently accepts
 only the current 40-character `main` tip and requires successful CI for that exact SHA.
 
+If GitHub reports a transient error after accepting a squash merge, the merger treats the CLI result as
+ambiguous: it re-reads the PR and dispatches post-merge CI only after confirming that the original signed,
+tested Dependabot head is closed, merged into `main`, and has a concrete merge SHA. A merge that did not
+complete remains fail-closed. The exact-SHA dispatch itself gets bounded retries because GitHub can also
+reject a request transiently after the merge has already landed.
+
 The initial shell integrity check rejects malformed or mismatched dispatch inputs before any test can run.
 After all tests pass, a workflow-dispatch-only job revalidates the event, 40-character input, and exact SHA
 inside fail-closed shell code before dispatching deployment. Keeping input comparisons out of the job-level
