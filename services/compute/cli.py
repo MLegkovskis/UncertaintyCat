@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from services.compute.main import ExecuteRequest, ValidationRequest
+from services.compute.main import ExecuteRequest, ValidationRequest, invalid_request_body
 from uncertaintycat_core import analysis_catalog, compile_model, run_analysis
 from uncertaintycat_core.data_lab import (
     DatasetContent,
@@ -112,8 +112,8 @@ def main() -> int:
         _response(
             400, {"error": {"code": "invalid_operation", "message": "Unknown compute operation."}}
         )
-    except (ValidationError, json.JSONDecodeError) as exc:
-        _response(422, {"error": {"code": "invalid_request", "message": str(exc)}})
+    except (ValidationError, json.JSONDecodeError):
+        _response(422, invalid_request_body())
     except UncertaintyCatError as exc:
         status = (
             422 if exc.code in {"invalid_model", "unsafe_model", "incompatible_analysis"} else 400

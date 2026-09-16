@@ -13,7 +13,6 @@ import {
   type AnalysisCatalogEntry,
   type Dataset,
   type DataSurrogateModel,
-  type DistributionFitInput,
   type DistributionFitResult,
   type DistributionFitRun,
   type ModelAssessment,
@@ -68,6 +67,7 @@ import { computeFetch, destroyRunSandbox } from "./compute-client";
 import {
   ComputeRequestError,
   failRunTask,
+  finalizeRun,
   processRunTask,
   requeueRunTask,
 } from "./compute";
@@ -470,7 +470,7 @@ function distributionFitPayload(row: DistributionFitRow): DistributionFitRun {
     id: row.id,
     datasetId: row.dataset_id,
     status: row.status,
-    config: parseJson<DistributionFitInput>(row.config_json, {
+    config: parseJson<DistributionFitRun["config"]>(row.config_json, {
       selectedColumns: [],
       candidates: [],
       selectedMarginals: {},
@@ -929,6 +929,7 @@ app.post(
         selected_marginals: input.selectedMarginals,
         copula: input.copula,
         significance_level: input.significanceLevel,
+        seed: input.seed,
       }),
     }).catch(() => null);
     const completedAt = now();
@@ -2752,15 +2753,45 @@ app.post("/api/v1/runs", zValidator("json", createRunSchema), async (c) => {
 
 app.get("/api/v1/runs", async (c) => {
   const identity = authenticatedIdentity(c);
+  const projectId = c.req.query("projectId");
+  const cursor = c.req.query("cursor");
+  if (projectId) {
+    const project = await c.env.DB.prepare(
+      "SELECT id FROM projects WHERE id = ? AND owner_id = ?",
+    ).bind(projectId, identity.ownerId).first();
+    if (!project) return jsonError(c, 404, "project_not_found", "Project not found.");
+  }
+  let boundary: { id: string; created_at: string; project_id: string } | null = null;
+  if (cursor) {
+    boundary = await c.env.DB.prepare(
+      "SELECT id, created_at, project_id FROM runs WHERE id = ? AND owner_id = ?",
+    ).bind(cursor, identity.ownerId).first<{ id: string; created_at: string; project_id: string }>();
+    if (!boundary || (projectId && boundary.project_id !== projectId)) {
+      return jsonError(c, 400, "invalid_run_cursor", "The history position is unavailable. Refresh the project history.");
+    }
+  }
+  const filters = ["owner_id = ?"];
+  const bindings: string[] = [identity.ownerId];
+  if (projectId) {
+    filters.push("project_id = ?");
+    bindings.push(projectId);
+  }
+  if (boundary) {
+    filters.push("(created_at < ? OR (created_at = ? AND id < ?))");
+    bindings.push(boundary.created_at, boundary.created_at, boundary.id);
+  }
   const rows = await c.env.DB.prepare(
-    "SELECT id FROM runs WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50",
+    `SELECT id FROM runs WHERE ${filters.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT 51`,
   )
-    .bind(identity.ownerId)
+    .bind(...bindings)
     .all<{ id: string }>();
   const runs = await Promise.all(
-    rows.results.map((row) => loadOwnedRun(c.env, row.id, identity.ownerId)),
+    rows.results.slice(0, 50).map((row) => loadOwnedRun(c.env, row.id, identity.ownerId)),
   );
-  return c.json({ runs: runs.filter((run) => run !== null) });
+  return c.json({
+    runs: runs.filter((run) => run !== null),
+    nextCursor: rows.results.length > 50 ? rows.results[49]!.id : null,
+  });
 });
 
 app.get("/api/v1/runs/:runId", async (c) => {
@@ -2808,11 +2839,11 @@ app.post("/api/v1/runs/:runId/cancel", async (c) => {
   if (!updated.meta.changes)
     return jsonError(c, 409, "run_not_cancellable", "Run is not cancellable.");
   await c.env.DB.prepare(
-    "UPDATE analysis_tasks SET status = 'cancelled', completed_at = ? WHERE run_id = ? AND status = 'queued'",
+    "UPDATE analysis_tasks SET status = 'cancelled', progress_json = ?, completed_at = ? WHERE run_id = ? AND status IN ('queued', 'running')",
   )
-    .bind(timestamp, c.req.param("runId"))
+    .bind(JSON.stringify({ phase: "cancelled", percent: 100, message: "Analysis cancelled.", indeterminate: false, attempt: 0, updatedAt: timestamp }), timestamp, c.req.param("runId"))
     .run();
-  await destroyRunSandbox(c.env, c.req.param("runId"));
+  await finalizeRun(c.env, c.req.param("runId"));
   return c.json({ status: "cancelled" });
 });
 

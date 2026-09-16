@@ -1082,14 +1082,15 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     }
     await json(route, { modelVersions: models });
   });
-  await page.route("**/api/v1/runs", async (route) => {
+  await page.route(/\/api\/v1\/runs(?:\?.*)?$/, async (route) => {
     if (route.request().method() === "POST") {
       const created = makeRun("queued");
       runs = [created, ...runs];
       await json(route, { run: created }, 202);
       return;
     }
-    await json(route, { runs });
+    const projectId = new URL(route.request().url()).searchParams.get("projectId");
+    await json(route, { runs: projectId ? runs.filter((run) => run.projectId === projectId) : runs, nextCursor: null });
   });
   await page.route("**/api/v1/projects/*/datasets", (route) =>
     json(route, { datasets: options.authenticated ? [dataset] : [] }),

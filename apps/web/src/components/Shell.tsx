@@ -62,6 +62,7 @@ export function Shell({ children }: PropsWithChildren) {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const { beginSignIn, isSigningIn, signInError } = useCloudflareSignIn();
   const accountMenu = useRef<HTMLDivElement>(null);
   const accountButton = useRef<HTMLButtonElement>(null);
@@ -96,9 +97,7 @@ export function Shell({ children }: PropsWithChildren) {
     };
   }, [accountOpen]);
 
-  const claims: IdentityClaims = signingOut
-    ? { authenticated: false }
-    : (session.data?.identity ?? { authenticated: false });
+  const claims: IdentityClaims = session.data?.identity ?? { authenticated: false };
   const formatted = formatIdentity(claims);
   const signedIn = claims.authenticated;
   const sessionLoading = session.isPending;
@@ -114,10 +113,12 @@ export function Shell({ children }: PropsWithChildren) {
           : ["Scientific report", "Reproducible numerical evidence"];
 
   const handleSignOut = async () => {
+    setSignOutError(null);
     setSigningOut(true);
-    setAccountOpen(false);
     try {
-      await authClient.signOut();
+      const result = await authClient.signOut();
+      if (result.error) throw new Error("Sign-out request failed");
+      setAccountOpen(false);
       queryClient.setQueryData(["session-policy"], {
         identity: {
           ownerId: "anonymous",
@@ -131,6 +132,8 @@ export function Shell({ children }: PropsWithChildren) {
       });
       navigate("/", { replace: true });
       await queryClient.invalidateQueries({ queryKey: ["session-policy"] });
+    } catch {
+      setSignOutError("Sign out could not be completed. You are still signed in. Please try again.");
     } finally {
       setSigningOut(false);
     }
@@ -191,6 +194,7 @@ export function Shell({ children }: PropsWithChildren) {
             Numerical results are computed deterministically. AI narrative is
             labelled separately.
           </small>
+          {signingOut && <small role="status">Signing out…</small>}
         </div>
       </aside>
       <div className="main-column">
@@ -249,7 +253,7 @@ export function Shell({ children }: PropsWithChildren) {
             </button>
             {accountOpen && (
               <div className="account-popover" id="account-popover" role="menu">
-                {signedIn ? (
+                {signedIn || signingOut ? (
                   <>
                     <strong>{formatted.label}</strong>
                     {claims.name?.trim() && claims.email?.trim() && (
@@ -262,6 +266,7 @@ export function Shell({ children }: PropsWithChildren) {
                     >
                       <LogOut /> {signingOut ? "Signing out…" : "Sign out"}
                     </button>
+                    {signOutError && <small className="error-copy" role="alert">{signOutError}</small>}
                   </>
                 ) : (
                   <>

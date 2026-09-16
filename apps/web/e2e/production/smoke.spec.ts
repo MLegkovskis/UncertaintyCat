@@ -151,3 +151,34 @@ test("production Cloudflare identity initiation uses the configured OIDC applica
   );
   expect(authorization.searchParams.get("code_challenge")).toBeTruthy();
 });
+
+test("every private route remains gated and the public shell fits representative viewports", async ({ page }, testInfo) => {
+  const privateReads: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/v1/") && path !== "/api/v1/session") privateReads.push(path);
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  for (const path of [
+    "/studies", "/studies/audit-missing", "/studies/audit-missing/workspace",
+    "/studies/audit-missing/dimension-reduction", "/studies/audit-missing/calibration",
+    "/studies/audit-missing/surrogates", "/studies/audit-missing/data-lab",
+    "/runs/audit-missing", "/reports/audit-missing", "/shared/audit-missing",
+    "/operator", "/operator/projects/audit-missing", "/operator/reports/audit-missing",
+    "/workspace", "/new-analysis", "/activity", "/dimension-reduction", "/surrogates", "/data-lab",
+  ]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "Sign in before starting an analysis." }), path).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue with Cloudflare", exact: true })).toBeVisible();
+  }
+  expect(privateReads).toEqual([]);
+  await page.getByRole("link", { name: "UncertaintyCat home" }).click();
+  for (const [width, height] of [[1440, 900], [1920, 1080], [1280, 720], [390, 844]]) {
+    await page.setViewportSize({ width: width!, height: height! });
+    await expect(page.getByRole("heading", { name: "Understand what uncertainty does to your model." })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`public-${width}x${height}.png`), fullPage: true });
+  }
+  expect(pageErrors).toEqual([]);
+});

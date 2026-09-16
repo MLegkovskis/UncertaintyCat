@@ -20,6 +20,7 @@ import { api } from "../api";
 import { ProjectNav } from "../components/ProjectNav";
 import { EmptyState } from "../components/Status";
 import { EChart } from "../components/EChart";
+import { PythonSource } from "../components/PythonSource";
 
 const CANDIDATES = [
   "Normal",
@@ -178,7 +179,7 @@ function FitEvidence({
             </label>
           </div>
           <div className="fit-summary-grid">
-            <div className="fit-plot-summary"><FlaskConical /><strong>{column.rankings[0]?.candidate}</strong><span>lowest parametric BIC</span><small>{column.plot.sample.length} observations</small></div>
+            <div className="fit-plot-summary"><FlaskConical /><strong>{column.selectedMarginal ?? column.rankings[0]?.candidate}</strong><span>{column.selectedMarginal ? "retained selected marginal" : "top-ranked candidate"} · plotted fit</span><small>{column.plot.sample.length} observations</small></div>
             <div className="table-scroll" tabIndex={0}>
               <table className="engineering-table fit-ranking-table">
                 <thead>
@@ -199,6 +200,8 @@ function FitEvidence({
               </table>
             </div>
           </div>
+          {column.warnings.length > 0 && <ul className="muted-copy">{column.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
+          {selections[column.column] && selections[column.column] !== (column.selectedMarginal ?? column.rankings[0]?.candidate) && <p className="method-caveat">The charts still show the retained {column.selectedMarginal ?? column.rankings[0]?.candidate} fit. Generate the problem definition to compute plots for your new {selections[column.column]} selection.</p>}
           <FitCharts column={column} />
           <details className="chart-data-fallback"><summary>Exact plotted sample</summary><pre>{column.plot.sample.join("\n")}</pre></details>
           {column.rejectedCandidates.length > 0 && (
@@ -230,20 +233,38 @@ export function DataLab() {
   const datasets = datasetsQuery.data?.datasets ?? [];
   const [datasetId, setDatasetId] = useState("");
   const dataset = datasets.find((item) => item.id === datasetId) ?? datasets[0];
+  const currentDatasetId = useRef(dataset?.id);
+  currentDatasetId.current = dataset?.id;
   const [pasted, setPasted] = useState(BEAM_SAMPLE_CSV);
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [candidates, setCandidates] = useState<DistributionFitInput["candidates"]>([
     ...CANDIDATES,
   ]);
   const [selections, setSelections] = useState<Record<string, string>>({});
+  const [fitSeed, setFitSeed] = useState("42");
   const [copula, setCopula] = useState<DistributionFitInput["copula"]>("independent");
   const [fitRun, setFitRun] = useState<DistributionFitRun>();
   const [error, setError] = useState<string>();
+  const fitsQuery = useQuery({
+    queryKey: ["distribution-fits", dataset?.id],
+    queryFn: () => api.listDistributionFits(dataset!.id),
+    enabled: Boolean(dataset),
+  });
+  const selectFit = (retained: DistributionFitRun) => {
+    setFitRun(retained);
+    setSelectedColumns(retained.config.selectedColumns);
+    setCandidates(retained.config.candidates);
+    setSelections(retained.config.selectedMarginals);
+    setCopula(retained.config.copula);
+    setFitSeed(String(retained.config.seed ?? 42));
+    setError(undefined);
+  };
+  const clearFit = () => { setFitRun(undefined); setSelections({}); };
 
   useEffect(() => {
     if (!dataset) return;
     setDatasetId(dataset.id);
-    setSelectedColumns(dataset.columns.filter((column) => column.type === "numeric").map((column) => column.name));
+    setSelectedColumns(dataset.columns.filter((column) => column.type === "numeric").map((column) => column.name).slice(0, 10));
     setSelections({});
     setFitRun(undefined);
   }, [dataset?.id]);
@@ -270,9 +291,9 @@ export function DataLab() {
       if (!dataset) throw new Error("Choose a dataset first.");
       return api.fitDataset(dataset.id, input);
     },
-    onSuccess: ({ fitRun: completed }) => {
-      setFitRun(completed);
-      setError(undefined);
+    onSuccess: async ({ fitRun: completed }) => {
+      if (completed.datasetId === currentDatasetId.current) selectFit(completed);
+      await client.invalidateQueries({ queryKey: ["distribution-fits", completed.datasetId] });
     },
     onError: (caught) => setError(caught instanceof Error ? caught.message : "Fit failed."),
   });
@@ -282,8 +303,15 @@ export function DataLab() {
     selectedMarginals: {},
     copula,
     significanceLevel: 0.05,
-  }), [candidates, copula, selectedColumns]);
+    seed: Number(fitSeed),
+  }), [candidates, copula, fitSeed, selectedColumns]);
+  const seedValid = Boolean(fitSeed.trim()) && Number.isInteger(Number(fitSeed)) && Number(fitSeed) >= 0 && Number(fitSeed) <= 2_147_483_647;
   const selectionComplete = selectedColumns.length > 0 && selectedColumns.every((column) => selections[column]);
+
+  const generatedMatchesSelection = Boolean(fitRun?.result?.generatedSource
+    && fitRun.datasetId === dataset?.id
+    && fitRun.config.copula === copula
+    && selectedColumns.every((column) => fitRun.config.selectedMarginals[column] === selections[column]));
 
   return (
     <div className="page data-lab-page">
@@ -292,7 +320,7 @@ export function DataLab() {
         <div>
           <span className="section-kicker">Distribution Fitting</span>
           <h1>Fit uncertainty from empirical data.</h1>
-          <p>Validate private observations, compare OpenTURNS fits, then explicitly compose a problem definition.</p>
+          <p>Start from observed/sample values of uncertain inputs, not a Python response model. Compare OpenTURNS marginal fits, then explicitly compose an input uncertainty problem; the response function is added separately.</p>
         </div>
       </div>
       {!projects.length && !projectsQuery.isLoading ? (
@@ -303,7 +331,7 @@ export function DataLab() {
       ) : (
         <div className="data-lab-layout">
           <aside className="data-source-panel">
-            <div className="panel-heading"><Database /><div><strong>Private datasets</strong><small>Local/R2 originals · owner only</small></div></div>
+            <div className="panel-heading"><Database /><div><strong>Private datasets</strong><small>Original observations retained in this project</small></div></div>
             <input
               ref={fileRef}
               type="file"
@@ -316,54 +344,66 @@ export function DataLab() {
                 event.target.value = "";
               }}
             />
-            <button className="button primary" disabled={upload.isPending} onClick={() => fileRef.current?.click()}><Upload /> Upload CSV/XLSX</button>
+            <button className="button primary" disabled={upload.isPending || fit.isPending} onClick={() => fileRef.current?.click()}><Upload /> Upload CSV/XLSX</button>
             <label>
               <span>Or paste comma-separated data</span>
               <textarea value={pasted} onChange={(event) => setPasted(event.target.value)} rows={12} />
             </label>
-            <button className="button secondary" disabled={upload.isPending || !pasted.trim()} onClick={() => upload.mutate({ blob: new Blob([pasted], { type: "text/csv" }), name: `Beam uncertainty sample ${new Date().toLocaleDateString()}`, sourceKind: "paste" })}><FileSpreadsheet /> Validate pasted data</button>
+            <button className="button secondary" disabled={upload.isPending || fit.isPending || !pasted.trim()} onClick={() => upload.mutate({ blob: new Blob([pasted], { type: "text/csv" }), name: `Beam uncertainty sample ${new Date().toLocaleDateString()}`, sourceKind: "paste" })}><FileSpreadsheet /> {upload.isPending ? "Validating data…" : "Validate pasted data"}</button>
             <div className="dataset-list">
+              {datasetsQuery.isPending && <p role="status">Loading retained datasets…</p>}
+              {datasetsQuery.isError && <p className="inline-error" role="alert">Datasets could not be loaded. <button className="button secondary" onClick={() => void datasetsQuery.refetch()}>Retry datasets</button></p>}
               {datasets.map((item) => (
-                <button key={item.id} className={dataset?.id === item.id ? "active" : ""} onClick={() => setDatasetId(item.id)}>
+                <button key={item.id} disabled={fit.isPending || upload.isPending} className={dataset?.id === item.id ? "active" : ""} onClick={() => setDatasetId(item.id)}>
                   <strong>{item.name}</strong><span>{item.rowCount} rows · {item.columns.length} columns</span><small>{new Date(item.createdAt).toLocaleString()}</small>
                 </button>
               ))}
             </div>
           </aside>
-          <main className="data-work-panel">
-            {!dataset ? <EmptyState title="Upload or select a dataset" body="The original is validated before it is retained." /> : (
+          <section className="data-work-panel" aria-label="Dataset fitting" aria-busy={upload.isPending || fit.isPending}>
+            {upload.isPending && <p role="status">Validating and retaining dataset…</p>}
+            {!dataset && upload.isPending ? <p>The validated dataset preview will appear here.</p> : !dataset ? <EmptyState title="Upload or select a dataset" body="The original is validated before it is retained." /> : (
               <>
                 <div className="data-metadata-strip">
                   <span><strong>{dataset.name}</strong></span><span>{dataset.rowCount} rows</span><span>SHA-256 {dataset.sha256.slice(0, 12)}</span><span>{dataset.sourceKind.toUpperCase()}</span>
                 </div>
                 {dataset.warnings.length > 0 && <div className="warning-panel"><AlertTriangle /> <ul>{dataset.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
                 <DatasetPreview dataset={dataset} />
+                {(fitsQuery.data?.fitRuns.length ?? 0) > 0 && <label><span>Retained distribution-fit evidence</span><select aria-label="Retained distribution-fit evidence" disabled={fit.isPending} value={fitRun?.id ?? ""} onChange={(event) => { const retained = fitsQuery.data?.fitRuns.find((item) => item.id === event.target.value); if (retained) selectFit(retained); else clearFit(); }}><option value="">Choose a retained fit…</option>{fitsQuery.data?.fitRuns.map((item) => <option key={item.id} value={item.id}>{item.config.selectedColumns.join(", ")} · {item.status} · {new Date(item.createdAt).toLocaleString()}</option>)}</select></label>}
+                {fitsQuery.isError && <p className="inline-error" role="alert">Distribution-fit history could not be loaded. <button className="button secondary" onClick={() => void fitsQuery.refetch()}>Retry fit history</button></p>}
+                {fitRun?.error && <p className="inline-error" role="alert">Retained fit failed: {fitRun.error.message}</p>}
                 <section className="fit-controls">
-                  <div><span className="section-kicker">1 · Variables</span><h2>Choose numeric columns</h2></div>
+                  <div><span className="section-kicker">1 · Variables</span><h2>Choose numeric columns</h2><p>Choose up to 10 uncertain inputs per fit. Non-numeric columns are unavailable.</p></div>
                   <div className="chip-options">
                     {dataset.columns.map((column) => (
                       <label className={column.type !== "numeric" ? "disabled" : ""} key={column.name}>
-                        <input type="checkbox" disabled={column.type !== "numeric"} checked={selectedColumns.includes(column.name)} onChange={() => setSelectedColumns((current) => current.includes(column.name) ? current.filter((name) => name !== column.name) : [...current, column.name])} />
+                        <input type="checkbox" disabled={column.type !== "numeric" || (!selectedColumns.includes(column.name) && selectedColumns.length >= 10)} checked={selectedColumns.includes(column.name)} onChange={() => { clearFit(); setSelectedColumns((current) => current.includes(column.name) ? current.filter((name) => name !== column.name) : [...current, column.name]); }} />
                         <span>{column.name}<small>{column.type} · {column.finiteCount} finite</small></span>
                       </label>
                     ))}
                   </div>
                   <div><span className="section-kicker">2 · Candidates</span><h2>Compare distribution families</h2></div>
                   <div className="chip-options compact">
-                    {CANDIDATES.map((candidate) => <label key={candidate}><input type="checkbox" checked={candidates.includes(candidate)} onChange={() => setCandidates((current) => current.includes(candidate) ? current.filter((name) => name !== candidate) : [...current, candidate])} /><span>{candidate}</span></label>)}
+                    {CANDIDATES.map((candidate) => <label key={candidate}><input type="checkbox" checked={candidates.includes(candidate)} onChange={() => { clearFit(); setCandidates((current) => current.includes(candidate) ? current.filter((name) => name !== candidate) : [...current, candidate]); }} /><span>{candidate}</span></label>)}
                   </div>
-                  <button className="button primary" disabled={fit.isPending || !selectedColumns.length || !candidates.length} onClick={() => fit.mutate(fitInput)}><FlaskConical /> {fit.isPending ? "Fitting with OpenTURNS…" : "Rank candidate fits"}</button>
+                  <label><span>Fit seed</span><input type="number" min="0" max="2147483647" value={fitSeed} onChange={(event) => { clearFit(); setFitSeed(event.target.value); }} aria-describedby="fit-seed-help" /></label>
+                  <p id="fit-seed-help" className="muted-copy">Lilliefors goodness-of-fit p-values use OpenTURNS Monte Carlo calibration. A fixed whole seed (0–2,147,483,647; default 42) makes each named column/family repeatable when ranking or composing marginals.</p>
+                  {!seedValid && <p className="inline-error" role="alert">Choose a whole fit seed from 0 to 2,147,483,647.</p>}
+                  <button className="button primary" disabled={fit.isPending || !selectedColumns.length || !candidates.length || !seedValid} onClick={() => fit.mutate(fitInput)}><FlaskConical /> {fit.isPending ? "Fitting with OpenTURNS…" : "Rank candidate fits"}</button>
                 </section>
+                {fitRun?.result && <p className="muted-copy">Retained fit · OpenTURNS {fitRun.openturnsVersion ?? fitRun.result.openturnsVersion} · {fitRun.result.seed === undefined ? "seed was not recorded for this historical fit" : `fitting ${fitRun.result.fittingVersion} · seed ${fitRun.result.seed}`}.</p>}
                 {fitRun && <FitEvidence run={fitRun} selections={selections} setSelections={setSelections} />}
                 {fitRun?.result && (
                   <section className="problem-composer">
                     <div><span className="section-kicker">3 · Dependence and provenance</span><h2>Compose a new uncertainty problem</h2><p>Selections are never applied to an existing model silently.</p></div>
-                    <label><span>Copula</span><select value={copula} onChange={(event) => setCopula(event.target.value as DistributionFitInput["copula"])}><option value="independent">Independent composition</option><option value="normal">Fitted Normal copula</option><option value="bernstein">Fitted Bernstein copula</option></select></label>
+                    <label><span>Copula</span><select aria-label="Copula" value={copula} onChange={(event) => setCopula(event.target.value as DistributionFitInput["copula"])}><option value="independent">Independent composition</option><option value="normal">Fitted Normal copula</option><option value="bernstein">Fitted Bernstein copula</option></select></label>
                     <button className="button primary" disabled={!selectionComplete || fit.isPending} onClick={() => fit.mutate({ ...fitInput, selectedMarginals: selections })}><Check /> Generate problem definition</button>
-                    {fitRun.result.generatedSource && (
+                    {fitRun.result.generatedSource && !generatedMatchesSelection && <p className="method-caveat">Marginal or dependence choices have changed. Generate the problem definition again before preparing a model draft.</p>}
+                    {generatedMatchesSelection && (
                       <div className="generated-problem">
                         <div className="editor-title"><span>generated_problem.py</span><small>OpenTURNS {fitRun.openturnsVersion}</small></div>
-                        <pre><code>{fitRun.result.generatedSource}</code></pre>
+                        <p>This draft defines input uncertainty only. Add an OpenTURNS Function named <code>model</code> before validation.</p>
+                        <PythonSource source={fitRun.result.generatedSource ?? ""} />
                         <button className="button secondary" onClick={() => {
                           window.sessionStorage.setItem("uncertaintycat-data-lab-draft", JSON.stringify({ fitRunId: fitRun.id, datasetId: dataset.id, source: `${fitRun.result?.generatedSource ?? ""}\n# Define an OpenTURNS Function named model before validation.\n`, builderSpec: fitRun.result?.builderSpec }));
                         navigate(`/studies/${activeProjectId}/workspace?dataFit=${fitRun.id}`);
@@ -374,7 +414,7 @@ export function DataLab() {
                 )}
               </>
             )}
-          </main>
+          </section>
         </div>
       )}
       {error && <div className="error-banner" role="alert">{error}</div>}

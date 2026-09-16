@@ -42,8 +42,22 @@ test("bounded subset UI defaults at maximum dimension match the core resource en
   const methodBox = (await page.getByLabel("Reliability method").boundingBox())!;
   const budgetBox = (await page.getByLabel("Maximum evaluations").boundingBox())!;
   const populationBox = (await page.getByLabel("Subset samples per level").boundingBox())!;
-  expect(methodBox.x + methodBox.width).toBeLessThan(budgetBox.x);
-  expect(budgetBox.x + budgetBox.width).toBeLessThan(populationBox.x);
+  const panelBox = (await page.locator(".subset-studio").boundingBox())!;
+  const boxes = [methodBox, budgetBox, populationBox];
+  for (const box of boxes) {
+    expect(box.width).toBeGreaterThanOrEqual(150);
+    expect(box.x).toBeGreaterThanOrEqual(panelBox.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width);
+  }
+  // Explanatory paragraphs span the grid, so controls may wrap onto another
+  // row. Preserve the real invariant: readable, contained, non-overlapping fields.
+  for (let first = 0; first < boxes.length; first += 1) {
+    for (let second = first + 1; second < boxes.length; second += 1) {
+      const a = boxes[first]!;
+      const b = boxes[second]!;
+      expect(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y).toBe(true);
+    }
+  }
   await page.locator(".subset-studio").screenshot({ path: testInfo.outputPath("subset-composer.png") });
   let body: Record<string, unknown> | undefined;
   await page.route("**/api/v1/runs", (route) => {

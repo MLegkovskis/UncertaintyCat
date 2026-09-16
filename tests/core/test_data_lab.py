@@ -100,3 +100,117 @@ def test_distribution_fit_rejects_constant_and_non_finite_only_columns() -> None
                 candidates=["Normal"],
             )
         )
+
+
+def test_distribution_fit_is_repeatable_without_caller_rng_management() -> None:
+    request = DistributionFitRequest(
+        content_base64=encoded(CSV),
+        source_kind="csv",
+        selected_columns=["temperature", "pressure"],
+        candidates=["Normal", "Uniform"],
+    )
+    first = fit_distributions(request)
+    second = fit_distributions(request)
+    assert second == first
+
+
+def test_distribution_fit_candidate_evidence_survives_composition_and_order() -> None:
+    request = DistributionFitRequest(
+        content_base64=encoded(CSV),
+        source_kind="csv",
+        selected_columns=["temperature", "pressure"],
+        candidates=["Normal", "Uniform"],
+    )
+
+    def candidate_evidence(result: dict) -> dict:
+        return {
+            column["column"]: {ranking["candidate"]: ranking for ranking in column["rankings"]}
+            for column in result["columns"]
+        }
+
+    ranked = candidate_evidence(fit_distributions(request))
+    composed = candidate_evidence(
+        fit_distributions(
+            request.model_copy(
+                update={"selected_marginals": {"temperature": "Normal", "pressure": "Uniform"}}
+            )
+        )
+    )
+    reordered = candidate_evidence(
+        fit_distributions(
+            request.model_copy(
+                update={
+                    "selected_columns": ["pressure", "temperature"],
+                    "candidates": ["Uniform", "Normal"],
+                }
+            )
+        )
+    )
+    assert composed == ranked
+    assert reordered == ranked
+
+
+@pytest.mark.scientific
+def test_distribution_fit_matches_direct_openturns_seeded_lilliefors() -> None:
+    import openturns as ot
+
+    request = DistributionFitRequest(
+        content_base64=encoded(CSV),
+        source_kind="csv",
+        selected_columns=["temperature"],
+        candidates=["Normal"],
+    )
+    actual = fit_distributions(request)
+    # Independently pinned stream for the documented SHA-256 tuple
+    # [42,"temperature","Normal"]; do not call the implementation seed logic.
+    ot.RandomGenerator.SetSeed(1_940_970_326)
+    sample = ot.Sample(
+        [[value] for value in [18.2, 19.1, 20, 21.3, 22.1, 23, 24.2, 25.4, 26.8, 28.1]]
+    )
+    factory = ot.NormalFactory()
+    distribution = factory.buildEstimator(sample).getDistribution()
+    _, reference = ot.FittingTest.Lilliefors(sample, factory, 0.05)
+    ranking = actual["columns"][0]["rankings"][0]
+    assert ranking["parameters"] == list(distribution.getParameter())
+    assert ranking["test"]["pValue"] == float(reference.getPValue())
+    assert ranking["test"]["statistic"] == float(reference.getStatistic())
+    assert actual["seed"] == 42
+    assert actual["fittingVersion"] == "1.1.0"
+
+
+def test_distribution_fit_calibrates_each_candidate_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    import openturns as ot
+
+    calls = 0
+    original = ot.FittingTest.Lilliefors
+
+    def counted(*args: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args)
+
+    monkeypatch.setattr(ot.FittingTest, "Lilliefors", counted)
+    fit_distributions(
+        DistributionFitRequest(
+            content_base64=encoded(CSV),
+            source_kind="csv",
+            selected_columns=["temperature", "pressure"],
+            candidates=["Normal", "Uniform"],
+        )
+    )
+    # Independent loop-count oracle: two observed columns times two families.
+    assert calls == 4
+
+
+@pytest.mark.parametrize("seed", [-1, 2_147_483_648, 1.5])
+def test_distribution_fit_rejects_invalid_seed_before_computation(seed: float) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="seed"):
+        DistributionFitRequest(
+            content_base64=encoded(CSV),
+            source_kind="csv",
+            selected_columns=["temperature"],
+            candidates=["Normal"],
+            seed=seed,  # type: ignore[arg-type]
+        )

@@ -129,6 +129,30 @@ evaluation accounting. Full provenance, limitations and sources are in the
   FORM unsuitable.
 - Correlation: linear and monotonic coefficients are reported side by side rather than conflated.
 
+## Empirical distribution-fitting reproducibility
+
+Distribution fitting `1.1.0` retains an explicit bounded integer seed (default 42) in both
+request configuration and result provenance. The prior unversioned Data Lab implementation invoked
+OpenTURNS' Monte Carlo-calibrated Lilliefors test without managing its random stream, and also repeated
+the test when constructing the top-ranked plot. Two identical requests could therefore retain different
+p-values, while selecting a marginal could shift later columns' random draws. The audit reproduced both
+failures before repair with the two-column synthetic fixture in `tests/core/test_data_lab.py`.
+
+Each named column/family now uses the lower 31 bits of the first four SHA-256 bytes of the UTF-8 compact
+JSON tuple `[seed, column, candidate]` as its OpenTURNS seed. Candidate order and marginal selection do not
+change that candidate's retained evidence. Plots reuse the already fitted distribution and never execute
+an extra goodness-of-fit test. OpenTURNS factories, parameter estimators, Lilliefors/Kolmogorov tests,
+information criteria, copula methods and decision thresholds are unchanged. A stable seed establishes
+repeatability, not an exact p-value or proof that the fitted family generated the observations.
+
+Regressions require exact repeatability without caller RNG management, candidate-evidence equality after
+composition and column/family reordering, one Lilliefors call per column/family, and exact agreement with
+an independently constructed OpenTURNS Normal fit/test at the pinned stream. HTTP and isolated CLI
+results agree exactly at an explicitly chosen seed and serialize as finite JSON. The Worker tests seed
+validation, forwarding and persisted configuration; the browser retains the recorded seed and fitting
+version. Historical fit JSON is never rewritten or assigned an invented seed/version: the studio labels
+its seed as unrecorded. Recomputing a historical fit produces a new `1.1.0` record.
+
 ## Acceptance policy for dependency or algorithm changes
 
 1. Pin the new dependency in a branch and regenerate `uv.lock`.

@@ -111,6 +111,22 @@ surrogation as an ordinary analysis checkbox. Reduced models and promoted surrog
 analysis in their current project or be copied into a newly created project. Surrogate handoff copies both
 the exact source model and the immutable OpenTURNS XML artifact after checking their source hashes.
 
+Studio model selection is reflected in the URL, so direct links, reload and browser history retain the
+requested object. A cached model list cannot substitute a different model while a newly saved model is
+being fetched. Surrogate evidence is scoped to its source model; model-based candidates, promoted
+artifacts, paired-data fits and marginal-fit records can be reopened after refresh. Empirical GPR retains
+exact hold-out observations/predictions, but assigning it an input uncertainty distribution for downstream
+UQ is not yet supported and is identified as such in the UI.
+
+Marginal fitting consumes observed uncertain inputs and generates an input-distribution draft; the author
+must separately supply an OpenTURNS response function. Composed source can be handed off only while its
+retained marginal/dependence settings and dataset match the visible selection. Fitting `1.1.0` sends a
+validated seed (default 42) through the Worker into core, records the seed/version with the immutable fit,
+and assigns stable named column/family random streams to OpenTURNS' Monte Carlo Lilliefors calibration.
+Candidate plots reuse fitted distributions. Legacy fit records remain readable with an explicitly
+unrecorded seed, without retroactive provenance. The studio limits model-based GPR training to the actual
+512-point bound and shows training and independent validation budgets separately.
+
 Catalog applicability is a versioned, deterministic assessment covering every registered plugin. It combines
 plugin-declared copula support with model-level dimension, marginal, output-variability, and bounded-resource
 constraints. The Worker repeats the incompatibility decision at run creation, so a hand-written request cannot
@@ -206,7 +222,15 @@ sequenceDiagram
 
 Task claiming is conditional on `status = 'queued'`, making redelivery safe. Retryable transport failures
 return a task to the queue; exhausted retries create a terminal failure and allow the run/report to
-finalize. Run cancellation prevents queued tasks from executing and records a terminal state.
+finalize. Run cancellation marks queued and running tasks terminal, preserves already successful
+evidence, and finalizes a cancelled report immediately. A late compute result cannot revive
+the task or run; report finalization reads the authoritative run status after its guarded update.
+The run response includes a report reference only when a retained report exists.
+
+Project history uses owner-scoped `projectId` filtering and a stable `(created_at, id)`
+cursor, returning at most 50 runs and an optional `nextCursor`. Migration 0009 adds the
+matching owner/project/time index. The UI preserves loaded pages on failure and stops polling
+terminal histories; refocus and explicit refresh discover runs created elsewhere.
 
 ## Report conversation harness
 

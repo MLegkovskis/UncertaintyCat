@@ -204,6 +204,43 @@ test("retained-user journey persists a project, executes every plugin, and produ
   await page
     .getByRole("button", { name: "Promote validated surrogate" })
     .click();
+  const currentProjectLink = page.getByRole("link", {
+    name: /Start a new analysis with this surrogate/,
+  });
+  await expect(currentProjectLink).toBeVisible({ timeout: 120_000 });
+  const promotedHandoff = new URL((await currentProjectLink.getAttribute("href"))!, page.url());
+  const promotedId = promotedHandoff.searchParams.get("surrogate")!;
+  const promotedSourceId = promotedHandoff.searchParams.get("sourceModel")!;
+  await currentProjectLink.click();
+  await expect(page.getByText("Promoted surrogate selected in Surrogate Studio")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Promoted surrogate selected in Surrogate Studio")).toBeVisible();
+  const surrogateOptions = page.locator(".analysis-option input[type=checkbox]:enabled");
+  for (const option of await surrogateOptions.all()) {
+    if (await option.isChecked()) await option.uncheck();
+  }
+  await page.locator(".analysis-option", { hasText: "Uncertainty Propagation" }).getByRole("checkbox").check();
+  await page.getByLabel("Standard sample budget").fill("64");
+  await page.getByRole("button", { name: "Run analyses" }).click();
+  await expect(page.getByText("The report is ready.")).toBeVisible({ timeout: 120_000 });
+  const surrogateRunId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const surrogateRunResponse = await request.get(`http://127.0.0.1:8787/api/v1/runs/${surrogateRunId}`);
+  expect(surrogateRunResponse.ok()).toBe(true);
+  expect((await surrogateRunResponse.json()).run).toMatchObject({
+    projectId,
+    modelVersionId: promotedSourceId,
+    surrogateModelId: promotedId,
+    evidenceSource: "surrogate",
+    status: "succeeded",
+  });
+  await page.getByRole("link", { name: /Open report/ }).click();
+  await expect(page.getByText("explicit promoted GPR surrogate")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("explicit promoted GPR surrogate")).toBeVisible();
+  await page.goto(`/studies/${projectId}/surrogates?modelId=${promotedSourceId}`);
+  await page.getByLabel("Retained surrogate evidence", { exact: true }).selectOption(promotedId);
+  await expect(page.getByText("Surrogate promoted", { exact: true })).toBeVisible();
+
   const newProjectLink = page.getByRole("link", {
     name: /Start a new project with this surrogate/,
   });
@@ -227,6 +264,37 @@ test("retained-user journey persists a project, executes every plugin, and produ
     .getByRole("button", { name: "Delete project permanently" })
     .click();
   await expect(page.getByText(handoffProjectName)).toHaveCount(0);
+
+  // Paired-data validation is durable, and marginal fitting retains a separate
+  // input-uncertainty draft rather than silently constructing a response model.
+  await page.goto(`/studies/${projectId}/surrogates?source=data`);
+  const dataHistory = page.getByLabel("Retained data-driven surrogate evidence");
+  await expect(dataHistory).toBeVisible();
+  const dataSurrogateId = await dataHistory.locator("option").nth(1).getAttribute("value");
+  await dataHistory.selectOption(dataSurrogateId!);
+  await expect(page.getByText("Data-driven GPR retained", { exact: true })).toBeVisible();
+  await page.goto(`/studies/${projectId}/data-lab`);
+  const fitResponse = page.waitForResponse((response) => /\/datasets\/[^/]+\/fits$/.test(response.url()) && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Rank candidate fits" }).click();
+  expect((await fitResponse).ok()).toBe(true);
+  for (const column of ["x1", "x2", "response"]) {
+    await page.getByLabel(`Selected marginal for ${column}`).selectOption("Normal");
+  }
+  const compositionResponse = page.waitForResponse((response) => /\/datasets\/[^/]+\/fits$/.test(response.url()) && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Generate problem definition" }).click();
+  const composition = await compositionResponse;
+  expect(composition.ok()).toBe(true);
+  const retainedFit = (await composition.json()).fitRun;
+  expect(retainedFit.config.seed).toBe(42);
+  expect(retainedFit.result).toMatchObject({ seed: 42, fittingVersion: "1.1.0" });
+  const retainedFitId = retainedFit.id;
+  await expect(page.getByRole("button", { name: "Prepare model draft" })).toBeVisible();
+  await page.reload();
+  await page.getByLabel("Retained distribution-fit evidence").selectOption(retainedFitId);
+  await expect(page.getByLabel("Selected marginal for x1")).toHaveValue("Normal");
+  await expect(page.getByRole("button", { name: "Prepare model draft" })).toBeVisible();
+  await page.getByLabel("Copula", { exact: true }).selectOption("normal");
+  await expect(page.getByRole("button", { name: "Prepare model draft" })).toHaveCount(0);
 
   // Exercise project-scoped parameter calibration through the authenticated UI,
   // Worker queue, Sandbox compute service, immutable report, and export path.

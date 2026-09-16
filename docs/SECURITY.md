@@ -122,6 +122,13 @@ permutation controls are ordinary authenticated run configuration and do not exp
 
 ## Operator telemetry boundary
 
+Compute request validation errors use a fixed public schema message in both the HTTP and
+one-shot CLI adapters. They must not stringify Pydantic errors: those can contain rejected
+source, serialized surrogate XML, dataset values, or artifact keys. Regression tests submit
+sentinel private fields and verify neither stdout nor the error envelope repeats them.
+Source-excluding shared reports render only source explicitly returned in that share response;
+they cannot reuse an owner's source from the same browser's query cache.
+
 `OPERATOR_EMAILS` is a comma-separated, case-insensitive allowlist evaluated only after Better Auth has
 resolved a valid Cloudflare identity. It is authorization configuration rather than a credential; production
 currently grants the application owner access. Hiding the navigation item is only a usability measure: the

@@ -10,7 +10,7 @@ export function AuthenticatedRoute({ children }: PropsWithChildren) {
   const { beginSignIn, isSigningIn, signInError } = useCloudflareSignIn();
 
   if (session.isPending) {
-    return <div className="route-loading">Checking your secure session…</div>;
+    return <div className="route-loading" role="status">Checking your secure session…</div>;
   }
 
   if (session.data?.identity.authenticated) {
@@ -28,7 +28,12 @@ export function AuthenticatedRoute({ children }: PropsWithChildren) {
           conversations are private to an authenticated UncertaintyCat account.
         </p>
         {session.isError ? (
-          <p className="error-copy">The session service is unavailable. Please try again.</p>
+          <div>
+            <p className="error-copy" role="alert">The session service is unavailable. Your private workspace stays locked until it can be checked.</p>
+            <button className="button secondary" type="button" disabled={session.isFetching} onClick={() => void session.refetch()}>
+              {session.isFetching ? "Checking session…" : "Retry session check"}
+            </button>
+          </div>
         ) : (
           <button
             className="button primary"

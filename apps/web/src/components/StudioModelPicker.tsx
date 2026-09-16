@@ -29,7 +29,7 @@ export function StudioModelPicker({
   const models = modelsQuery.data?.modelVersions ?? [];
 
   useEffect(() => {
-    if (models.length && !models.some((model) => model.id === modelId)) {
+    if (models.length && !modelId) {
       onModelChange(models[0]!.id);
     }
   }, [modelId, models, onModelChange]);
@@ -38,9 +38,11 @@ export function StudioModelPicker({
     <section className="studio-model-picker">
       <div className="picker-fields">
         <div className="fixed-project-field"><span>Project</span><strong>{project?.name ?? "Loading project…"}</strong></div>
-        <label><span>Saved model</span><select value={modelId} onChange={(event) => onModelChange(event.target.value)} disabled={!models.length}>{models.map((model) => <option key={model.id} value={model.id}>{model.displayName}</option>)}</select></label>
+        <label><span>Saved model</span><select value={modelId} onChange={(event) => onModelChange(event.target.value)} disabled={!models.length}>{!models.some((model) => model.id === modelId) && <option value={modelId}>Choose a saved model…</option>}{models.map((model) => <option key={model.id} value={model.id}>{model.displayName}</option>)}</select></label>
       </div>
-      {!modelsQuery.isLoading && !models.length && (
+      {modelsQuery.isError && <div className="inline-error" role="alert">Saved models could not be loaded. <button className="button secondary" onClick={() => void modelsQuery.refetch()}>Retry models</button></div>}
+      {!modelsQuery.isLoading && !modelsQuery.isFetching && !modelsQuery.isError && modelId && !models.some((model) => model.id === modelId) && <div className="inline-error" role="alert">The requested saved model is not available in this project. Choose a saved model explicitly to continue.</div>}
+      {!modelsQuery.isLoading && !modelsQuery.isError && !models.length && (
         <EmptyState title="No validated model in this project" body="Add a Python model or choose a reference model from Model & analyses first." />
       )}
       <details className="studio-example-shortcuts">

@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { AuthenticatedRoute } from "./components/AuthenticatedRoute";
 import { OperatorRoute } from "./components/OperatorRoute";
@@ -57,6 +57,7 @@ const OperatorProjectDetail = lazy(() =>
 );
 
 export function App() {
+  const location = useLocation();
   const privatePage = (page: ReactNode) => (
     <AuthenticatedRoute>{page}</AuthenticatedRoute>
   );
@@ -106,7 +107,7 @@ export function App() {
           />
           <Route
             path="/studies/:projectId/workspace"
-            element={privatePage(<Workspace />)}
+            element={privatePage(<Workspace key={`${location.pathname}${location.search}`} />)}
           />
           <Route
             path="/studies/:projectId/dimension-reduction"

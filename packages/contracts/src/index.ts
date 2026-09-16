@@ -77,6 +77,7 @@ export const distributionFitSchema = z.object({
   selectedMarginals: z.record(z.string(), z.string()).default({}),
   copula: z.enum(["independent", "normal", "bernstein"]).default("independent"),
   significanceLevel: z.number().gt(0).lt(1).default(0.05),
+  seed: z.number().int().nonnegative().max(2_147_483_647).default(42),
 });
 
 export const createReducedModelSchema = z.object({
@@ -567,6 +568,8 @@ export interface FittedColumnResult {
 
 export interface DistributionFitResult {
   openturnsVersion: string;
+  fittingVersion?: string;
+  seed?: number;
   columns: FittedColumnResult[];
   copula?: {
     kind: "independent" | "normal" | "bernstein";
@@ -582,7 +585,7 @@ export interface DistributionFitRun {
   id: string;
   datasetId: string;
   status: "queued" | "running" | "succeeded" | "failed";
-  config: DistributionFitInput;
+  config: Omit<DistributionFitInput, "seed"> & { seed?: number };
   result?: DistributionFitResult | null;
   generatedSource?: string | null;
   error?: { code: string; message: string } | null;
@@ -676,6 +679,7 @@ export interface ChatMessage {
 
 export interface Run {
   id: string;
+  reportId?: string | null;
   projectId: string;
   modelVersionId: string;
   surrogateModelId?: string | null;
@@ -780,7 +784,14 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(input),
     });
-  listRuns = () => this.request<{ runs: Run[] }>("/runs");
+  listRuns = (projectId?: string, cursor?: string) => {
+    const query = new URLSearchParams();
+    if (projectId) query.set("projectId", projectId);
+    if (cursor) query.set("cursor", cursor);
+    return this.request<{ runs: Run[]; nextCursor?: string | null }>(
+      `/runs${query.size ? `?${query}` : ""}`,
+    );
+  };
   getRun = (id: string) => this.request<{ run: Run }>(`/runs/${id}`);
   rerun = (id: string) =>
     this.request<{ run: Run }>(`/runs/${id}/rerun`, { method: "POST" });

@@ -30,15 +30,17 @@ interface ComputeFetchOptions {
 }
 
 function operationFor(path: string): ComputeOperation {
-  if (path.endsWith("/catalog")) return "catalog";
-  if (path.endsWith("/validate")) return "validate";
-  if (path.endsWith("/execute")) return "execute";
-  if (path.endsWith("/data/inspect")) return "inspect-data";
-  if (path.endsWith("/data/fit")) return "fit-data";
-  if (path.endsWith("/data/surrogate")) return "fit-data-surrogate";
-  if (path.endsWith("/surrogates/serialize")) return "serialize-surrogate";
-  if (path.endsWith("/surrogates/execute")) return "execute-surrogate";
-  throw new Error(`Unsupported compute path: ${path}`);
+  switch (path) {
+    case "/v1/catalog": return "catalog";
+    case "/v1/validate": return "validate";
+    case "/v1/execute": return "execute";
+    case "/v1/data/inspect": return "inspect-data";
+    case "/v1/data/fit": return "fit-data";
+    case "/v1/data/surrogate": return "fit-data-surrogate";
+    case "/v1/surrogates/serialize": return "serialize-surrogate";
+    case "/v1/surrogates/execute": return "execute-surrogate";
+    default: throw new Error("Unsupported compute path.");
+  }
 }
 
 function executionRunId(init?: RequestInit): string | null {

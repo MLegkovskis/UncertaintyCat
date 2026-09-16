@@ -1,5 +1,5 @@
 import { python } from "@codemirror/lang-python";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import CodeMirror from "@uiw/react-codemirror";
 import type {
   AnalysisCatalogEntry,
@@ -194,6 +194,22 @@ function analysisIncompatibility(
   return undefined;
 }
 
+function analysisBudgetGuidance(key: string, sampleSize: number, model: ModelVersion) {
+  if (!Number.isInteger(sampleSize) || sampleSize < 64 || sampleSize > 20_000) return undefined;
+  const count = (value: number) => value.toLocaleString();
+  if (key === "reliability") return "Uses the failure event and stopping controls above, independently of the standard sample budget.";
+  if (key === "sobol") return `${count(sampleSize)} base samples; the OpenTURNS design evaluates multiple points per base sample. Second-order interactions ${model.metadata.input_dimension <= 10 ? "are included automatically for at most ten inputs, increasing the design cost" : "are omitted above ten inputs"}.`;
+  if (key === "fast") return `${count(Math.max(65, sampleSize))} samples per input (minimum 65), so cost increases with the input dimension.`;
+  if (key === "taylor") return `${count(Math.min(sampleSize, 5_000))} independent validation samples (composer cap 5,000), plus local derivatives controlled by OpenTURNS. Validation measures how well the local approximation generalizes.`;
+  if (key === "ancova") return `${count(Math.min(sampleSize, 10_000))} model-training points and ${count(Math.max(64, Math.min(Math.ceil(sampleSize / 2), 2_000)))} independent validation points; ${count(Math.max(128, Math.min(sampleSize * 2, 20_000)))} samples of the fitted decomposition. Dependent hold-out validation must meet the core acceptance rule.`;
+  if (key === "hsic" || key === "target_hsic") {
+    const safe = model.assessment?.recommendations.find((item) => item.capability === key)?.safe_config;
+    const maximum = Number(safe?.maximum_sample_size ?? 250);
+    return `${count(Math.min(sampleSize, maximum))} effective samples, capped at ${count(maximum)} for quadratic kernel work.${key === "hsic" ? ` Uses ${count(Number(safe?.permutations ?? 100))} permutation replicates from the validated safe configuration; more samples increase kernel work quadratically.` : " Uses the target region and permutation controls above."}`;
+  }
+  return `${count(sampleSize)} samples from the declared input distribution.`;
+}
+
 function GuidedBuilder({
   spec,
   setSpec,
@@ -204,9 +220,10 @@ function GuidedBuilder({
   const errors = validateBuilder(spec);
   const updateVariables = (variables: BuilderVariable[]) => {
     const old = spec.copula.correlation;
+    const previousIndices = variables.map((variable) => spec.variables.findIndex((item) => item.id === variable.id));
     const correlation = identityCorrelation(variables.length).map(
       (row, rowIndex) =>
-        row.map((value, columnIndex) => old[rowIndex]?.[columnIndex] ?? value),
+        row.map((value, columnIndex) => old[previousIndices[rowIndex]!]?.[previousIndices[columnIndex]!] ?? value),
     );
     setSpec({ ...spec, variables, copula: { ...spec.copula, correlation } });
   };
@@ -570,7 +587,7 @@ function ReferenceExamples({
             aria-label="Search reference models"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search 24 examples"
+            placeholder={`Search ${examples.length} examples`}
           />
         </label>
       </div>
@@ -588,6 +605,9 @@ function ReferenceExamples({
           </button>
         ))}
       </div>
+      {visible.length === 0 && (
+        <p role="status">No reference models match this search. Try a model name or engineering domain.</p>
+      )}
     </div>
   );
 }
@@ -1045,6 +1065,7 @@ function WorkflowAssessment({
 
 export function Workspace() {
   const { theme } = useTheme();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { projectId: routeProjectId } = useParams();
   const [searchParams] = useSearchParams();
@@ -1053,6 +1074,9 @@ export function Workspace() {
   const requestedExampleId = searchParams.get("example") ?? "";
   const requestedNext = searchParams.get("next") ?? "";
   const requestedSurrogateId = searchParams.get("surrogate") ?? "";
+  const handoffCount = [sourceModelId, dataFitId, requestedExampleId].filter(Boolean).length;
+  const [handoffReady, setHandoffReady] = useState(handoffCount === 0);
+  const [handoffError, setHandoffError] = useState<string>();
   const projectsQuery = useQuery({
     queryKey: ["projects"],
     queryFn: api.listProjects,
@@ -1130,6 +1154,14 @@ export function Workspace() {
   const [analysisSurrogateId, setAnalysisSurrogateId] =
     useState(requestedSurrogateId);
   const [error, setError] = useState<string>();
+  const authoringRevision = useRef(0);
+  const invalidateDefinition = () => {
+    authoringRevision.current += 1;
+    setSavedModel(undefined);
+    setUnderstandingState(undefined);
+    setAnalysisSurrogateId("");
+    setError(undefined);
+  };
   const projects = projectsQuery.data?.projects ?? [];
   const activeProjectId = routeProjectId ?? "";
   const activeProject = projects.find((item) => item.id === activeProjectId);
@@ -1158,6 +1190,9 @@ export function Workspace() {
     enabled: Boolean(sourceModelId),
   });
   useEffect(() => {
+    setOutputTarget(0);
+  }, [savedModel?.id]);
+  useEffect(() => {
     const pilot = savedModel?.assessment?.profile.pilot_outputs[outputTarget];
     if (pilot) setTargetHsicThreshold(pilot.mean);
   }, [outputTarget, savedModel?.id]);
@@ -1183,7 +1218,7 @@ export function Workspace() {
   ]);
   useEffect(() => {
     const definition = definitionQuery.data?.definition;
-    if (!definition) return;
+    if (!definition || handoffReady || handoffCount !== 1) return;
     setSource(definition.source);
     setMode("source");
     setModelName(
@@ -1195,9 +1230,10 @@ export function Workspace() {
     setParentVersionId(definition.modelVersion.id);
     setSavedModel(requestedSurrogateId ? definition.modelVersion : undefined);
     setAnalysisSurrogateId(requestedSurrogateId);
-  }, [definitionQuery.data, requestedSurrogateId]);
+    setHandoffReady(true);
+  }, [definitionQuery.data, handoffCount, handoffReady, requestedSurrogateId]);
   useEffect(() => {
-    if (!dataFitId) return;
+    if (!dataFitId || handoffReady || handoffCount !== 1) return;
     try {
       const draft = JSON.parse(
         window.sessionStorage.getItem("uncertaintycat-data-lab-draft") ??
@@ -1209,7 +1245,7 @@ export function Workspace() {
         builderSpec?: Record<string, unknown>;
       } | null;
       if (!draft?.source || draft.fitRunId !== dataFitId || !draft.datasetId)
-        return;
+        throw new Error("The retained draft is unavailable.");
       setSource(draft.source);
       setMode("source");
       setModelName("Data-fit model draft");
@@ -1221,24 +1257,36 @@ export function Workspace() {
         ...(draft.builderSpec ? { builderSpec: draft.builderSpec } : {}),
       });
       setSavedModel(undefined);
+      setHandoffReady(true);
     } catch {
-      setError(
+      setHandoffError(
         "The Data Lab draft could not be restored. Reopen it from Data Lab.",
       );
     }
-  }, [dataFitId]);
+  }, [dataFitId, handoffCount, handoffReady]);
   useEffect(() => {
-    if (!requestedExampleId || !examples.length || sourceModelId || dataFitId)
+    if (!requestedExampleId || !examplesQuery.isSuccess || handoffReady || handoffCount !== 1)
       return;
     const example = examples.find((item) => item.id === requestedExampleId);
-    if (!example) return;
+    if (!example) {
+      setHandoffError("The requested reference model is unavailable. Open a new model to choose another reference.");
+      return;
+    }
     setSelectedExampleId(example.id);
     setSource(example.source);
     setModelName(example.title);
     setModelNameEdited(false);
     setMode("source");
     setSavedModel(undefined);
-  }, [dataFitId, examples, requestedExampleId, sourceModelId]);
+    setHandoffReady(true);
+  }, [examples, examplesQuery.isSuccess, handoffCount, handoffReady, requestedExampleId]);
+  const handoffFailure = handoffCount > 1
+    ? "This link requests more than one model source. Open a new model and choose one source."
+    : handoffError ?? (sourceModelId && definitionQuery.isError
+      ? "The requested saved model could not be loaded. Retry to restore its exact definition."
+      : requestedExampleId && examplesQuery.isError
+        ? "The requested reference model could not be loaded. Retry to load the reference catalog."
+        : undefined);
   const generatedSource = useMemo(
     () =>
       validateBuilder(builderSpec).length === 0
@@ -1288,19 +1336,19 @@ export function Workspace() {
     );
   }, [directAnalyses, savedModel]);
   const selectExample = (example: ExampleCatalogEntry) => {
+    invalidateDefinition();
     setSelectedExampleId(example.id);
     setSource(example.source);
     if (!modelNameEdited) setModelName(example.title);
     setParentVersionId(undefined);
     setDataFitProvenance(undefined);
-    setSavedModel(undefined);
-    setAnalysisSurrogateId("");
     setMode("source");
     window.localStorage.setItem("uncertaintycat-last-example", example.id);
   };
 
   const saveModel = useMutation({
     mutationFn: async () => {
+      if (!handoffReady) throw new Error("Wait for the requested model definition to load before validation.");
       if (!activeProjectId) throw new Error("Create a project first.");
       const modelSource = mode === "source" ? source : generatedSource;
       if (!modelSource)
@@ -1340,14 +1388,32 @@ export function Workspace() {
     },
     onMutate: () => {
       setError(undefined);
+      setSavedModel(undefined);
       setUnderstandingState(undefined);
+      return { revision: authoringRevision.current };
     },
-    onSuccess: ({ modelVersion }) => {
+    onSuccess: ({ modelVersion }, _variables, context) => {
+      const modelsKey = ["models", modelVersion.projectId];
+      queryClient.setQueryData<{ modelVersions: ModelVersion[] }>(modelsKey, (previous) => {
+        const models = previous?.modelVersions ?? [];
+        return {
+          modelVersions: models.some((model) => model.id === modelVersion.id)
+            ? models.map((model) => model.id === modelVersion.id ? modelVersion : model)
+            : [modelVersion, ...models],
+        };
+      });
+      void queryClient.invalidateQueries({ queryKey: modelsKey, exact: true });
+      if (context?.revision !== authoringRevision.current) {
+        setError("The definition changed during validation. Validate & Assess the current definition before running analyses. The earlier submitted model is retained in project history.");
+        return;
+      }
       setSavedModel(modelVersion);
       setError(undefined);
     },
-    onError: (caught) =>
-      setError(caught instanceof Error ? caught.message : "Validation failed."),
+    onError: (caught, _variables, context) => {
+      if (context?.revision === authoringRevision.current)
+        setError(caught instanceof Error ? caught.message : "Validation failed.");
+    },
   });
   const modelAssessmentPending =
     saveModel.isPending ||
@@ -1365,9 +1431,29 @@ export function Workspace() {
   };
   const subsetConfigInvalid = !boundedSubsetConfigSchema.safeParse(subsetConfig).success;
   const subsetSelected = selected.includes("reliability") && reliabilityMethod === "SUBSET_SAMPLING";
+  const reliabilitySimulation = ["MONTE_CARLO", "DIRECTIONAL_SAMPLING"].includes(reliabilityMethod);
+  const configurationErrors: string[] = [];
+  if (!Number.isInteger(sampleSize) || sampleSize < 64 || sampleSize > 20_000)
+    configurationErrors.push("Standard sample budget must be a whole number from 64 to 20,000.");
+  if (selected.includes("target_hsic")) {
+    if (!Number.isFinite(targetHsicThreshold))
+      configurationErrors.push("Enter a finite output threshold for the target region.");
+    if (!Number.isInteger(targetHsicPermutations) || targetHsicPermutations < 0 || targetHsicPermutations > 100)
+      configurationErrors.push("Target-domain HSIC permits 0–100 whole permutation replicates in this composer.");
+  }
+  if (selected.includes("reliability")) {
+    if (!Number.isFinite(reliabilityThreshold))
+      configurationErrors.push("Enter a finite threshold for the failure event.");
+    const maximum = subsetSelected ? 50_000 : 2_000_000;
+    if (!Number.isInteger(reliabilityMaximumEvaluations) || reliabilityMaximumEvaluations < 100 || reliabilityMaximumEvaluations > maximum)
+      configurationErrors.push(`Maximum evaluations must be a whole number from 100 to ${maximum.toLocaleString()}.`);
+    if (reliabilitySimulation && (!Number.isFinite(reliabilityTargetCov) || reliabilityTargetCov <= 0 || reliabilityTargetCov > 1))
+      configurationErrors.push("Target coefficient of variation must be greater than 0 and no more than 1.");
+  }
   const createRun = useMutation({
     mutationFn: async () => {
-      if (!savedModel) throw new Error("Validate and save the model first.");
+      if (!savedModel || !modelAssessmentReady) throw new Error("Validate and assess the current model first.");
+      if (configurationErrors.length) throw new Error(configurationErrors[0]);
       if (subsetSelected && (subsetReason || subsetConfigInvalid))
         throw new Error(subsetReason ?? "Correct the subset population and total budget before running.");
       const reliability = reliabilityMethod === "SUBSET_SAMPLING" ? subsetConfig : {
@@ -1375,7 +1461,7 @@ export function Workspace() {
         threshold: reliabilityThreshold,
         operator: reliabilityOperator,
         maximum_evaluations: reliabilityMaximumEvaluations,
-        target_coefficient_of_variation: reliabilityTargetCov,
+        ...(reliabilitySimulation ? { target_coefficient_of_variation: reliabilityTargetCov } : {}),
       };
       const targetHsic = {
         threshold: targetHsicThreshold,
@@ -1428,11 +1514,20 @@ export function Workspace() {
           </p>
         </div>
       </div>
+      {!handoffReady && (
+        <div className={handoffFailure ? "error-banner" : "provenance-note"} role={handoffFailure ? "alert" : "status"}>
+          <p>{handoffFailure ?? "Loading the requested model definition before authoring and validation…"}</p>
+          {handoffFailure && handoffCount === 1 && !dataFitId && <button className="button secondary" type="button" disabled={sourceModelId ? definitionQuery.isFetching : examplesQuery.isFetching} onClick={() => void (sourceModelId ? definitionQuery.refetch() : examplesQuery.refetch())}>Retry requested model</button>}
+          {handoffFailure && <Link className="button secondary" to={`/studies/${activeProjectId}/${dataFitId ? "data-lab" : "workspace"}`}>{dataFitId ? "Return to Distribution Fitting" : "Open a new model"}</Link>}
+        </div>
+      )}
       <section
         className={`studio-card ${savedModel || saveModel.isPending ? "validated-studio" : ""}`}
-        aria-busy={modelAssessmentPending}
+        aria-busy={!handoffReady || modelAssessmentPending}
       >
         <div className="studio-authoring">
+        <fieldset disabled={!handoffReady} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+          <legend className="sr-only">Model authoring</legend>
           {dataFitProvenance && (
             <div className="provenance-note">
               Distribution draft from retained fit{" "}
@@ -1460,21 +1555,26 @@ export function Workspace() {
               onChange={(event) => {
                 setModelName(event.target.value);
                 setModelNameEdited(true);
-                setSavedModel(undefined);
-                setAnalysisSurrogateId("");
+                invalidateDefinition();
               }}
             />
           </label>
           <div className="mode-tabs">
             <button
               className={mode === "source" ? "active" : ""}
-              onClick={() => setMode("source")}
+              onClick={() => {
+                if (mode !== "source") invalidateDefinition();
+                setMode("source");
+              }}
             >
               <Code2 /> Examples &amp; Python model
             </button>
             <button
               className={mode === "builder" ? "active" : ""}
-              onClick={() => setMode("builder")}
+              onClick={() => {
+                if (mode !== "builder") invalidateDefinition();
+                setMode("builder");
+              }}
             >
               <SlidersHorizontal /> Guided builder
             </button>
@@ -1495,6 +1595,8 @@ export function Workspace() {
                   </small>
                 </div>
                 <CodeMirror
+                  readOnly={!handoffReady}
+                  editable={handoffReady}
                   onCreateEditor={(view) => {
                     view.contentDOM.setAttribute(
                       "aria-label",
@@ -1508,8 +1610,12 @@ export function Workspace() {
                   extensions={[python()]}
                   onChange={(value) => {
                     setSource(value);
-                    setSavedModel(undefined);
-                    setAnalysisSurrogateId("");
+                    if (!modelNameEdited) {
+                      const reference = examples.find((example) => example.id === selectedExampleId);
+                      if (reference)
+                        setModelName(value === reference.source ? reference.title : `${reference.title} (edited)`);
+                    }
+                    invalidateDefinition();
                   }}
                   basicSetup={{
                     foldGutter: true,
@@ -1538,8 +1644,7 @@ export function Workspace() {
               spec={builderSpec}
               setSpec={(spec) => {
                 setBuilderSpec(spec);
-                setSavedModel(undefined);
-                setAnalysisSurrogateId("");
+                invalidateDefinition();
               }}
             />
           )}
@@ -1585,7 +1690,7 @@ export function Workspace() {
               className="button primary"
               onClick={() => saveModel.mutate()}
               disabled={
-                modelAssessmentPending ||
+                !handoffReady || modelAssessmentPending ||
                 !modelName.trim() ||
                 (mode === "source" ? !source.trim() : !generatedSource)
               }
@@ -1596,6 +1701,7 @@ export function Workspace() {
                 : "Validate & Assess"}
             </button>
           </div>
+        </fieldset>
         </div>
         {saveModel.isPending ? (
           <ModelValidationPendingPane
@@ -1606,6 +1712,7 @@ export function Workspace() {
           />
         ) : savedModel ? (
           <ModelUnderstandingPane
+            key={savedModel.id}
             model={savedModel}
             projectId={activeProjectId}
             aiModelLabel={
@@ -1616,7 +1723,7 @@ export function Workspace() {
           />
         ) : null}
       </section>
-      {error && <div className="error-banner">{error}</div>}
+      {error && <div className="error-banner" role="alert">{error}</div>}
       {savedModel && analysisSurrogateId && (
         <div className="surrogate-source-banner">
           <Waves />
@@ -1652,10 +1759,11 @@ export function Workspace() {
                   type="number"
                   min="64"
                   max="20000"
-                  step="64"
-                  value={sampleSize}
+                  step="1"
+                  aria-describedby="sample-budget-help"
+                  value={Number.isFinite(sampleSize) ? sampleSize : ""}
                   onChange={(event) =>
-                    setSampleSize(Number(event.target.value))
+                    setSampleSize(event.target.valueAsNumber)
                   }
                 />
               </label>
@@ -1678,6 +1786,12 @@ export function Workspace() {
               )}
             </div>
           </div>
+          <p id="sample-budget-help">
+            Choose 64–20,000 samples (default 1,000). Each method shows its effective budget below;
+            this is not a cap on total model evaluations across the run.
+            Reliability uses its separate stopping controls.
+            {savedModel && savedModel.metadata.output_dimension > 1 && " Scalar analyses use the selected output; propagation, exploration, and correlation retain all outputs."}
+          </p>
           {analysisComposerLocked && (
             <div className="analysis-lock-note" role="status">
               <ScanSearch />
@@ -1731,12 +1845,18 @@ export function Workspace() {
                     <span>Threshold</span>
                     <input
                       type="number"
-                      value={reliabilityThreshold}
+                      step="any"
+                      aria-describedby="failure-threshold-help"
+                      value={Number.isFinite(reliabilityThreshold) ? reliabilityThreshold : ""}
                       onChange={(event) =>
-                        setReliabilityThreshold(Number(event.target.value))
+                        setReliabilityThreshold(event.target.valueAsNumber)
                       }
                     />
                   </label>
+                  <p id="failure-threshold-help" className="provenance-note">
+                    Use the selected output's units. The default threshold is 0; choose a meaningful
+                    engineering limit and direction. The bounded pilot is context, not a failure-probability estimate.
+                  </p>
                   {savedModel?.assessment?.profile.pilot_outputs[
                     outputTarget
                   ] &&
@@ -1811,33 +1931,50 @@ export function Workspace() {
                       type="number"
                       min="100"
                       max={reliabilityMethod === "SUBSET_SAMPLING" ? 50000 : 2000000}
-                      value={reliabilityMaximumEvaluations}
+                      step="1"
+                      aria-describedby="reliability-budget-help"
+                      value={Number.isFinite(reliabilityMaximumEvaluations) ? reliabilityMaximumEvaluations : ""}
                       onChange={(event) =>
                         setReliabilityMaximumEvaluations(
-                          Number(event.target.value),
+                          event.target.valueAsNumber,
                         )
                       }
                     />
                   </label>
-                  {reliabilityMethod !== "SUBSET_SAMPLING" && <label>
+                  <p id="reliability-budget-help" className="provenance-note">
+                    Default 20,000; whole numbers from 100 to {subsetSelected ? "50,000" : "2,000,000"}.
+                    {reliabilityMethod === "FORM" || reliabilityMethod === "SORM"
+                      ? " This bounds design-point optimizer calls. Coefficient-of-variation stopping does not apply to these local approximations."
+                      : reliabilityMethod === "DIRECTIONAL_SAMPLING"
+                        ? " This bounds sampled directions; root searches can use additional model evaluations."
+                        : subsetSelected
+                          ? " This bounds original-model evaluations across complete populations."
+                          : " This bounds Monte Carlo draws; simulation can stop earlier when its precision target is reached."}
+                  </p>
+                  {reliabilitySimulation && <label>
                     <span>Target coefficient of variation</span>
                     <input
                       type="number"
-                      min="0.001"
+                      min="0"
                       max="1"
-                      step="0.01"
-                      value={reliabilityTargetCov}
+                      step="any"
+                      aria-describedby="reliability-precision-help"
+                      value={Number.isFinite(reliabilityTargetCov) ? reliabilityTargetCov : ""}
                       onChange={(event) =>
-                        setReliabilityTargetCov(Number(event.target.value))
+                        setReliabilityTargetCov(event.target.valueAsNumber)
                       }
                     />
                   </label>}
+                  {reliabilitySimulation && <p id="reliability-precision-help" className="provenance-note">
+                    Relative standard deviation of the probability estimate: default 0.05 (5%), greater
+                    than 0 and at most 1. Smaller targets usually need more sampling and are not guaranteed within the budget.
+                  </p>}
                   {subsetReason && <p role="status">{subsetReason}</p>}
                   {reliabilityMethod === "SUBSET_SAMPLING" && <>
                     <label>
                       <span>Subset samples per level</span>
-                      <input type="number" min="100" max="5000" step="10" value={subsetSampleSize}
-                        onChange={(event) => setSubsetSampleSize(Number(event.target.value))} />
+                      <input type="number" min="100" max="5000" step="10" value={Number.isFinite(subsetSampleSize) ? subsetSampleSize : ""}
+                        onChange={(event) => setSubsetSampleSize(event.target.valueAsNumber)} />
                     </label>
                     <p className="provenance-note">
                       At most ten populations, including the initial sample, within the total evaluation budget.
@@ -1900,13 +2037,20 @@ export function Workspace() {
                     <span>Output threshold</span>
                     <input
                       type="number"
-                      value={targetHsicThreshold}
+                      step="any"
+                      aria-describedby="target-threshold-help"
+                      value={Number.isFinite(targetHsicThreshold) ? targetHsicThreshold : ""}
                       onChange={(event) =>
-                        setTargetHsicThreshold(Number(event.target.value))
+                        setTargetHsicThreshold(event.target.valueAsNumber)
                       }
                     />
                   </label>
                 </div>
+                <p id="target-threshold-help">
+                  Use the selected output's units. The initial threshold is its validation-pilot mean;
+                  replace it with the critical limit for your question. OpenTURNS applies a smooth
+                  exponential distance filter to this region; its bandwidth is derived from the analysis sample.
+                </p>
                 {savedModel?.assessment?.profile.pilot_outputs[outputTarget] &&
                   (() => {
                     const pilot =
@@ -1945,14 +2089,21 @@ export function Workspace() {
                     <input
                       type="number"
                       min="0"
-                      max="200"
-                      value={targetHsicPermutations}
+                      max="100"
+                      step="1"
+                      aria-describedby="target-permutations-help"
+                      value={Number.isFinite(targetHsicPermutations) ? targetHsicPermutations : ""}
                       onChange={(event) =>
-                        setTargetHsicPermutations(Number(event.target.value))
+                        setTargetHsicPermutations(event.target.valueAsNumber)
                       }
                     />
                   </label>
                 </div>
+                <p id="target-permutations-help">
+                  Default 100; choose 0–100 whole replicates. Zero omits the permutation p-value.
+                  This composer keeps the 250-sample, 100-permutation envelope safe through 20 inputs.
+                  OpenTURNS permutation work reports an indeterminate phase, not an invented percentage.
+                </p>
               </section>
             </div>
           )}
@@ -1986,6 +2137,8 @@ export function Workspace() {
                         >
                           <input
                             type="checkbox"
+                            aria-label={analysis.name}
+                            aria-describedby={`analysis-details-${analysis.key}`}
                             disabled={
                               analysisComposerLocked || Boolean(incompatibility)
                             }
@@ -2009,14 +2162,18 @@ export function Workspace() {
                               <Code2 />
                             )}
                           </span>
-                          <span>
+                          <span id={`analysis-details-${analysis.key}`}>
                             <strong>{analysis.name}</strong>
                             <small>{analysis.description}</small>
+                            <small>{analysis.assumptions.join(" ")}</small>
                             <em>
                               {incompatibility ??
                                 resourceGuidance ??
                                 `${analysis.resource_class} · OpenTURNS plugin v${analysis.version}`}
                             </em>
+                            {savedModel && selected.includes(analysis.key) && (
+                              <small>{analysisBudgetGuidance(analysis.key, sampleSize, savedModel)}</small>
+                            )}
                           </span>
                         </label>
                       );
@@ -2025,10 +2182,12 @@ export function Workspace() {
                 </section>
               ))}
             </div>
+          ) : catalogQuery.isPending ? (
+            <p role="status">Loading the OpenTURNS analysis catalog…</p>
           ) : (
             <EmptyState
               title="Catalog unavailable"
-              body="Start the local compute service to load analysis plugins."
+              body="The analysis catalog could not be loaded. Retry to choose methods for this model."
             />
           )}
           <div className="composer-footer">
@@ -2039,7 +2198,8 @@ export function Workspace() {
             <button
               className="button primary run-button"
               disabled={
-                !savedModel || selected.length === 0 || createRun.isPending ||
+                !savedModel || directAnalyses.length === 0 || selected.length === 0 || createRun.isPending ||
+                configurationErrors.length > 0 ||
                 (subsetSelected && (Boolean(subsetReason) || subsetConfigInvalid))
               }
               onClick={() => createRun.mutate()}
@@ -2047,8 +2207,18 @@ export function Workspace() {
               <Play /> {createRun.isPending ? "Queuing…" : "Run analyses"}
             </button>
           </div>
+          {!analysisComposerLocked && configurationErrors.length > 0 && (
+            <div className="error-banner" role="alert">
+              {configurationErrors.map((message) => <p key={message}>{message}</p>)}
+            </div>
+          )}
         </fieldset>
       </section>
+      {!catalogQuery.isPending && directAnalyses.length === 0 && (
+        <button className="button secondary" onClick={() => void catalogQuery.refetch()}>
+          Retry analysis catalog
+        </button>
+      )}
     </div>
   );
 }

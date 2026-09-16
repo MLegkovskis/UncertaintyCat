@@ -35,6 +35,7 @@ export function withDerivedEquations(
 
 interface RunRow {
   id: string;
+  report_id: string | null;
   project_id: string;
   model_version_id: string;
   surrogate_model_id: string | null;
@@ -70,10 +71,11 @@ export async function loadOwnedRun(
     `SELECT r.id, r.project_id, r.model_version_id, r.surrogate_model_id, r.status, r.seed,
             r.accuracy_profile, r.created_at, r.completed_at,
             p.name AS project_name, m.display_name AS model_display_name,
-            m.version AS model_version, m.source_kind
+            m.version AS model_version, m.source_kind, reports.id AS report_id
      FROM runs r
      JOIN projects p ON p.id = r.project_id
      JOIN model_versions m ON m.id = r.model_version_id
+     LEFT JOIN reports ON reports.run_id = r.id
      WHERE r.id = ? AND r.owner_id = ?`,
   )
     .bind(runId, ownerId)
@@ -88,6 +90,7 @@ export async function loadOwnedRun(
     .all<TaskRow>();
   return {
     id: run.id,
+    reportId: run.report_id,
     projectId: run.project_id,
     modelVersionId: run.model_version_id,
     surrogateModelId: run.surrogate_model_id,

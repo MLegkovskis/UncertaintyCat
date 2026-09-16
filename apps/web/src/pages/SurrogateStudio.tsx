@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DataSurrogateModel, Dataset } from "@uncertaintycat/contracts";
 import type { EChartsOption } from "echarts";
 import { ArrowRight, CheckCircle2, Database, FileSpreadsheet, Waves } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api";
@@ -49,7 +49,9 @@ function DataSurrogateEvidence({ surrogate }: { surrogate: DataSurrogateModel })
         <span><small>Guidance</small><strong>{surrogate.validation.meetsDefault ? "Meets default" : "Review required"}</strong></span>
       </div>
       <EChart option={option} ariaLabel="Observed versus predicted hold-out values" height={340} />
-      <p>This surrogate is fitted from empirical pairs and retained with its XML artifact. Define an input uncertainty distribution before using it for uncertainty propagation or sensitivity analysis.</p>
+      <p><strong>Retained paired-data fit:</strong> {surrogate.inputColumns.join(", ")} → {surrogate.outputColumn} · {new Date(surrogate.createdAt).toLocaleString()}.</p>
+      <p>This surrogate is fitted from empirical pairs and retained with its OpenTURNS artifact. Define an input uncertainty distribution before using it for uncertainty propagation or sensitivity analysis. Attaching that distribution and running this data-driven surrogate downstream are not yet supported in this studio; retain and inspect its evidence here.</p>
+      <details className="chart-data-fallback"><summary>Exact hold-out observations and predictions</summary><div className="table-scroll" tabIndex={0}><table className="engineering-table"><thead><tr><th>Observed</th><th>Predicted</th></tr></thead><tbody>{surrogate.validation.observed.map((value, index) => <tr key={index}><td>{value}</td><td>{surrogate.validation.predicted[index]}</td></tr>)}</tbody></table></div></details>
     </section>
   );
 }
@@ -61,6 +63,8 @@ function DataSurrogateWorkbench({ projectId }: { projectId: string }) {
   const datasets = datasetsQuery.data?.datasets ?? [];
   const [datasetId, setDatasetId] = useState("");
   const dataset = datasets.find((item) => item.id === datasetId) ?? datasets[0];
+  const currentDatasetId = useRef(dataset?.id);
+  currentDatasetId.current = dataset?.id;
   const numericColumns = useMemo(() => dataset?.columns.filter((column) => column.type === "numeric").map((column) => column.name) ?? [], [dataset]);
   const [outputColumn, setOutputColumn] = useState("");
   const [inputColumns, setInputColumns] = useState<string[]>([]);
@@ -71,13 +75,16 @@ function DataSurrogateWorkbench({ projectId }: { projectId: string }) {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (!dataset || numericColumns.length < 2) return;
+    if (!dataset) return;
     const output = numericColumns.at(-1) ?? "";
     setDatasetId(dataset.id);
     setOutputColumn(output);
     setInputColumns(numericColumns.filter((column) => column !== output));
     setCurrent(undefined);
   }, [dataset?.id, numericColumns.join("|")]);
+
+  const selectedDataValid = Boolean(dataset && numericColumns.length >= 2 && numericColumns.includes(outputColumn) && inputColumns.length && inputColumns.every((column) => numericColumns.includes(column) && column !== outputColumn));
+  const previous = (previousQuery.data?.surrogates ?? []).filter((item) => item.datasetId === dataset?.id);
 
   const upload = useMutation({
     mutationFn: async () => api.uploadDataset({
@@ -95,7 +102,7 @@ function DataSurrogateWorkbench({ projectId }: { projectId: string }) {
   });
   const build = useMutation({
     mutationFn: () => {
-      if (!dataset) throw new Error("Choose a validated dataset first.");
+      if (!dataset || !selectedDataValid) throw new Error("Choose at least one numeric input and a different numeric response column.");
       return api.createDataSurrogate(dataset.id, {
         inputColumns,
         outputColumn,
@@ -106,7 +113,7 @@ function DataSurrogateWorkbench({ projectId }: { projectId: string }) {
       });
     },
     onSuccess: async ({ surrogate }) => {
-      setCurrent(surrogate);
+      if (surrogate.datasetId === currentDatasetId.current) setCurrent(surrogate);
       setError(undefined);
       await client.invalidateQueries({ queryKey: ["data-surrogates", projectId] });
     },
@@ -117,7 +124,7 @@ function DataSurrogateWorkbench({ projectId }: { projectId: string }) {
     <section className="data-surrogate-workbench">
       <div className="data-surrogate-source">
         <div><span className="section-kicker">Paired observations</span><h2>Choose a dataset with input and output columns.</h2><p>Rows with missing or non-finite selected values are excluded before OpenTURNS fitting.</p></div>
-        <label><span>Dataset</span><select value={dataset?.id ?? ""} onChange={(event) => setDatasetId(event.target.value)}><option value="">Choose a dataset…</option>{datasets.map((item: Dataset) => <option key={item.id} value={item.id}>{item.name} · {item.rowCount} rows</option>)}</select></label>
+        <label><span>Dataset</span><select disabled={build.isPending || upload.isPending} value={dataset?.id ?? ""} onChange={(event) => setDatasetId(event.target.value)}><option value="">Choose a dataset…</option>{datasets.map((item: Dataset) => <option key={item.id} value={item.id}>{item.name} · {item.rowCount} rows</option>)}</select></label>
       </div>
       {!datasets.length && (
         <div className="surrogate-example-data">
@@ -135,21 +142,34 @@ function DataSurrogateWorkbench({ projectId }: { projectId: string }) {
             <label><span>Kernel</span><select value={kernel} onChange={(event) => setKernel(event.target.value as typeof kernel)}><option value="MATERN_1_5">Matérn 3/2</option><option value="MATERN_2_5">Matérn 5/2</option><option value="SQUARED_EXPONENTIAL">Squared exponential</option></select></label>
             <label><span>Trend</span><select value={trend} onChange={(event) => setTrend(event.target.value as typeof trend)}><option value="CONSTANT">Constant</option><option value="LINEAR">Linear</option></select></label>
           </div>
-          <button className="button primary" disabled={build.isPending || !outputColumn || !inputColumns.length} onClick={() => build.mutate()}>{build.isPending ? "Fitting and validating…" : "Build data-driven GPR"}</button>
+          {!selectedDataValid && <p className="inline-error" role="alert">Choose at least one numeric input and a different numeric response column. A paired dataset needs at least two numeric columns.</p>}
+          <p className="muted-copy">The fit reserves 20% of usable paired rows for an independent hold-out check. The kernel controls smoothness; the constant or linear trend describes the broad response before the Gaussian-process correction.</p>
+          <button className="button primary" disabled={build.isPending || !selectedDataValid} onClick={() => build.mutate()}>{build.isPending ? "Fitting and validating…" : "Build data-driven GPR"}</button>
         </>
       )}
-      {current && <DataSurrogateEvidence surrogate={current} />}
-      {!current && (previousQuery.data?.surrogates.length ?? 0) > 0 && <p className="muted-copy">{previousQuery.data?.surrogates.length} previous data-driven surrogate{previousQuery.data?.surrogates.length === 1 ? "" : "s"} retained in this project.</p>}
+      {current && current.datasetId === dataset?.id && <DataSurrogateEvidence surrogate={current} />}
+      {previous.length > 0 && <label><span>Retained data-driven surrogate evidence</span><select aria-label="Retained data-driven surrogate evidence" disabled={build.isPending} value={current?.id ?? ""} onChange={(event) => setCurrent(previous.find((item) => item.id === event.target.value))}><option value="">Choose a retained fit…</option>{previous.map((item) => <option key={item.id} value={item.id}>{item.inputColumns.join(", ")} → {item.outputColumn} · {new Date(item.createdAt).toLocaleString()}</option>)}</select></label>}
+      {(datasetsQuery.isError || previousQuery.isError) && <p className="inline-error" role="alert">Retained data could not be loaded. <button className="button secondary" onClick={() => { void datasetsQuery.refetch(); void previousQuery.refetch(); }}>Retry retained data</button></p>}
       {error && <div className="inline-error" role="alert">{error}</div>}
     </section>
   );
 }
 
 export function SurrogateStudio() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { projectId = "" } = useParams();
-  const [modelId, setModelId] = useState(searchParams.get("modelId") ?? "");
-  const [sourceMode, setSourceMode] = useState<"model" | "data">("model");
+  const modelId = searchParams.get("modelId") ?? "";
+  const setModelId = (id: string) => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    next.set("modelId", id);
+    return next;
+  });
+  const sourceMode = searchParams.get("source") === "data" ? "data" : "model";
+  const setSourceMode = (source: "model" | "data") => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    next.set("source", source);
+    return next;
+  });
   const modelsQuery = useQuery({ queryKey: ["models", projectId], queryFn: () => api.listModels(projectId), enabled: Boolean(projectId) });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const model = modelsQuery.data?.modelVersions.find((item) => item.id === modelId);
@@ -177,7 +197,7 @@ export function SurrogateStudio() {
       {sourceMode === "model" ? (
         <>
           <StudioModelPicker projectId={projectId} modelId={modelId} onModelChange={setModelId} returnTo="surrogates" />
-          {model && <SurrogateWorkbench model={model} projectId={projectId} />}
+          {model && <SurrogateWorkbench key={model.id} model={model} projectId={projectId} />}
         </>
       ) : <DataSurrogateWorkbench projectId={projectId} />}
     </div>

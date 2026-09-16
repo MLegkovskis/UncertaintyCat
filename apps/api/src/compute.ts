@@ -82,7 +82,7 @@ export class ComputeRequestError extends Error {
   }
 }
 
-async function finalizeRun(env: Env, runId: string): Promise<void> {
+export async function finalizeRun(env: Env, runId: string): Promise<void> {
   const counts = await env.DB.prepare(
     `SELECT
        COUNT(*) AS total,
@@ -113,16 +113,17 @@ async function finalizeRun(env: Env, runId: string): Promise<void> {
       "UPDATE runs SET status = ?, completed_at = ? WHERE id = ? AND status != 'cancelled'",
     ).bind(status, timestamp, runId),
     env.DB.prepare(
+      // Read status after the guarded run update so a cancellation winning the
+      // race remains authoritative in both the run and its retained report.
       `INSERT INTO reports (id, run_id, title, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
+       SELECT ?, id, ?, status, ?, ? FROM runs WHERE id = ?
        ON CONFLICT(run_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`,
     ).bind(
       crypto.randomUUID(),
-      runId,
       "Uncertainty Quantification Report",
-      status,
       timestamp,
       timestamp,
+      runId,
     ),
   ]);
   await destroyRunSandbox(env, runId);
@@ -398,7 +399,11 @@ export async function processRunTask(
       return;
     }
     await env.DB.prepare(
-      "UPDATE analysis_tasks SET status = 'succeeded', result_json = ?, progress_json = ?, completed_at = ? WHERE id = ?",
+      // A compute response arriving after cancellation must not revive a task
+      // or attach a result to an operation the user already stopped.
+      `UPDATE analysis_tasks SET status = 'succeeded', result_json = ?, progress_json = ?, completed_at = ?
+       WHERE id = ? AND status = 'running'
+       AND EXISTS (SELECT 1 FROM runs WHERE runs.id = analysis_tasks.run_id AND runs.status != 'cancelled')`,
     )
       .bind(
         JSON.stringify(body.result),

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@uncertaintycat/contracts";
+import type { Project, Run } from "@uncertaintycat/contracts";
 import { ArrowRight, FolderKanban, Plus, Search, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api";
@@ -18,6 +18,10 @@ export function Studies() {
   const [description, setDescription] = useState("");
   const [projectToDelete, setProjectToDelete] = useState<Project>();
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletionComplete, setDeletionComplete] = useState(false);
+  const deleteDialog = useRef<HTMLElement>(null);
+  const deleteTrigger = useRef<HTMLButtonElement | null>(null);
+  const deletionPending = useRef(false);
   const client = useQueryClient();
   const navigate = useNavigate();
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
@@ -77,12 +81,33 @@ export function Studies() {
   });
   const deleteProject = useMutation({
     mutationFn: (projectId: string) => api.deleteProject(projectId),
-    onSuccess: async () => {
+    onSuccess: async (_, projectId) => {
       setProjectToDelete(undefined);
       setDeleteConfirmation("");
+      setDeletionComplete(true);
+      await client.invalidateQueries({ queryKey: ["runs"] });
+      client.removeQueries({ predicate: (query) => {
+        const data = query.state.data as { run?: Run; report?: { project: { id: string } }; definition?: { project: { id: string } } } | undefined;
+        return query.queryKey[1] === projectId || data?.run?.projectId === projectId || data?.report?.project.id === projectId || data?.definition?.project.id === projectId;
+      } });
       await client.invalidateQueries({ queryKey: ["projects"] });
     },
   });
+  deletionPending.current = deleteProject.isPending;
+  useEffect(() => {
+    if (!projectToDelete) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !deletionPending.current) setProjectToDelete(undefined);
+      if (event.key !== "Tab") return;
+      const controls = deleteDialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)");
+      const first = controls?.[0];
+      const last = controls?.[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => { document.removeEventListener("keydown", handleKey); deleteTrigger.current?.focus(); };
+  }, [projectToDelete]);
   const cancelCreator = () => {
     setCreating(false);
     setName("");
@@ -113,13 +138,21 @@ export function Studies() {
           <label><span>Project name</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Turbine blade reliability" /></label>
           <label><span>Description <small>optional</small></span><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Purpose, system, or decision being studied" /></label>
           <div className="project-creator-actions">
-            <button className="button secondary" type="button" onClick={cancelCreator}>Cancel</button>
+            <button className="button secondary" type="button" disabled={createProject.isPending} onClick={cancelCreator}>Cancel</button>
             <button className="button primary" type="button" disabled={!name.trim() || createProject.isPending} onClick={() => createProject.mutate()}>{createProject.isPending ? (isModelHandoff ? "Copying model…" : "Creating…") : (isModelHandoff ? `Create project with ${surrogateId ? "surrogate" : "model"}` : "Create project")} <ArrowRight /></button>
           </div>
           {createProject.isError && <div className="inline-error" role="alert">{createProject.error instanceof Error ? createProject.error.message : "Project creation failed."}</div>}
         </section>
       )}
-      {visible.length ? (
+      {deletionComplete && <p className="share-confirmation" role="status">Project deleted. Its models, data, runs, and reports have been removed.</p>}
+      {projectsQuery.isPending ? (
+        <div className="route-loading" role="status">Loading your projects…</div>
+      ) : projectsQuery.isError ? (
+        <div className="error-banner" role="alert">
+          <p>Your projects could not be loaded. {projectsQuery.error.message}</p>
+          <button className="button secondary" type="button" disabled={projectsQuery.isFetching} onClick={() => void projectsQuery.refetch()}>{projectsQuery.isFetching ? "Retrying…" : "Retry projects"}</button>
+        </div>
+      ) : visible.length ? (
         <div className="project-list" role="list">
           {visible.map((project) => (
             <div className="project-row" key={project.id} role="listitem">
@@ -129,7 +162,7 @@ export function Studies() {
                 <span>{project.description || "Uncertainty analysis project"}</span>
               </Link>
               <time dateTime={project.updatedAt}>Updated {new Date(project.updatedAt).toLocaleString()}</time>
-              <button className="icon-button danger-icon" type="button" aria-label={`Delete ${project.name}`} onClick={() => { setProjectToDelete(project); setDeleteConfirmation(""); }}><Trash2 /></button>
+              <button className="icon-button danger-icon" type="button" aria-label={`Delete ${project.name}`} onClick={(event) => { deleteTrigger.current = event.currentTarget; deleteProject.reset(); setProjectToDelete(project); setDeleteConfirmation(""); setDeletionComplete(false); }}><Trash2 /></button>
               <Link className="project-row-open" to={`/studies/${project.id}`} aria-label={`Open ${project.name}`}><ArrowRight aria-hidden="true" /></Link>
             </div>
           ))}
@@ -141,16 +174,16 @@ export function Studies() {
         </div>
       )}
       {projectToDelete && (
-        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setProjectToDelete(undefined); }}>
-          <section className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-project-title">
-            <button className="dialog-close" type="button" aria-label="Close delete confirmation" onClick={() => setProjectToDelete(undefined)}><X /></button>
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteProject.isPending) setProjectToDelete(undefined); }}>
+          <section className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-project-title" ref={deleteDialog}>
+            <button className="dialog-close" type="button" disabled={deleteProject.isPending} aria-label="Close delete confirmation" onClick={() => setProjectToDelete(undefined)}><X /></button>
             <span className="section-kicker danger-copy">Permanent deletion</span>
             <h2 id="delete-project-title">Delete “{projectToDelete.name}”?</h2>
             <p>This removes every model, dataset, run, report, chat, surrogate, and stored artifact in this project. This action cannot be undone.</p>
             <label><span>Type the project name to confirm</span><input autoFocus value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} aria-label="Project name confirmation" /></label>
             {deleteProject.isError && <div className="inline-error" role="alert">{deleteProject.error instanceof Error ? deleteProject.error.message : "Project deletion failed."}</div>}
             <div className="dialog-actions">
-              <button className="button secondary" type="button" onClick={() => setProjectToDelete(undefined)}>Cancel</button>
+              <button className="button secondary" type="button" disabled={deleteProject.isPending} onClick={() => setProjectToDelete(undefined)}>Cancel</button>
               <button className="button danger-button" type="button" disabled={deleteConfirmation !== projectToDelete.name || deleteProject.isPending} onClick={() => deleteProject.mutate(projectToDelete.id)}>{deleteProject.isPending ? "Deleting…" : "Delete project permanently"}</button>
             </div>
           </section>

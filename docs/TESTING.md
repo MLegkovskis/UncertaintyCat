@@ -5,6 +5,17 @@ handoff, use [the end-to-end scientific UX audit prompt](ux-journey-audit/README
 below by requiring a production visual baseline, hands-on repair, and new regression evidence for every material
 finding.
 
+The [2026-09-16 journey audit](ux-journey-audit/2026-09-16.md) records the repaired
+cross-studio contracts and the distinction between live, fixture, and full-stack evidence.
+`studio-journeys.spec.ts`, `lifecycle-recovery.spec.ts`, and `session-recovery.spec.ts`
+cover selected-object durability, pending-operation races, fit-history replay, bounded controls,
+cancelled/partial reports, paginated project history, download failures, and session recovery.
+The Worker tests use real local D1 migrations for history ownership, stable pagination,
+the history query index, and cancellation racing a late compute response. CLI regressions
+execute serialized GPR and PCE artifacts through the native OpenTURNS adapter, including
+request-error redaction. Distribution-fit tests compare repeat/composition behavior with an
+independent OpenTURNS oracle and verify the recorded seed through Worker, HTTP, and CLI.
+
 The bounded subset-sampling correction is covered by `tests/core/test_subset_sampling.py`,
 `tests/integration/test_subset_service.py`, Worker contract tests, and
 `apps/web/e2e/subset-sampling.spec.ts` (including expanded-workflow accessibility).
@@ -102,6 +113,8 @@ This suite runs automatically after deployment and is deliberately read-only. It
 - HTTP 401 and `authentication_required` across representative catalog, example, project, run, shared-report, and operator endpoints;
 - the static method/model overview without protected API data;
 - the login wall on direct private-route navigation;
+- all 19 private route shapes without protected API fetches, plus public shell containment at
+  1280, 1440, 1920, and 390 pixels;
 - WCAG A/AA results for public and gated pages; and
 - the real Cloudflare OIDC authorization origin, callback, and PKCE challenge.
 

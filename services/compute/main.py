@@ -8,8 +8,9 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from uncertaintycat_core import analysis_catalog, compile_model, run_analysis
 from uncertaintycat_core.contracts import AnalysisRequest, StrictModel
@@ -58,6 +59,25 @@ app = FastAPI(
     version="0.2.0",
     docs_url=None if os.getenv("UNCERTAINTYCAT_DISABLE_DOCS") == "1" else "/docs",
 )
+
+
+def invalid_request_body() -> dict[str, Any]:
+    """Never project Pydantic input values, source, XML, or user field names into errors."""
+    return {
+        "error": {
+            "code": "invalid_request",
+            "message": (
+                "The compute request does not match the required schema. "
+                "Check the analysis settings and saved model, then retry."
+            ),
+        }
+    }
+
+
+@app.exception_handler(RequestValidationError)
+@app.exception_handler(ValidationError)
+async def invalid_request_handler(_request: Any, _exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=422, content=invalid_request_body())
 
 
 @app.exception_handler(UncertaintyCatError)

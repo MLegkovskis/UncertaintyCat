@@ -2518,10 +2518,29 @@ tbody tr:hover td {
   font: 8px var(--font-mono);
 }
 .variable-row.expanded {
-  grid-template-columns:
-    auto minmax(100px, 0.8fr) minmax(130px, 0.8fr) repeat(4, minmax(90px, 1fr))
-    auto;
-  overflow-x: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.variable-row.expanded > input {
+  flex: 1 1 7em;
+  min-width: min(100%, 7em);
+}
+.variable-row.expanded > select {
+  flex: 1 1 12em;
+  min-width: min(100%, 12em);
+}
+.variable-row.expanded > label {
+  flex: 1 1 8em;
+  min-width: min(100%, 8em);
+}
+.variable-row.expanded > input,
+.variable-row.expanded > select {
+  max-width: 100%;
+}
+.variable-row.expanded label input {
+  width: 100%;
+  min-width: 0;
 }
 .reorder-controls {
   display: grid;
@@ -2546,11 +2565,20 @@ tbody tr:hover td {
   border-top: 1px solid var(--line);
 }
 .output-row {
-  display: grid;
-  grid-template-columns: auto minmax(120px, 0.6fr) minmax(260px, 2fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   margin-top: 8px;
+}
+.output-row > input {
+  flex: 1 1 10em;
+  min-width: min(100%, 10em);
+  max-width: 100%;
+}
+.output-row > input + input {
+  flex: 2 1 15em;
+  min-width: min(100%, 15em);
 }
 .output-row > input,
 .copula-select select,
@@ -3399,6 +3427,9 @@ tbody tr:hover td {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
+  .output-row {
+    display: grid;
+  }
   .study-meta-strip {
     grid-template-columns: 1fr;
   }
@@ -3710,7 +3741,7 @@ tbody tr:hover td {
 }
 .distribution-chart-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 10px;
   margin-top: 12px;
 }
@@ -3851,15 +3882,15 @@ tbody tr:hover td {
   width: 100%;
   min-width: 0;
 }
-.subset-studio > label {
+.reliability-studio > label {
   display: grid;
   gap: 7px;
   min-width: 0;
   color: var(--muted);
   font: 700 11px var(--font-mono);
 }
-.subset-studio input,
-.subset-studio select {
+.reliability-studio input,
+.reliability-studio select {
   width: 100%;
   min-width: 0;
   height: 42px;
@@ -3870,7 +3901,7 @@ tbody tr:hover td {
   color: inherit;
   font: 600 12px var(--font-mono);
 }
-.subset-studio > p {
+.reliability-studio > p {
   grid-column: 1 / -1;
   margin: 0;
 }
@@ -4054,6 +4085,7 @@ tbody tr:hover td {
 .surrogate-workbench > label,
 .surrogate-validation > label {
   display: grid;
+  min-width: 0;
   gap: 6px;
   color: var(--muted);
   font-size: 11px;
@@ -4064,6 +4096,8 @@ tbody tr:hover td {
 .surrogate-controls input,
 .surrogate-controls select,
 .surrogate-validation input {
+  width: 100%;
+  min-width: 0;
   min-height: 42px;
   padding: 0 11px;
   color: inherit;
@@ -4291,7 +4325,7 @@ tbody tr:hover td {
   gap: 16px;
 }
 .surrogate-controls {
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 .surrogate-guidance {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5519,4 +5553,17 @@ tbody tr:hover td {
     color: #24313f;
     background: white;
   }
+}
+
+#sample-budget-help {
+  margin: 0 28px 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.target-hsic-studio > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
 }

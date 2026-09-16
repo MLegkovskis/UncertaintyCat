@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
+import json
 import math
 from typing import Any, Literal
 
@@ -16,6 +18,8 @@ from uncertaintycat_core.errors import InvalidModelError
 
 DatasetKind = Literal["csv", "xlsx", "paste"]
 CopulaKind = Literal["independent", "normal", "bernstein"]
+
+DISTRIBUTION_FITTING_VERSION = "1.1.0"
 
 
 class DatasetContent(StrictModel):
@@ -42,6 +46,7 @@ class DistributionFitRequest(DatasetContent):
     selected_marginals: dict[str, str] = Field(default_factory=dict)
     copula: CopulaKind = "independent"
     significance_level: float = Field(default=0.05, gt=0.0, lt=1.0)
+    seed: int = Field(default=42, ge=0, le=2_147_483_647)
 
     @field_validator("selected_columns")
     @classmethod
@@ -172,10 +177,20 @@ def fit_distributions(request: DistributionFitRequest) -> dict[str, Any]:
             raise InvalidModelError(f"{name} is constant; distribution fitting is undefined.")
         source_samples[name] = sample
         rankings: list[dict[str, Any]] = []
+        candidate_distributions: dict[str, ot.Distribution] = {}
         rejected: list[dict[str, str]] = []
         for candidate in request.candidates:
             try:
+                # Lilliefors uses OpenTURNS Monte Carlo calibration. Give each
+                # named column/family its own stable stream so ranking order and
+                # choosing marginals cannot change retained candidate evidence.
+                seed_material = json.dumps(
+                    [request.seed, name, candidate], ensure_ascii=False, separators=(",", ":")
+                ).encode("utf-8")
+                candidate_seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:4], "big")
+                ot.RandomGenerator.SetSeed(candidate_seed & 0x7FFF_FFFF)
                 distribution, test = _fit_candidate(sample, candidate, request.significance_level)
+                candidate_distributions[candidate] = distribution
                 rankings.append(
                     {
                         "candidate": candidate,
@@ -207,9 +222,7 @@ def fit_distributions(request: DistributionFitRequest) -> dict[str, Any]:
             raise InvalidModelError(
                 f"The selected marginal {selected_name} could not be fitted to {name}."
             )
-        chart_distribution = fitted.get(name) or _distribution_for_ranking(
-            sample, rankings[0]["candidate"]
-        )
+        chart_distribution = candidate_distributions[selected_name or rankings[0]["candidate"]]
         column_results.append(
             {
                 "column": name,
@@ -267,12 +280,16 @@ def fit_distributions(request: DistributionFitRequest) -> dict[str, Any]:
 
     return {
         "openturnsVersion": ot.__version__,
+        "fittingVersion": DISTRIBUTION_FITTING_VERSION,
+        "seed": request.seed,
         "columns": column_results,
         "copula": copula_result,
         "generatedSource": generated_source,
         "builderSpec": builder_spec,
         "assumptions": [
             "Marginal candidate parameters and information criteria are computed by OpenTURNS.",
+            "Lilliefors p-values use seeded OpenTURNS Monte Carlo calibration; "
+            "each named column and candidate has a stable seed stream.",
             "Goodness-of-fit tests do not prove that a fitted family is the data-generating law.",
             "Copula fitting uses complete finite rows only and must be selected explicitly.",
         ],
@@ -299,10 +316,6 @@ def _fit_candidate(
         "significanceLevel": level,
         "rejected": not bool(test_result.getBinaryQualityMeasure()),
     }
-
-
-def _distribution_for_ranking(sample: ot.Sample, candidate: str) -> ot.Distribution:
-    return _fit_candidate(sample, str(candidate), 0.05)[0]
 
 
 def _implementation_name(distribution: ot.Distribution) -> str:

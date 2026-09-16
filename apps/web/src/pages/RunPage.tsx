@@ -10,6 +10,8 @@ import {
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
+import { analysisDisplayName } from "../analysisNames";
+import { ResultView } from "../components/ResultView";
 import { StatusBadge } from "../components/Status";
 
 const TERMINAL = new Set([
@@ -24,13 +26,9 @@ function fallbackTaskMessage(
 ) {
   if (status === "queued") return "Waiting for compute capacity.";
   if (status === "running") return "OpenTURNS computation is active.";
+  if (status === "cancelled") return "Analysis cancelled before a result was retained.";
+  if (status === "failed") return "Analysis failed without a numerical result.";
   return "Analysis is complete.";
-}
-
-function analysisDisplayName(key: string) {
-  if (key === "hsic") return "Global HSIC";
-  if (key === "target_hsic") return "Target-domain HSIC";
-  return key.replaceAll("_", " ");
 }
 
 export function RunPage() {
@@ -41,7 +39,7 @@ export function RunPage() {
     queryKey: ["run", runId],
     queryFn: () => api.getRun(runId),
     refetchInterval: (state) =>
-      state.state.data && TERMINAL.has(state.state.data.run.status)
+      state.state.status === "error" || (state.state.data && TERMINAL.has(state.state.data.run.status))
         ? false
         : 1000,
   });
@@ -57,14 +55,16 @@ export function RunPage() {
   const completed =
     run?.tasks.filter((task) => TERMINAL.has(task.status)).length ?? 0;
   const progress = run?.tasks.length ? completed / run.tasks.length : 0;
+  if (query.isPending) return <div className="page narrow-page"><div className="route-loading" role="status">Loading run and retained task progress…</div></div>;
+  if (!run) return <div className="page narrow-page"><div className="error-banner" role="alert"><h1>Run unavailable</h1><p>{query.error?.message ?? "This run could not be loaded."} It may have been deleted or may belong to another account.</p><button className="button secondary" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>Retry run</button><Link className="button secondary" to="/studies">Back to Projects</Link></div></div>;
   return (
     <div className="page narrow-page">
       {run && (
         <nav className="breadcrumbs" aria-label="Breadcrumb">
-          <Link to="/studies">Studies</Link>
+          <Link to="/studies">Projects</Link>
           <span>/</span>
           <Link to={`/studies/${run.projectId}`}>
-            {run.projectName ?? "Study"}
+            {run.projectName ?? "Project"}
           </Link>
           <span>/</span>
           <span>
@@ -74,7 +74,7 @@ export function RunPage() {
       )}
       <div className="page-heading split">
         <div>
-          <span className="section-kicker">Live run</span>
+          <span className="section-kicker">{TERMINAL.has(run.status) ? "Retained run" : "Live run"}</span>
           <h1>
             {run && TERMINAL.has(run.status)
               ? "Analysis record"
@@ -102,7 +102,7 @@ export function RunPage() {
               onClick={() => cancel.mutate()}
               disabled={cancel.isPending}
             >
-              <XCircle /> Cancel
+              <XCircle /> {cancel.isPending ? "Cancelling…" : "Cancel"}
             </button>
           )}
           {run && <StatusBadge status={run.status} />}
@@ -112,11 +112,13 @@ export function RunPage() {
               onClick={() => rerun.mutate()}
               disabled={rerun.isPending}
             >
-              <RotateCcw /> Rerun exact
+              <RotateCcw /> {rerun.isPending ? "Starting…" : "Rerun exact"}
             </button>
           )}
         </div>
       </div>
+      {query.isError && <div className="error-banner" role="alert"><p>Progress updates stopped. The task states below are the last received snapshot. {query.error.message}</p><button className="button secondary" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>Retry progress</button></div>}
+      {(cancel.isError || rerun.isError) && <div className="error-banner" role="alert">{cancel.isError ? `Cancellation failed. ${cancel.error.message}` : `The exact rerun could not start. ${rerun.error?.message}`} Saved numerical evidence is retained. Review the current status before retrying.</div>}
       {run && (
         <div
           className="study-meta-strip run-meta-strip"
@@ -161,7 +163,7 @@ export function RunPage() {
         <div className="task-list">
           {run?.tasks.map((task) => {
             const active =
-              task.status === "queued" || task.status === "running";
+              !TERMINAL.has(run.status) && (task.status === "queued" || task.status === "running");
             const progress = task.progress;
             return (
               <div
@@ -229,17 +231,19 @@ export function RunPage() {
         {run?.status === "cancelled" ? (
           <div className="run-cancelled">
             <strong>Run cancelled.</strong>
-            <span>Queued analyses were stopped; no report was generated.</span>
+            <span>Queued analyses were stopped. Any completed numerical evidence is retained below; unfinished tasks have no completed result.</span>
+            {run.reportId && <Link className="button secondary" to={`/reports/${run.reportId}`}>Open retained report <ArrowRight /></Link>}
           </div>
         ) : (
           run &&
           TERMINAL.has(run.status) && (
             <div className="run-complete">
               <div>
-                <strong>The report is ready.</strong>
+                <strong>{run.status === "failed" ? "The run failed. Its failure record is ready." : run.status === "partially_succeeded" ? "The report is ready with partial results." : "The report is ready."}</strong>
                 <span>
-                  All numerical results and provenance have been persisted.
+                  {run.status === "succeeded" ? "All numerical results and provenance have been persisted." : "Completed results and task errors are retained separately for inspection."}
                 </span>
+                <span>{run.tasks.filter((task) => task.status === "succeeded").length} successful · {run.tasks.filter((task) => task.status === "failed").length} failed · {run.tasks.length} total analyses</span>
               </div>
               <Link className="button primary" to={`/reports/${run.id}`}>
                 Open report <ArrowRight />
@@ -248,6 +252,7 @@ export function RunPage() {
           )
         )}
       </section>
+      {run.status === "cancelled" && run.tasks.filter((task) => task.result).map((task) => <section className="report-section" key={task.id}><h2>Retained {analysisDisplayName(task.analysisKey)} evidence</h2><ResultView result={task.result!} /></section>)}
     </div>
   );
 }

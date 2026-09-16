@@ -19,8 +19,13 @@ const MAX_UPLOAD_BYTES = 250_000;
 export function CalibrationStudio() {
   const navigate = useNavigate();
   const { projectId = "" } = useParams();
-  const [searchParams] = useSearchParams();
-  const [modelId, setModelId] = useState(searchParams.get("modelId") ?? "");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modelId = searchParams.get("modelId") ?? "";
+  const setModelId = (id: string) => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    next.set("modelId", id);
+    return next;
+  });
   const [selectedParameters, setSelectedParameters] = useState<number[]>([]);
   const [startingValues, setStartingValues] = useState<Record<number, string>>({});
   const [outputTarget, setOutputTarget] = useState(0);
@@ -71,7 +76,8 @@ export function CalibrationStudio() {
     }
   }, [csv, model, observedInputNames, outputName, selectedParameters.length]);
   const starts = selectedParameters.map((index) => Number(startingValues[index]));
-  const startValuesValid = starts.every(Number.isFinite);
+  const startValuesValid = selectedParameters.every((index) => Boolean(startingValues[index]?.trim())) && starts.every(Number.isFinite);
+  const optimizerValid = Number.isInteger(maximumCalls) && maximumCalls >= 10 && maximumCalls <= 500;
   const modelWithinBound = (model?.metadata.input_dimension ?? 0) <= 32;
   const canRun = Boolean(
     model
@@ -80,8 +86,7 @@ export function CalibrationStudio() {
     && parsed.data
     && startValuesValid
     && modelWithinBound
-    && maximumCalls >= 10
-    && maximumCalls <= 500,
+    && optimizerValid,
   );
 
   const run = useMutation({
@@ -122,8 +127,12 @@ export function CalibrationStudio() {
       setError("Calibration CSV files are limited to 250 KB and 250 observation rows.");
       return;
     }
-    setCsv(await file.text());
-    setError(undefined);
+    try {
+      setCsv(await file.text());
+      setError(undefined);
+    } catch {
+      setError("The calibration CSV could not be read. Try the file again or paste its data.");
+    }
   };
 
   return (
@@ -172,7 +181,7 @@ export function CalibrationStudio() {
             <div><span>Calibrated parameters</span><strong>{selectedParameters.length} / {MAX_CALIBRATION_PARAMETERS}</strong></div>
             <div><span>Observed explanatory inputs</span><strong>{observedInputNames.length}</strong></div>
           </div>
-          {(parsed.error || !startValuesValid || !selectedParameters.length) && <div className="inline-error" role="alert">{!selectedParameters.length ? "Select at least one continuous calibration parameter." : !startValuesValid ? "Every selected parameter needs a finite starting value." : parsed.error}</div>}
+          {(parsed.error || !startValuesValid || !selectedParameters.length || !optimizerValid) && <div className="inline-error" role="alert">{!selectedParameters.length ? "Select at least one continuous calibration parameter." : !startValuesValid ? "Every selected parameter needs a finite starting value." : !optimizerValid ? "Choose a whole optimizer-call limit from 10 to 500." : parsed.error}</div>}
           <p className="method-caveat">The optimizer is capped at {maximumCalls} calls. The report records the exact OpenTURNS atomic model-evaluation delta, including derivative work. Fit alone does not establish identifiability, causality, or predictive validity outside these observations.</p>
           <button className="button primary" disabled={!canRun || run.isPending} onClick={() => run.mutate()}><Play /> {run.isPending ? "Queuing calibration…" : "Run nonlinear least-squares calibration"}</button>
         </section>

@@ -339,6 +339,281 @@ test.describe("application shell and identity", () => {
 });
 
 test.describe("model studio", () => {
+  test("waits for the exact requested source and offers retry before validation", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let failed = true;
+    let submissions = 0;
+    const requestedSource = "import openturns as ot\n# exact retained reduced-indices definition";
+    await page.route("**/api/v1/model-versions/requested-model/definition", async (route) => {
+      await gate;
+      await route.fulfill(failed
+        ? { status: 503, json: { error: { message: "Temporary definition outage" } } }
+        : { json: { definition: { modelVersion: { ...savedModel, id: "requested-model" }, project, source: requestedSource, visibility: "owner" } } });
+    });
+    await page.route("**/api/v1/projects/*/models", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      submissions += 1;
+      expect(route.request().postDataJSON().source).toBe(requestedSource);
+      await route.fulfill({ status: 201, json: { modelVersion: savedModel } });
+    });
+    await page.goto("/studies/project-1/workspace?sourceModel=requested-model");
+    await expect(page.getByText("Loading the requested model definition before authoring and validation…")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Validate & Assess" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Guided builder" })).toBeDisabled();
+    await expect(page.getByLabel("Model name", { exact: true })).toBeDisabled();
+    await expect(page.getByRole("textbox", { name: "Python model source" })).toHaveAttribute("contenteditable", "false");
+    expect(submissions).toBe(0);
+    release();
+    await expect(page.getByRole("alert")).toContainText("requested saved model could not be loaded");
+    await expect(page.getByRole("button", { name: "Validate & Assess" })).toBeDisabled();
+    failed = false;
+    await page.getByRole("button", { name: "Retry requested model" }).click();
+    await expect(page.getByRole("textbox", { name: "Python model source" }).locator(".cm-line")).toHaveText(requestedSource.split("\n"));
+    await expect(page.getByRole("button", { name: "Validate & Assess" })).toBeEnabled();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+    expect(submissions).toBe(1);
+  });
+
+  test("browser Back to another source rejects an earlier pending validation", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const sourceFor = (id: string) => `import openturns as ot\n# retained ${id}`;
+    await page.route("**/api/v1/model-versions/*/definition", async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/").at(-2)!;
+      await route.fulfill({ json: { definition: { modelVersion: { ...savedModel, id, displayName: id }, project, source: sourceFor(id), visibility: "owner" } } });
+    });
+    await page.route("**/api/v1/projects/*/models", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      await gate;
+      await route.fulfill({ status: 201, json: { modelVersion: { ...savedModel, id: "saved-source-a", displayName: "source-a" } } });
+    });
+    await page.goto("/studies/project-1/workspace?sourceModel=source-b");
+    await expect(page.getByRole("textbox", { name: "Python model source" }).locator(".cm-line")).toHaveText(sourceFor("source-b").split("\n"));
+    // Reproduce a same-route client navigation, followed by real browser Back.
+    await page.evaluate(() => {
+      window.history.pushState({}, "", "/studies/project-1/workspace?sourceModel=source-a");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect(page.getByRole("textbox", { name: "Python model source" }).locator(".cm-line")).toHaveText(sourceFor("source-a").split("\n"));
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByText("Your model is being validated and assessed…")).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/sourceModel=source-b$/);
+    await expect(page.getByRole("textbox", { name: "Python model source" }).locator(".cm-line")).toHaveText(sourceFor("source-b").split("\n"));
+    const completed = page.waitForResponse((response) => response.url().endsWith("/models") && response.request().method() === "POST");
+    release();
+    await completed;
+    await expect(page.getByLabel("Model name", { exact: true })).toHaveValue("source-b copy");
+    await expect(page.getByText("Model validated", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Run analyses" })).toBeDisabled();
+    await expect(page.getByRole("textbox", { name: "Python model source" }).locator(".cm-line")).toHaveText(sourceFor("source-b").split("\n"));
+  });
+
+  test("unavailable reference and data-fit handoffs cannot validate a fallback definition", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    for (const query of ["example=missing-reference", "dataFit=missing-fit"]) {
+      await page.goto(`/studies/project-1/workspace?${query}`);
+      await expect(page.getByRole("alert")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Validate & Assess" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Guided builder" })).toBeDisabled();
+    }
+  });
+
+  test("requires reassessment when switching between Python and guided definitions", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.goto("/studies/project-1/workspace");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    for (const nextMode of ["Guided builder", "Examples & Python model"]) {
+      await page.getByRole("button", { name: "Validate & Assess" }).click();
+      await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Run analyses" })).toBeEnabled();
+      await page.getByRole("button", { name: nextMode }).click();
+      await expect(page.getByText("Model validated", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Run analyses" })).toBeDisabled();
+      await expect(page.getByLabel("Standard sample budget")).toBeDisabled();
+    }
+  });
+
+  test("does not release a stale validation after the user edits the pending definition", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let releaseHistory: () => void = () => {};
+    const historyGate = new Promise<void>((resolve) => { releaseHistory = resolve; });
+    const submittedModel = { ...savedModel, id: "model-submitted-before-edit", displayName: "Submitted before edit" };
+    await page.route("**/api/v1/projects/*/models", async (route) => {
+      if (route.request().method() === "POST") {
+        await gate;
+        await route.fulfill({ status: 201, json: { modelVersion: submittedModel } });
+      } else {
+        await historyGate;
+        await route.fulfill({ json: { modelVersions: [submittedModel] } });
+      }
+    });
+    await page.goto("/studies/project-1/workspace");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByText("Your model is being validated and assessed…")).toBeVisible();
+    await page.getByRole("textbox", { name: "Python model source" }).fill("# Revised definition awaiting validation");
+    release();
+    await expect(page.getByRole("alert")).toContainText("definition changed during validation");
+    await expect(page.getByText("Model validated", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Run analyses" })).toBeDisabled();
+    await expect(page.getByRole("textbox", { name: "Python model source" })).toHaveText("# Revised definition awaiting validation");
+    await expect(page.getByRole("button", { name: "Validate & Assess" })).toBeEnabled();
+    await page.getByRole("link", { name: "Overview", exact: true }).click();
+    await expect(page.getByRole("link", { name: /Submitted before edit/ })).toBeVisible();
+    releaseHistory();
+  });
+
+  test("resets the selected scalar output when a different model is validated", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    let validations = 0;
+    await page.route("**/api/v1/projects/*/models", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      validations += 1;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ modelVersion: {
+          ...savedModel,
+          id: `model-output-reset-${validations}`,
+          metadata: validations === 1 ? {
+            ...savedModel.metadata,
+            output_dimension: 2,
+            outputs: [{ index: 0, name: "Y" }, { index: 1, name: "Second response" }],
+          } : savedModel.metadata,
+        } }),
+      });
+    });
+    await page.goto("/studies/project-1/workspace");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+    await page.getByLabel("Scalar analysis output").selectOption("1");
+    await page.getByLabel("Model name").fill("Scalar replacement");
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Scalar analysis output")).toHaveCount(0);
+    const request = page.waitForRequest((request) => request.url().endsWith("/api/v1/runs") && request.method() === "POST");
+    await page.getByRole("button", { name: "Run analyses" }).click();
+    const body = (await request).postDataJSON() as { analyses: Array<{ analysisKey: string; outputTargets: number[] }> };
+    expect(body.analyses.find((analysis) => analysis.analysisKey === "sobol")?.outputTargets).toEqual([0]);
+  });
+
+  test("preserves named Normal-copula correlations when variables are reordered and removed", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.goto("/studies/project-1/workspace");
+    await page.getByRole("button", { name: "Guided builder" }).click();
+    await page.getByRole("button", { name: "Add variable" }).click();
+    await page.getByLabel("Input dependence").selectOption("normal");
+    await page.getByLabel("Correlation x2 and x1", { exact: true }).fill("0.1");
+    await page.getByLabel("Correlation x3 and x1", { exact: true }).fill("0.2");
+    await page.getByLabel("Correlation x3 and x2", { exact: true }).fill("0.3");
+    await page.getByRole("button", { name: "Move variable 3 up", exact: true }).click();
+    await expect(page.getByLabel("Correlation x3 and x1", { exact: true })).toHaveValue("0.2");
+    await expect(page.getByLabel("Correlation x2 and x1", { exact: true })).toHaveValue("0.1");
+    await expect(page.getByLabel("Correlation x2 and x3", { exact: true })).toHaveValue("0.3");
+    await page.getByRole("button", { name: "Remove variable 1", exact: true }).click();
+    await expect(page.getByLabel("Correlation x2 and x3", { exact: true })).toHaveValue("0.3");
+  });
+
+  test("explains effective method budgets and prevents invalid conditional configuration", async ({ page }, testInfo) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    await page.goto("/studies/project-1/workspace");
+    await page.getByLabel("Search reference models").fill("Ishigami");
+    await page.locator(".example-card").click();
+    await page.getByRole("button", { name: "Validate & Assess" }).click();
+    await expect(page.getByText("Model validated", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Standard sample budget")).toHaveAccessibleDescription(/not a cap on total model evaluations/);
+    await expect(page.getByRole("checkbox", { name: "Sobol Sensitivity", exact: true })).toHaveAccessibleDescription(/Second-order interactions are included automatically/);
+    const run = page.getByRole("button", { name: "Run analyses" });
+    for (const invalid of ["", "63", "20001", "64.5"]) {
+      await page.getByLabel("Standard sample budget").fill(invalid);
+      await expect(run).toBeDisabled();
+      await expect(page.getByRole("alert")).toContainText("whole number from 64 to 20,000");
+    }
+    await page.getByLabel("Standard sample budget").fill("64");
+    await expect(run).toBeEnabled();
+    await page.getByRole("checkbox", { name: "Target-Domain HSIC Sensitivity", exact: true }).check();
+    await expect(page.getByLabel("Output threshold")).toHaveAccessibleDescription(/output's units/);
+    await expect(page.getByLabel("Permutation replicates")).toHaveAccessibleDescription(/Zero omits the permutation p-value/);
+    await page.getByLabel("Permutation replicates").fill("101");
+    await expect(run).toBeDisabled();
+    await page.getByLabel("Permutation replicates").fill("40.5");
+    await expect(run).toBeDisabled();
+    await page.getByLabel("Permutation replicates").fill("40");
+    await page.getByLabel("Output threshold").fill("");
+    await expect(run).toBeDisabled();
+    await page.getByLabel("Output threshold").fill("-2.5");
+    await expect(run).toBeEnabled();
+    await page.getByRole("checkbox", { name: "Reliability Analysis", exact: true }).check();
+    for (const method of ["FORM", "SORM", "MONTE_CARLO", "DIRECTIONAL_SAMPLING", "SUBSET_SAMPLING"]) {
+      await page.getByLabel("Reliability method").selectOption(method);
+      await expect(page.getByLabel("Maximum evaluations")).toHaveAccessibleDescription(/Default 20,000/);
+      if (["MONTE_CARLO", "DIRECTIONAL_SAMPLING"].includes(method)) {
+        await expect(page.getByLabel("Target coefficient of variation")).toHaveAccessibleDescription(/Relative standard deviation/);
+        await page.getByLabel("Target coefficient of variation").fill("0");
+        await expect(run).toBeDisabled();
+        await page.getByLabel("Target coefficient of variation").fill("0.05");
+      } else {
+        await expect(page.getByLabel("Target coefficient of variation")).toHaveCount(0);
+      }
+    }
+    await page.getByLabel("Maximum evaluations").fill("50001");
+    await expect(run).toBeDisabled();
+    await page.getByLabel("Maximum evaluations").fill("20000");
+    await page.getByRole("spinbutton", { name: "Threshold", exact: true }).fill("");
+    await expect(run).toBeDisabled();
+    await page.getByRole("spinbutton", { name: "Threshold", exact: true }).fill("0");
+    await expect(run).toBeEnabled();
+    for (const width of [1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      const outside = await page.locator(".reliability-studio, .target-hsic-studio").evaluateAll((panels) => panels.flatMap((panel) => {
+        const bounds = panel.getBoundingClientRect();
+        return Array.from(panel.querySelectorAll("input, select")).filter((control) => {
+          const box = control.getBoundingClientRect();
+          return box.left < bounds.left || box.right > bounds.right + 1;
+        }).map((control) => control.getAttribute("aria-describedby"));
+      }));
+      expect(outside).toEqual([]);
+    }
+    await testInfo.attach("conditional-composer-guidance", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    await page.getByRole("checkbox", { name: "Target-Domain HSIC Sensitivity", exact: true }).uncheck();
+    await expect(page.getByLabel("Permutation replicates")).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "Target-Domain HSIC Sensitivity", exact: true }).check();
+    await expect(page.getByLabel("Permutation replicates")).toHaveValue("40");
+  });
+
+  test("distinguishes catalog loading from failure and permits retry before validation", async ({ page }) => {
+    await installMockApi(page, { authenticated: true, projects: [project] });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let failed = true;
+    await page.route("**/api/v1/analyses/catalog", async (route) => {
+      await gate;
+      if (failed) await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Catalog temporarily unavailable" } }) });
+      else await route.fallback();
+    });
+    await page.goto("/studies/project-1/workspace");
+    await expect(page.getByText("Loading the OpenTURNS analysis catalog…")).toBeVisible();
+    await expect(page.getByText("Catalog unavailable", { exact: true })).toHaveCount(0);
+    release();
+    await expect(page.getByText("Catalog unavailable", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry analysis catalog" })).toBeEnabled();
+    failed = false;
+    await page.getByRole("button", { name: "Retry analysis catalog" }).click();
+    await expect(page.getByRole("checkbox", { name: "Uncertainty Propagation", exact: true })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Uncertainty Propagation", exact: true })).toBeDisabled();
+    await expect(page.getByText("Catalog unavailable", { exact: true })).toHaveCount(0);
+  });
+
   test("unifies all 24 examples with an editable Python model", async ({
     page,
   }) => {
@@ -361,6 +636,11 @@ test.describe("model studio", () => {
     await expect(page.getByLabel("Model name")).toHaveValue(
       "Rocket trajectory",
     );
+    const sourceEditor = page.getByRole("textbox", { name: "Python model source" });
+    await sourceEditor.press("Control+End");
+    await sourceEditor.press("Enter");
+    await sourceEditor.pressSequentially("# Adapted assumptions");
+    await expect(page.getByLabel("Model name")).toHaveValue("Rocket trajectory (edited)");
     await page.getByLabel("Model name").fill("My adapted rocket");
     await page.getByLabel("Search reference models").fill("beam");
     await page.locator(".example-card").first().click();
@@ -1247,7 +1527,7 @@ test.describe("run lifecycle", () => {
       "OpenTURNS is evaluating 100 permutation replicates.",
     );
     await expect(
-      activeHsic.getByRole("progressbar", { name: "Global HSIC progress" }),
+      activeHsic.getByRole("progressbar", { name: "HSIC Dependence Analysis progress" }),
     ).not.toHaveAttribute("aria-valuenow");
     const queuedCorrelation = page.locator('[data-analysis-key="correlation"]');
     await expect(queuedCorrelation).toContainText(
@@ -1255,7 +1535,7 @@ test.describe("run lifecycle", () => {
     );
     await expect(
       queuedCorrelation.getByRole("progressbar", {
-        name: "correlation progress",
+        name: "Correlation Analysis progress",
       }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
@@ -1354,6 +1634,7 @@ test.describe("reports and grounded chat", () => {
   test("renders every evidence type and operates export, share, print, and streaming chat", async ({
     page,
   }, testInfo) => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await installMockApi(page, {
       authenticated: true,
       projects: [project],
@@ -1405,6 +1686,8 @@ test.describe("reports and grounded chat", () => {
     ).not.toBeChecked();
     await page.getByRole("button", { name: "Create share link" }).click();
     await expect(page.getByText(/Share link copied:/)).toBeVisible();
+    const sharedUrl = await page.locator(".share-confirmation a").getAttribute("href");
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(sharedUrl);
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download PDF" }).click();
     const download = await downloadPromise;
