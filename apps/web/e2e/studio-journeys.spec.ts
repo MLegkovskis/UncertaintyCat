@@ -85,19 +85,38 @@ test("surrogate budgets match the request and candidates remain tied to their so
 
 test("data-driven evidence can be reopened after refresh with exact values and honest next-step limits", async ({ page }) => {
   await installMockApi(page, { authenticated: true, projects: [project] });
+  let releaseDataset: () => void = () => {};
+  const datasetGate = new Promise<void>((resolve) => { releaseDataset = resolve; });
+  await page.route("**/api/v1/projects/project-1/datasets", async (route) => {
+    await datasetGate;
+    await route.fallback();
+  });
   await page.goto("/studies/project-1/surrogates");
+  const datasetRequested = page.waitForRequest((request) => request.url().endsWith("/projects/project-1/datasets"));
   await page.getByRole("tab", { name: "From empirical data" }).click();
   await expect(page).toHaveURL(/source=data/);
+  await datasetRequested;
+  await expect(page.getByRole("group", { name: "Input columns" })).toHaveCount(0);
+  releaseDataset();
+  // The two-column fixture becomes one input and one distinct response after
+  // hydration. Counting before the default response is assigned can see both.
+  await expect(page.getByRole("combobox", { name: "Output column", exact: true })).toHaveValue("pressure");
   const inputColumns = page.getByRole("group", { name: "Input columns" }).getByRole("checkbox");
-  await expect(inputColumns).toHaveCount(2);
-  for (const input of await inputColumns.all()) await input.uncheck();
+  await expect(inputColumns).toHaveCount(1);
+  const temperature = page.getByRole("group", { name: "Input columns" }).getByRole("checkbox", { name: "temperature", exact: true });
+  await expect(temperature).toBeChecked();
+  await expect(page.getByRole("group", { name: "Input columns" }).getByRole("checkbox", { name: "pressure", exact: true })).toHaveCount(0);
+  await temperature.uncheck();
   await expect(page.getByRole("button", { name: "Build data-driven GPR" })).toBeDisabled();
-  for (const input of await inputColumns.all()) await input.check();
+  await temperature.check();
+  const buildRequest = page.waitForRequest((request) => request.url().endsWith("/datasets/dataset-1/surrogates") && request.method() === "POST");
   await page.getByRole("button", { name: "Build data-driven GPR" }).click();
+  expect((await buildRequest).postDataJSON()).toEqual({ inputColumns: ["temperature"], outputColumn: "pressure", validationFraction: 0.2, kernel: "MATERN_2_5", trend: "CONSTANT", seed: 42 });
   await expect(page.getByText("Data-driven GPR retained", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("tab", { name: "From empirical data" })).toHaveAttribute("aria-selected", "true");
   await page.getByLabel("Retained data-driven surrogate evidence").selectOption("data-surrogate-1");
+  await expect(page.locator(".data-surrogate-evidence > p").filter({ hasText: "Retained paired-data fit:" })).toContainText("temperature → pressure");
   await expect(page.getByText(/running this data-driven surrogate downstream are not yet supported/)).toBeVisible();
   await page.getByText("Exact hold-out observations and predictions").click();
   await expect(page.getByRole("columnheader", { name: "Observed", exact: true })).toBeVisible();
