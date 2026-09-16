@@ -1,5 +1,10 @@
 # Browser and end-to-end testing
 
+For a reusable, vision-led manual-plus-automated audit that traverses every project studio and derived-model
+handoff, use [the end-to-end scientific UX audit prompt](ux-journey-audit/README.md). It complements the suites
+below by requiring a production visual baseline, hands-on repair, and new regression evidence for every material
+finding.
+
 The bounded subset-sampling correction is covered by `tests/core/test_subset_sampling.py`,
 `tests/integration/test_subset_service.py`, Worker contract tests, and
 `apps/web/e2e/subset-sampling.spec.ts` (including expanded-workflow accessibility).
