@@ -11,25 +11,25 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/groq": "^4.0.40",
+    "@ai-sdk/groq": "^4.0.44",
     "@cloudflare/sandbox": "^0.12.9",
     "@hono/zod-validator": "^0.9.1",
     "@uncertaintycat/contracts": "0.2.0",
-    "ai": "^7.0.97",
-    "better-auth": "^1.7.4",
+    "ai": "^7.0.105",
+    "better-auth": "^1.7.5",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
-    "hono": "^4.13.7",
+    "hono": "^4.13.8",
     "katex": "0.18.7",
     "workers-ai-provider": "^4.0.0",
-    "zod": "^4.6.2"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260911.1",
+    "@cloudflare/workers-types": "^5.20260918.1",
     "@types/node": "^26.6.1",
     "miniflare": "5.20260910.0-alpha",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0",
-    "wrangler": "^4.131.0"
+    "vitest": "^5.0.1",
+    "wrangler": "^4.134.0"
   }
 }
