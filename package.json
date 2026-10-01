@@ -26,6 +26,6 @@
     "node": ">=22.0"
   },
   "overrides": {
-    "dompurify": "3.4.14"
+    "dompurify": "3.4.16"
   }
 }
