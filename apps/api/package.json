@@ -20,16 +20,16 @@
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
     "hono": "^4.13.7",
-    "katex": "0.18.7",
+    "katex": "0.18.8",
     "workers-ai-provider": "^4.0.0",
     "zod": "^4.6.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260911.1",
     "@types/node": "^26.6.1",
-    "miniflare": "5.20261001.0-alpha",
+    "miniflare": "5.20261006.1-alpha",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0",
-    "wrangler": "^4.146.0"
+    "wrangler": "^4.149.0"
   }
 }
