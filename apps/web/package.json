@@ -21,7 +21,7 @@
     "echarts": "^6.1.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
-    "katex": "^0.18.7",
+    "katex": "^0.18.8",
     "lucide-react": "^1.44.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
