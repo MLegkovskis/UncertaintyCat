@@ -19,8 +19,8 @@
     "better-auth": "^1.7.4",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
-    "hono": "^4.13.7",
-    "katex": "0.18.7",
+    "hono": "^4.13.11",
+    "katex": "0.18.8",
     "workers-ai-provider": "^4.0.0",
     "zod": "^4.6.2"
   },
